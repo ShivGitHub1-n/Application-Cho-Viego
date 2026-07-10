@@ -1,0 +1,2 @@
+"""Resume Tailor application package."""
+

@@ -1,0 +1,52 @@
+{
+  "id": "candidate-huawei-fixture",
+  "user_id": "fixture-user",
+  "display_name": "Candidate",
+  "experiences": [
+    {
+      "id": "experience-autonomy",
+      "title": "Autonomous Systems Engineer",
+      "kind": "experience",
+      "technologies": ["ROS 2", "NVIDIA Jetson Orin", "LiDAR", "OpenCV", "YOLOv8"],
+      "capabilities": ["autonomous systems", "computer vision", "perception systems"]
+    },
+    {
+      "id": "experience-ai-governance",
+      "title": "Digital Engineering Intern",
+      "kind": "experience",
+      "technologies": ["RAG", "LangGraph"],
+      "capabilities": ["AI governance", "multi-agent systems"]
+    }
+  ],
+  "projects": [],
+  "declared_skills": ["Python", "PyTorch", "Jupyter", "Linux", "Docker", "Git"],
+  "evidence": [
+    {
+      "id": "evidence-autonomy",
+      "entity_id": "experience-autonomy",
+      "source_text": "Integrated ROS 2 teleoperation for an autonomous low-speed vehicle with real-time remote control and safety override.",
+      "technologies": ["ROS 2"],
+      "capabilities": ["autonomous systems", "teleoperation"],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-perception",
+      "entity_id": "experience-autonomy",
+      "source_text": "Integrated a real-time perception pipeline using YOLOv8 and OpenCV to detect vehicles and pedestrians at 30 FPS.",
+      "technologies": ["YOLOv8", "OpenCV"],
+      "capabilities": ["computer vision", "perception systems"],
+      "outcomes": ["30 FPS"],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-governance",
+      "entity_id": "experience-ai-governance",
+      "source_text": "Developed multi-agent AI governance workflows for compliance auditing and risk assessment.",
+      "technologies": ["LangGraph"],
+      "capabilities": ["AI governance", "multi-agent systems"],
+      "outcomes": [],
+      "confirmed": true
+    }
+  ]
+}

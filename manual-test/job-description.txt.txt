@@ -1,0 +1,34 @@
+About the job
+Huawei Canada has an immediate 12/16-month Co-op opening for a Researcher role.
+
+About the Team:
+
+Founded in 2012, the Noah’s Ark lab has evolved into a prominent research organization with notable achievements in academia and industry. The lab’s mission focuses on advancing artificial intelligence and related fields to benefit the company and society. Driven by impactful, long-term projects, the aim is to enhance state-of-the-art research while integrating innovations into the company's products and services, including LLMs, RL, NLP, computer vision, AI theory and Autonomous driving.
+
+About the job:
+
+Investigate challenging problems in autonomous driving and multimodal reasoning (e.g., scene understanding, decision making, spatial reasoning, or causal learning).
+Design and implement state-of-the-art algorithms using deep learning and transformer-based architectures for vision-language(-action) models.
+Prototype and evaluate new ideas using internal simulation tools (e.g., CARLA, Navsim) and large-scale driving datasets (waymo, etc.)
+Analyze model behaviors, develop visualizations, and contribute to benchmarking pipelines.
+Collaborate closely with senior researchers to support ongoing research projects and publications.
+Participate in regular technical discussions, contribute to internal presentations, and help maintain clean, reproducible codebases.
+
+Job requirements
+
+About the ideal candidate:
+
+Currently pursuing a Bachelor’s degree in Computer Science, Software Engineering, Electrical/Computer Engineering, or a related field.
+Strong programming skills, particularly in Python.
+Familiar with deep learning frameworks such as PyTorch.
+Comfortable working in a Linux environment and using tools such as Git, Docker, or Jupyter.
+Knowledgeable in machine learning fundamentals — linear algebra, probability, optimization, and deep learning architectures.
+Curious about or experienced in one or more of:
+Computer Vision / Scene Understanding
+Vision-Language(-Action) Models (VLMs, VLAs)
+Reinforcement Learning or Policy Learning
+Autonomous Driving Simulation / CARLA
+Foundation Models and Multimodal Representation Learning
+Huawei aims to support a French-speaking work environment for its employees in Quebec. We have taken steps to avoid requiring a language other than French for this position. However, proficiency in English is essential for this role for the following reasons:
+
+The person will be required to communicate regularly with colleagues located outside Quebec, where English is the primary language used for communication between offices. In addition, the nature of the tasks related to this position, which falls within a highly specialized field of artificial intelligence, also requires knowledge of English.

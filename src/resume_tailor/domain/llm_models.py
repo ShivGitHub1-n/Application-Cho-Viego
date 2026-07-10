@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from resume_tailor.domain.models import RoleFamily
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class LlmOperation(StrEnum):
+    ANALYZE_OPPORTUNITY = "analyze_opportunity"
+    RECOMMEND_COMPOSITION = "recommend_composition"
+    REWRITE_BULLETS = "rewrite_bullets"
+    SHORTEN_BULLETS = "shorten_bullets"
+
+
+class LanguageModelErrorKind(StrEnum):
+    CONFIGURATION = "configuration"
+    TIMEOUT = "timeout"
+    RATE_LIMITED = "rate_limited"
+    UNAVAILABLE = "unavailable"
+    NETWORK = "network"
+    SAFETY_BLOCKED = "safety_blocked"
+    MALFORMED_RESPONSE = "malformed_response"
+    VALIDATION = "validation"
+
+
+class LanguageModelError(RuntimeError):
+    def __init__(self, kind: LanguageModelErrorKind, message: str, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.retryable = retryable
+
+
+class ModelCallMetadata(StrictModel):
+    provider: str
+    model: str
+    operation: LlmOperation
+    latency_ms: int = Field(ge=0)
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    attempts: int = Field(default=1, ge=1)
+    cache_hit: bool = False
+
+
+class ModelResult(StrictModel):
+    metadata: ModelCallMetadata
+
+
+class EvidenceCoverageSummary(StrictModel):
+    signal_id: str
+    direct_evidence_ids: list[str] = Field(default_factory=list)
+    declared_skill_names: list[str] = Field(default_factory=list)
+
+
+class OpportunityAnalysisRequest(StrictModel):
+    posting_id: str
+    title: str
+    description: str
+    supported_role_families: list[RoleFamily]
+    evidence_coverage: list[EvidenceCoverageSummary] = Field(default_factory=list)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class OpportunityRequirement(StrictModel):
+    label: str
+    priority: str
+    supporting_terms: list[str] = Field(default_factory=list)
+
+
+class OpportunityAnalysisOutput(StrictModel):
+    role_families: list[RoleFamily] = Field(min_length=1)
+    primary_focus: str
+    responsibilities: list[str] = Field(default_factory=list)
+    required_skills: list[str] = Field(default_factory=list)
+    preferred_skills: list[str] = Field(default_factory=list)
+    domain_signals: list[str] = Field(default_factory=list)
+    evidence_requirements: list[OpportunityRequirement] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    reasoning: str = Field(max_length=600)
+
+
+class OpportunityAnalysisResult(ModelResult):
+    output: OpportunityAnalysisOutput
+
+
+class EligibleEvidence(StrictModel):
+    evidence_id: str
+    entity_id: str
+    source_text: str
+    technologies: list[str] = Field(default_factory=list)
+    outcomes: list[str] = Field(default_factory=list)
+    estimated_lines: int = Field(gt=0)
+
+
+class EligibleEntry(StrictModel):
+    entry_id: str
+    title: str
+    entry_cost_lines: int = Field(ge=0)
+    evidence: list[EligibleEvidence] = Field(default_factory=list)
+
+
+class CompositionRecommendationRequest(StrictModel):
+    posting_id: str
+    primary_focus: str
+    entries: list[EligibleEntry]
+    max_total_lines: int = Field(gt=0)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class EvidenceGrouping(StrictModel):
+    entry_id: str
+    evidence_ids: list[str] = Field(min_length=1, max_length=4)
+
+
+class CompositionRecommendationOutput(StrictModel):
+    selected_entry_ids: list[str] = Field(default_factory=list)
+    excluded_entry_ids: list[str] = Field(default_factory=list)
+    selected_evidence_ids: list[str] = Field(default_factory=list)
+    proposed_evidence_groupings: list[EvidenceGrouping] = Field(default_factory=list)
+    rationale: str = Field(max_length=800)
+    unsupported_requirements: list[str] = Field(default_factory=list)
+
+
+class CompositionRecommendationResult(ModelResult):
+    output: CompositionRecommendationOutput
+
+
+class ApprovedEvidenceGroup(StrictModel):
+    entry_id: str
+    evidence_ids: list[str] = Field(min_length=1, max_length=2)
+    source_texts: list[str] = Field(min_length=1, max_length=2)
+    technologies: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+    max_rendered_lines: int = Field(gt=0)
+
+
+class BulletRewriteRequest(StrictModel):
+    primary_focus: str
+    groups: list[ApprovedEvidenceGroup] = Field(min_length=1)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class BulletRewrite(StrictModel):
+    entry_id: str
+    final_bullet_text: str = Field(min_length=1, max_length=500)
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=2)
+    preserved_technologies: list[str] = Field(default_factory=list)
+    preserved_metrics: list[str] = Field(default_factory=list)
+    emphasized_terms: list[str] = Field(default_factory=list)
+    evidence_combined: bool
+    concise_alternative: str = Field(min_length=1, max_length=500)
+    confidence: float = Field(ge=0, le=1)
+
+
+class BulletRewriteOutput(StrictModel):
+    bullets: list[BulletRewrite] = Field(min_length=1)
+
+
+class BulletRewriteResult(ModelResult):
+    output: BulletRewriteOutput
+
+
+class BulletShorteningRequest(StrictModel):
+    bullet_id: str
+    entry_id: str
+    original_text: str
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=2)
+    source_texts: list[str] = Field(min_length=1, max_length=2)
+    protected_facts: list[str] = Field(default_factory=list)
+    max_rendered_lines: int = Field(gt=0)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class BulletShorteningOutput(StrictModel):
+    original_bullet_id: str
+    shortened_text: str = Field(min_length=1, max_length=500)
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=2)
+    preserved_facts: list[str] = Field(default_factory=list)
+    removed_wording: list[str] = Field(default_factory=list)
+    no_new_claim_introduced: bool
+
+
+class BulletShorteningResult(ModelResult):
+    output: BulletShorteningOutput

@@ -1,0 +1,711 @@
+{
+  "id": "shiv-arora-master-v1",
+  "user_id": "local-user",
+  "version": 1,
+  "display_name": "Shiv Arora",
+  "contact": {
+    "email": "shiv2006arora@gmail.com",
+    "phone": "647-997-0896",
+    "location": "Toronto, Ontario, Canada",
+    "links": [
+      "linkedin.com/in/shiv-arora-",
+      "https://shiv-arora.netlify.app/"
+    ]
+  },
+  "education": [
+    {
+      "school": "University of Toronto",
+      "program": "Bachelor of Applied Science in Mechanical Engineering, Minor in Robotics & Mechatronics + PEY",
+      "graduation_date": "Expected April 2029",
+      "gpa": 3.72
+    }
+  ],
+  "experiences": [
+    {
+      "id": "experience-telebotics",
+      "title": "Principal Hardware Engineer | Embedded Systems, Mechatronics",
+      "kind": "experience",
+      "organization": "Telebotics",
+      "technologies": [
+        "Embedded Systems",
+        "GPIO",
+        "Drive-by-Wire",
+        "Actuators"
+      ],
+      "capabilities": [
+        "autonomous vehicle systems",
+        "hardware-software integration",
+        "embedded architecture",
+        "functional safety",
+        "technical documentation"
+      ]
+    },
+    {
+      "id": "experience-york-rd",
+      "title": "R&D Hardware Engineer | Mechanical Integration, Hardware Design",
+      "kind": "experience",
+      "organization": "Lassonde School of Engineering - York University",
+      "technologies": [
+        "ROS 2",
+        "NVIDIA Jetson Orin",
+        "GPIO",
+        "RTK GPS",
+        "IMU",
+        "LiDAR",
+        "OpenCV",
+        "YOLOv8",
+        "SolidWorks",
+        "Fusion 360",
+        "5G"
+      ],
+      "capabilities": [
+        "autonomous systems",
+        "hardware integration",
+        "edge AI",
+        "sensor integration",
+        "computer vision",
+        "teleoperation",
+        "mechanical design"
+      ]
+    },
+    {
+      "id": "experience-exl",
+      "title": "Digital Engineering Intern | LLMs, GenAI",
+      "kind": "experience",
+      "organization": "EXL Services",
+      "technologies": [
+        "AWS Bedrock Guardrails",
+        "RAG",
+        "LangGraph",
+        "LLMs",
+        "GenAI"
+      ],
+      "capabilities": [
+        "AI governance",
+        "multi-agent systems",
+        "generative AI",
+        "risk assessment",
+        "compliance auditing",
+        "AI safety"
+      ]
+    },
+    {
+      "id": "experience-stush",
+      "title": "Software Engineering Intern | Python, Pandas, Power BI",
+      "kind": "experience",
+      "organization": "Stush Foods",
+      "technologies": [
+        "Python",
+        "Pandas",
+        "NumPy",
+        "Power BI",
+        "Excel",
+        "CSV"
+      ],
+      "capabilities": [
+        "data engineering",
+        "ETL",
+        "data validation",
+        "analytics automation",
+        "schema detection"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "project-robotic-arm",
+      "title": "Long Reach Robotic Arm Manipulator | Mechanical Design, SolidWorks",
+      "kind": "project",
+      "organization": null,
+      "technologies": [
+        "SolidWorks",
+        "Harmonic Drives",
+        "Encoders",
+        "CAD"
+      ],
+      "capabilities": [
+        "robotics",
+        "mechanical design",
+        "kinematics",
+        "digital twin development"
+      ]
+    },
+    {
+      "id": "project-crest",
+      "title": "Crest - AI-Powered Expense Intelligence Platform",
+      "kind": "project",
+      "organization": "MPC Hacks",
+      "technologies": [
+        "FastAPI",
+        "Gemini",
+        "MongoDB Atlas",
+        "Vultr"
+      ],
+      "capabilities": [
+        "AI application development",
+        "full-stack development",
+        "fraud detection",
+        "natural language interfaces",
+        "data analytics"
+      ]
+    },
+    {
+      "id": "project-smoke-module",
+      "title": "Smoke-Triggered Ventilation & Alert Module",
+      "kind": "project",
+      "organization": null,
+      "technologies": [
+        "Quartus",
+        "LDR",
+        "555 Timer",
+        "L293D",
+        "Circuit Design"
+      ],
+      "capabilities": [
+        "digital logic",
+        "circuit prototyping",
+        "sensor interfacing",
+        "hardware implementation"
+      ]
+    }
+  ],
+  "declared_skills": [
+    "Python",
+    "C++",
+    "HTML/CSS",
+    "JavaScript",
+    "MATLAB",
+    "Visual Studio",
+    "GitHub",
+    "Git",
+    "Bash",
+    "UFLD",
+    "NumPy",
+    "Matplotlib",
+    "PyTorch",
+    "Jupyter",
+    "STM32",
+    "ARM Cortex-M4",
+    "Arduino",
+    "GPIO Interfacing",
+    "PWM",
+    "ADC/DAC Configuration",
+    "UART",
+    "I2C",
+    "SPI",
+    "Microprocessors",
+    "Microcontrollers",
+    "Linux",
+    "Ubuntu",
+    "Signal Pathways & Routing",
+    "SolidWorks",
+    "Fusion 360",
+    "Mechanical Mount Design",
+    "Tolerancing",
+    "Assembly Drawings",
+    "3D Print Drawings",
+    "Wiring Harness Design",
+    "Crimping",
+    "Soldering",
+    "Power Distribution",
+    "Voltage Regulation",
+    "CANBus",
+    "ROS 2",
+    "OpenCV",
+    "YOLOv8",
+    "FastAPI",
+    "MongoDB",
+    "Power BI",
+    "Pandas",
+    "Docker"
+  ],
+  "coursework": [
+    "Mechanical Engineering Design",
+    "Circuits in Mechanical Systems",
+    "Analog/Digital Electronics (Mechatronics)"
+  ],
+  "evidence": [
+    {
+      "id": "evidence-telebotics-1",
+      "entity_id": "experience-telebotics",
+      "source_text": "Led the design and technical architecture of a retrofittable drive-by-wire actuation system for an autonomous golf cart, integrating electronic steering, throttle, and braking through 3 linear actuators and embedded control interfaces.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "autonomous vehicle systems",
+        "embedded architecture",
+        "hardware integration"
+      ],
+      "technologies": [
+        "Drive-by-Wire",
+        "Actuators",
+        "Embedded Systems"
+      ],
+      "outcomes": [
+        "Integrated steering, throttle, and braking through 3 linear actuators"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-telebotics-2",
+      "entity_id": "experience-telebotics",
+      "source_text": "Evaluated hydraulic braking architectures, actuator selection, and mechanical linkage designs to develop a universal drive-by-wire retrofit solution balancing packaging constraints, serviceability, and reliable vehicle operation.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "mechanical design",
+        "systems engineering",
+        "design evaluation"
+      ],
+      "technologies": [
+        "Hydraulic Braking",
+        "Actuators",
+        "Mechanical Linkages"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-telebotics-3",
+      "entity_id": "experience-telebotics",
+      "source_text": "Authored Interface Control Documents defining hardware-software interfaces, 30+ I/O signals, actuator command structures, GPIO mappings, and subsystem communication architecture supporting embedded development and integration.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "technical documentation",
+        "hardware-software integration",
+        "embedded systems"
+      ],
+      "technologies": [
+        "GPIO",
+        "Interface Control Documents"
+      ],
+      "outcomes": [
+        "Documented more than 30 I/O signals"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-telebotics-4",
+      "entity_id": "experience-telebotics",
+      "source_text": "Supported functional safety and autonomous vehicle control architecture by developing supervisory safety logic, emergency-stop control strategies, and system documentation for drive-by-wire operation and intellectual property development.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "functional safety",
+        "autonomous systems",
+        "safety logic"
+      ],
+      "technologies": [
+        "Emergency Stop",
+        "Drive-by-Wire"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-1",
+      "entity_id": "experience-york-rd",
+      "source_text": "Integrated the hardware architecture of a level 1 autonomous teleoperation last-mile delivery solution for low-speed vehicles using ROS 2, enabling real-time remote control, safety override, and operator-to-vehicle round-trip latency below 200 ms over a 5G modem.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "autonomous systems",
+        "teleoperation",
+        "hardware integration"
+      ],
+      "technologies": [
+        "ROS 2",
+        "5G"
+      ],
+      "outcomes": [
+        "Operator-to-vehicle round-trip latency below 200 ms"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-2",
+      "entity_id": "experience-york-rd",
+      "source_text": "Integrated and implemented full GPIO interfacing between an NVIDIA Jetson Orin microprocessor and embedded microcontroller for edge AI inference, low-level motor control, and command emergency stop in under 150 ms when an object was simulated.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "edge AI",
+        "embedded integration",
+        "motor control"
+      ],
+      "technologies": [
+        "NVIDIA Jetson Orin",
+        "GPIO",
+        "Microcontroller"
+      ],
+      "outcomes": [
+        "Emergency stop command in under 150 ms"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-3",
+      "entity_id": "experience-york-rd",
+      "source_text": "Designed and deployed sensor architecture and wiring harnesses including RTK GPS, IMU, ultrasonic, LiDAR, and camera arrays, achieving 360-degree environmental perception with under 2 cm localization error.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "sensor integration",
+        "autonomous systems",
+        "wiring design"
+      ],
+      "technologies": [
+        "RTK GPS",
+        "IMU",
+        "Ultrasonic",
+        "LiDAR",
+        "Camera Arrays"
+      ],
+      "outcomes": [
+        "360-degree environmental perception",
+        "Localization error below 2 cm"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-4",
+      "entity_id": "experience-york-rd",
+      "source_text": "Designed and printed custom sensor mounting brackets and compute module enclosures using SolidWorks and Fusion 360.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "mechanical design",
+        "rapid prototyping"
+      ],
+      "technologies": [
+        "SolidWorks",
+        "Fusion 360",
+        "3D Printing"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-5",
+      "entity_id": "experience-york-rd",
+      "source_text": "Collaborated on integrating a real-time perception pipeline using YOLOv8 and OpenCV to detect traffic lights, pedestrians, and vehicles with over 90 percent accuracy at 30 FPS for live object detection, lane tracking, and command processing.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "computer vision",
+        "perception systems",
+        "model integration"
+      ],
+      "technologies": [
+        "YOLOv8",
+        "OpenCV"
+      ],
+      "outcomes": [
+        "Over 90 percent accuracy",
+        "30 FPS"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-york-6",
+      "entity_id": "experience-york-rd",
+      "source_text": "Supported ROS 2-based teleoperation workflows, enabling real-time vehicle monitoring, command execution, and communication between onboard systems and remote operator interfaces.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "teleoperation",
+        "robotics software",
+        "systems integration"
+      ],
+      "technologies": [
+        "ROS 2"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-exl-1",
+      "entity_id": "experience-exl",
+      "source_text": "Developed and enhanced Govern.ai, an enterprise multi-agent AI governance platform that automates compliance auditing, adversarial testing, and risk assessment for generative AI applications.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "multi-agent systems",
+        "AI governance",
+        "risk assessment"
+      ],
+      "technologies": [
+        "Generative AI",
+        "Multi-Agent AI"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-exl-2",
+      "entity_id": "experience-exl",
+      "source_text": "Implemented and evaluated AWS Bedrock Guardrails, configuring denied topics, sensitive information filtering, content moderation, and policy controls to strengthen enterprise AI safety and security.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "AI safety",
+        "content moderation",
+        "policy controls"
+      ],
+      "technologies": [
+        "AWS Bedrock Guardrails"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-exl-3",
+      "entity_id": "experience-exl",
+      "source_text": "Leveraged retrieval-augmented generation and enterprise knowledge sources to improve regulatory reasoning, audit accuracy, and AI policy evaluation.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "retrieval-augmented generation",
+        "regulatory reasoning",
+        "AI evaluation"
+      ],
+      "technologies": [
+        "RAG"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-exl-4",
+      "entity_id": "experience-exl",
+      "source_text": "Designed and extended LangGraph-based multi-agent workflows, enabling coordinated execution across specialized AI agents for research, planning, testing, and evaluation.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "multi-agent orchestration",
+        "AI workflow design"
+      ],
+      "technologies": [
+        "LangGraph"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-stush-1",
+      "entity_id": "experience-stush",
+      "source_text": "Developed a Python-based ETL platform that automatically extracted, validated, and normalized sales data from 3 major distributor systems into a unified report, processing thousands of transaction records across multiple reporting formats.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "data engineering",
+        "ETL",
+        "automation"
+      ],
+      "technologies": [
+        "Python"
+      ],
+      "outcomes": [
+        "Processed thousands of records from 3 distributor systems"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-stush-2",
+      "entity_id": "experience-stush",
+      "source_text": "Engineered data transformation and validation pipelines using Pandas and NumPy to standardize SKU, promotion, and sales data, reducing manual reporting effort by approximately 40 to 50 percent and improving data consistency across business units.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "data transformation",
+        "data validation",
+        "analytics automation"
+      ],
+      "technologies": [
+        "Pandas",
+        "NumPy"
+      ],
+      "outcomes": [
+        "Reduced manual reporting effort by approximately 40 to 50 percent"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-stush-3",
+      "entity_id": "experience-stush",
+      "source_text": "Implemented automated schema detection and file-parsing workflows capable of ingesting distributor-specific Excel and CSV reporting formats into a canonical sales data model.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "schema detection",
+        "file parsing",
+        "data modeling"
+      ],
+      "technologies": [
+        "Excel",
+        "CSV"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-stush-4",
+      "entity_id": "experience-stush",
+      "source_text": "Automated monthly sales reporting and Power BI dashboard refresh workflows, enabling dynamic KPI tracking, promotional analysis, and historical trend reporting through a centralized analytics dataset.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "business intelligence",
+        "reporting automation",
+        "data analytics"
+      ],
+      "technologies": [
+        "Power BI"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-robotic-arm-1",
+      "entity_id": "project-robotic-arm",
+      "source_text": "Designed a complete multi-degree-of-freedom kinematic structure in SolidWorks, including linkage configurations, housings, and mounts.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "robotics",
+        "kinematic design",
+        "mechanical design"
+      ],
+      "technologies": [
+        "SolidWorks"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-robotic-arm-2",
+      "entity_id": "project-robotic-arm",
+      "source_text": "Modeled custom actuator assemblies in SolidWorks with integrated harmonic drives, specifying torque-speed profiles, encoder resolution, and gear ratios for under 0.1-degree positioning accuracy and minimal backlash.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "actuator design",
+        "precision mechanics",
+        "robotics"
+      ],
+      "technologies": [
+        "SolidWorks",
+        "Harmonic Drives",
+        "Encoders"
+      ],
+      "outcomes": [
+        "Positioning accuracy below 0.1 degrees"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-robotic-arm-3",
+      "entity_id": "project-robotic-arm",
+      "source_text": "Created a complete CAD assembly integrating all mechanical components to form a digital twin of the robotic arm.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "CAD",
+        "digital twin development",
+        "systems integration"
+      ],
+      "technologies": [
+        "SolidWorks"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-crest-1",
+      "entity_id": "project-crest",
+      "source_text": "Built an AI-powered financial management platform that analyzed more than 4,000 transactions using natural language queries, enabling users to explore spending patterns, budgets, and expense data through an interactive dashboard.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "AI application development",
+        "natural language interfaces",
+        "data analytics"
+      ],
+      "technologies": [
+        "AI",
+        "Interactive Dashboard"
+      ],
+      "outcomes": [
+        "Analyzed more than 4,000 transactions"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-crest-2",
+      "entity_id": "project-crest",
+      "source_text": "Implemented AI-driven expense reporting and recommendation features using FastAPI, MongoDB Atlas, Gemini, and Vultr, generating contextual insights and approval suggestions for business users within a full-stack web application.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "full-stack development",
+        "AI recommendations",
+        "backend development"
+      ],
+      "technologies": [
+        "FastAPI",
+        "MongoDB Atlas",
+        "Gemini",
+        "Vultr"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-crest-3",
+      "entity_id": "project-crest",
+      "source_text": "Developed fraud detection and policy compliance workflows that automatically identified anomalous transactions, spending violations, and approval risks from financial datasets.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "fraud detection",
+        "policy compliance",
+        "risk analytics"
+      ],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-smoke-1",
+      "entity_id": "project-smoke-module",
+      "source_text": "Prototyped a low-cost smoke detection simulator using an LDR sensor to model reduced light intensity from dense smoke and comparator logic, triggering a response through a 555 monostable circuit with supporting components.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "circuit prototyping",
+        "sensor interfacing",
+        "digital logic"
+      ],
+      "technologies": [
+        "LDR",
+        "555 Timer",
+        "Comparator Logic"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-smoke-2",
+      "entity_id": "project-smoke-module",
+      "source_text": "Integrated a DC fan and LED and buzzer alert system controlled through an L293D motor driver, activating ventilation and periodic flashing and beeping when thresholds were reached.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "hardware integration",
+        "motor control",
+        "alert systems"
+      ],
+      "technologies": [
+        "L293D",
+        "DC Fan",
+        "LED",
+        "Buzzer"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence-smoke-3",
+      "entity_id": "project-smoke-module",
+      "source_text": "Created logic models in Quartus to plan control flow before implementation using a breadboard and perfboard soldering.",
+      "source_reference": "Shiv Arora MASTER.docx",
+      "capabilities": [
+        "digital logic",
+        "hardware prototyping"
+      ],
+      "technologies": [
+        "Quartus",
+        "Breadboard",
+        "Perfboard",
+        "Soldering"
+      ],
+      "outcomes": [],
+      "confirmed": true
+    }
+  ]
+}
