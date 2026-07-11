@@ -7,6 +7,7 @@ from resume_tailor.domain.models import (
     Decision,
     EntityKind,
     MasterProfile,
+    ResumeItem,
     TailoringPlan,
 )
 
@@ -96,6 +97,18 @@ class DeterministicCompositionReconciler:
                 constraint="validated against deterministic eligibility and content budgets",
             )
         )
+        selected_ids = {candidate.id for candidate in ordered}
+        for candidate in plan.claim_candidates:
+            if candidate.id not in selected_ids:
+                report.decisions.append(
+                    Decision(
+                        action="composition_removed",
+                        entity_id=candidate.entity_id,
+                        reason="Excluded by the validated composition recommendation.",
+                        evidence_ids=candidate.evidence_ids,
+                        constraint="deterministic candidate remained eligible but was not selected",
+                    )
+                )
         return plan.model_copy(
             update={
                 "selected_entity_ids": selection.selected_entry_ids,
@@ -110,7 +123,7 @@ class DeterministicCompositionReconciler:
     def _validate_budgets(
         self,
         candidates: list[ClaimCandidate],
-        entities: dict[str, object],
+        entities: dict[str, ResumeItem],
         plan: TailoringPlan,
     ) -> None:
         constraints = plan.constraints
@@ -141,7 +154,7 @@ class DeterministicCompositionReconciler:
     @staticmethod
     def _line_cost(
         candidates: list[ClaimCandidate],
-        entities: dict[str, object],
+        entities: dict[str, ResumeItem],
         plan: TailoringPlan,
     ) -> int:
         opened: set[str] = set()

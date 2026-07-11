@@ -46,6 +46,8 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 
 For the storage-free MVP, a `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
+Gemini composition is advisory. The application may narrow or reorder the optimizer-selected candidates, but only by replaying a typed composition selection through deterministic evidence, support, entry, grouping, bullet-count, section-budget, total-line, and entry-overhead checks. Reconciled plans retain that selection so the plan-integrity gate can reconstruct and verify it before writing. Model output never creates candidates or changes candidate text.
+
 ## Evolution
 
 Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter, and authentication dependency without moving domain or application code. FastAPI is the stable product API; Streamlit is a replaceable client.

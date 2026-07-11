@@ -22,6 +22,8 @@ Provide evidence IDs, role signals, template budget, output schema, and explicit
 
 Provider failures, malformed output, safety blocks, and exhausted validation retries must fall back to deterministic selection and source-grounded wording. Never log API keys, raw prompts, raw model responses, or full resumes by default.
 
+Composition recommendations may only narrow or reorder candidates already produced by the deterministic optimizer. The application replays the recommendation through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged; composition never creates or rewrites candidate evidence.
+
 ## Inference guidelines
 
 Safe inference translates existing evidence into common recruiter terminology when the relationship is strong and non-material. Mark it `strong_inference_pending_review` in the decision report and require approval before export. When ambiguity changes a factual claim, omit it and identify the uncovered role requirement. User edits create new claim candidates that must be revalidated.
