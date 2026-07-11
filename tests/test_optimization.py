@@ -243,8 +243,9 @@ def test_writer_excludes_unapproved_inferred_claims() -> None:
     )
     plan = plan.model_copy(update={"claim_candidates": [*plan.claim_candidates, inferred]})
 
-    unapproved = service.build_document(plan, profile, set())
-    approved = service.build_document(plan, profile, {"inference-1"})
+    writer = EvidenceBoundResumeWriter()
+    unapproved = writer.write(plan, profile, set())
+    approved = writer.write(plan, profile, {"inference-1"})
 
     assert "inference-1" in unapproved.review_required_claim_ids
     assert all(

@@ -207,6 +207,8 @@ class DeterministicResumeOptimizer:
                 profile_version=profile.version,
                 posting_id=posting.id,
                 template_id=constraints.template_id,
+                posting=posting,
+                constraints=constraints,
                 report=DecisionReport(role=role, profile_fit=fit, warnings=[fit.reason]),
             )
 
@@ -227,6 +229,8 @@ class DeterministicResumeOptimizer:
             profile_version=profile.version,
             posting_id=posting.id,
             template_id=constraints.template_id,
+            posting=posting,
+            constraints=constraints,
             strategy=strategy,
             report=DecisionReport(
                 role=role,
@@ -255,6 +259,8 @@ class DeterministicResumeOptimizer:
             profile_version=profile.version,
             posting_id=posting.id,
             template_id=constraints.template_id,
+            posting=posting,
+            constraints=constraints,
             report=DecisionReport(role=role, warnings=[role.reason or "The posting could not be classified."]),
         )
 

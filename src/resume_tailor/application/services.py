@@ -1,6 +1,13 @@
-from resume_tailor.domain.models import JobPosting, MasterProfile, StructuredResume, TailoringPlan, TemplateConstraints
-from resume_tailor.ports.interfaces import ResumeOptimizer, ResumeWriter
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.plan_validation import DeterministicPlanIntegrityValidator
+from resume_tailor.domain.models import (
+    JobPosting,
+    MasterProfile,
+    StructuredResume,
+    TailoringPlan,
+    TemplateConstraints,
+)
+from resume_tailor.ports.interfaces import ResumeOptimizer, ResumeWriter
 
 
 class TailorResumeService:
@@ -15,6 +22,7 @@ class TailorResumeService:
         self._optimizer = optimizer
         self._resume_writer = resume_writer
         self._hybrid_services = hybrid_services
+        self._plan_validator = DeterministicPlanIntegrityValidator(optimizer)
 
     def create_plan(
         self,
@@ -33,6 +41,7 @@ class TailorResumeService:
         profile: MasterProfile,
         approved_claim_ids: set[str],
     ) -> StructuredResume:
+        self._plan_validator.validate(plan, profile)
         rewritten_plan = (
             self._hybrid_services.rewrite_plan(plan, profile)
             if self._hybrid_services is not None

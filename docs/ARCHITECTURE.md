@@ -44,6 +44,8 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 4. Validate every proposed claim against evidence and policy; strong inferences require user approval.
 5. Render only validated structured content. Authoritative PDF measurement determines one-page fit.
 
+For the storage-free MVP, a `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
+
 ## Evolution
 
 Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter, and authentication dependency without moving domain or application code. FastAPI is the stable product API; Streamlit is a replaceable client.

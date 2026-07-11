@@ -112,3 +112,51 @@ def test_invalid_composition_retries_without_changing_deterministic_selection() 
 
     assert enriched.selected_claim_ids == plan.selected_claim_ids
     assert fake.calls["recommend_composition"] == 2
+
+
+def test_combined_candidate_exposes_all_evidence_to_composition() -> None:
+    profile = MasterProfile(
+        id="profile-combined-composition",
+        user_id="user-llm",
+        display_name="Candidate",
+        experiences=[
+            ResumeItem(
+                id="entry-combined",
+                title="Autonomy Intern",
+                kind=EntityKind.EXPERIENCE,
+            )
+        ],
+        evidence=[
+            EvidenceItem(
+                id="combined-1",
+                entity_id="entry-combined",
+                source_text="Built ROS 2 teleoperation controls.",
+                technologies=["ROS 2"],
+                capabilities=["teleoperation"],
+            ),
+            EvidenceItem(
+                id="combined-2",
+                entity_id="entry-combined",
+                source_text="Tested ROS 2 safety override controls.",
+                technologies=["ROS 2"],
+                capabilities=["teleoperation"],
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="posting-combined",
+        title="Autonomy Intern",
+        description="Build ROS 2 teleoperation.",
+    )
+    plan = DeterministicResumeOptimizer().create_plan(
+        profile,
+        posting,
+        TemplateConstraints(max_total_lines=3),
+    )
+
+    request = HybridLlmServices._composition_request(plan, profile)
+
+    assert {item.evidence_id for entry in request.entries for item in entry.evidence} == {
+        "combined-1",
+        "combined-2",
+    }

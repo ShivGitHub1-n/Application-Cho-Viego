@@ -5,6 +5,10 @@ from typing import Callable, TypeVar
 
 from pydantic import BaseModel
 
+from resume_tailor.application.composition import (
+    CompositionReconciliationError,
+    DeterministicCompositionReconciler,
+)
 from resume_tailor.application.llm_validation import (
     GroundingValidationError,
     validate_composition,
@@ -22,7 +26,14 @@ from resume_tailor.domain.llm_models import (
     LanguageModelError,
     OpportunityAnalysisRequest,
 )
-from resume_tailor.domain.models import ClaimCandidate, Decision, JobPosting, MasterProfile, TailoringPlan
+from resume_tailor.domain.models import (
+    ClaimCandidate,
+    CompositionEvidenceGroup,
+    CompositionSelection,
+    JobPosting,
+    MasterProfile,
+    TailoringPlan,
+)
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
 RequestType = TypeVar("RequestType", bound=BaseModel)
@@ -38,6 +49,7 @@ class HybridLlmServices:
         enable_opportunity_analysis: bool,
         enable_composition: bool,
         enable_bullet_rewrite: bool,
+        composition_reconciler: DeterministicCompositionReconciler | None = None,
     ) -> None:
         self._language_model = language_model
         self._retry_count = retry_count
@@ -45,6 +57,7 @@ class HybridLlmServices:
         self._enable_opportunity_analysis = enable_opportunity_analysis
         self._enable_composition = enable_composition
         self._enable_bullet_rewrite = enable_bullet_rewrite
+        self._composition_reconciler = composition_reconciler or DeterministicCompositionReconciler()
         self._generation_call_counts: dict[str, int] = {}
 
     def enrich_plan(self, plan: TailoringPlan, profile: MasterProfile, posting: JobPosting) -> TailoringPlan:
@@ -52,7 +65,8 @@ class HybridLlmServices:
         self._generation_call_counts[generation_key] = 0
         if self._language_model is None or plan.strategy is None:
             return plan
-        report = plan.report.model_copy(deep=True)
+        enriched = plan
+        report = enriched.report.model_copy(deep=True)
         if self._enable_opportunity_analysis:
             request = OpportunityAnalysisRequest(
                 posting_id=posting.id,
@@ -81,6 +95,7 @@ class HybridLlmServices:
             result = self._retry(generation_key, self._language_model.analyze_opportunity, request, None)
             if result is not None:
                 report.assumptions.append(f"LLM opportunity focus: {result.output.primary_focus}")
+        enriched = plan.model_copy(update={"report": report})
         if self._enable_composition:
             request = self._composition_request(plan, profile)
             result = self._retry(
@@ -98,16 +113,25 @@ class HybridLlmServices:
                 ),
             )
             if result is not None:
-                report.decisions.append(
-                    Decision(
-                        action="composition_reviewed",
-                        entity_id="document",
-                        reason=result.output.rationale,
-                        evidence_ids=result.output.selected_evidence_ids,
-                        constraint="deterministic optimizer remains authoritative",
-                    )
+                selection = CompositionSelection(
+                    selected_entry_ids=result.output.selected_entry_ids,
+                    selected_evidence_ids=result.output.selected_evidence_ids,
+                    evidence_groups=[
+                        CompositionEvidenceGroup(
+                            entry_id=group.entry_id,
+                            evidence_ids=group.evidence_ids,
+                        )
+                        for group in result.output.proposed_evidence_groupings
+                    ],
+                    rationale=result.output.rationale,
                 )
-        return plan.model_copy(update={"report": report})
+                try:
+                    enriched = self._composition_reconciler.reconcile(
+                        enriched, profile, selection
+                    )
+                except CompositionReconciliationError:
+                    pass
+        return enriched
 
     def rewrite_plan(self, plan: TailoringPlan, profile: MasterProfile) -> TailoringPlan:
         if self._language_model is None or not self._enable_bullet_rewrite or plan.strategy is None:
@@ -178,22 +202,27 @@ class HybridLlmServices:
         evidence = {item.id: item for item in profile.evidence}
         grouped: defaultdict[str, list[EligibleEvidence]] = defaultdict(list)
         for candidate in plan.claim_candidates:
-            source = evidence[candidate.evidence_ids[0]]
-            grouped[candidate.entity_id].append(
-                EligibleEvidence(
-                    evidence_id=source.id,
-                    entity_id=source.entity_id,
-                    source_text=source.source_text,
-                    technologies=source.technologies,
-                    outcomes=source.outcomes,
-                    estimated_lines=candidate.estimated_lines,
+            for evidence_id in candidate.evidence_ids:
+                source = evidence[evidence_id]
+                grouped[candidate.entity_id].append(
+                    EligibleEvidence(
+                        evidence_id=source.id,
+                        entity_id=source.entity_id,
+                        source_text=source.source_text,
+                        technologies=source.technologies,
+                        outcomes=source.outcomes,
+                        estimated_lines=candidate.estimated_lines,
+                    )
                 )
-            )
         entries = [
             EligibleEntry(
                 entry_id=entry_id,
                 title=items[entry_id].title,
-                entry_cost_lines=0,
+                entry_cost_lines=(
+                    plan.constraints.experience_entry_overhead_lines
+                    if items[entry_id].kind.value == "experience"
+                    else plan.constraints.project_entry_overhead_lines
+                ),
                 evidence=entry_evidence,
             )
             for entry_id, entry_evidence in grouped.items()
@@ -202,7 +231,7 @@ class HybridLlmServices:
             posting_id=plan.posting_id,
             primary_focus=plan.strategy.primary_focus if plan.strategy else "",
             entries=entries,
-            max_total_lines=plan.estimated_lines or 1,
+            max_total_lines=plan.constraints.max_total_lines,
         )
 
     @staticmethod

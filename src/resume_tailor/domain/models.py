@@ -178,11 +178,25 @@ class DecisionReport(BaseModel):
     uncovered_signals: list[str] = Field(default_factory=list)
 
 
+class CompositionEvidenceGroup(BaseModel):
+    entry_id: str
+    evidence_ids: list[str] = Field(min_length=1, max_length=2)
+
+
+class CompositionSelection(BaseModel):
+    selected_entry_ids: list[str] = Field(min_length=1)
+    selected_evidence_ids: list[str] = Field(min_length=1)
+    evidence_groups: list[CompositionEvidenceGroup] = Field(default_factory=list)
+    rationale: str
+
+
 class TailoringPlan(BaseModel):
     profile_id: str
     profile_version: int
     posting_id: str
     template_id: str
+    posting: JobPosting
+    constraints: TemplateConstraints
     strategy: ResumeStrategy | None = None
     report: DecisionReport
     selected_entity_ids: list[str] = Field(default_factory=list)
@@ -191,6 +205,7 @@ class TailoringPlan(BaseModel):
     selected_skills: list[str] = Field(default_factory=list)
     selected_coursework: list[str] = Field(default_factory=list)
     estimated_lines: int = 0
+    composition_selection: CompositionSelection | None = None
 
 
 class StructuredBullet(BaseModel):
