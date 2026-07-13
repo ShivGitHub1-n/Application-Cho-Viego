@@ -29,6 +29,7 @@ class LanguageModelErrorKind(StrEnum):
     SAFETY_BLOCKED = "safety_blocked"
     MALFORMED_RESPONSE = "malformed_response"
     VALIDATION = "validation"
+    TRUNCATED_RESPONSE = "truncated_response"
 
 
 class LanguageModelError(RuntimeError):
@@ -48,6 +49,8 @@ class ModelCallMetadata(StrictModel):
     total_tokens: int | None = Field(default=None, ge=0)
     attempts: int = Field(default=1, ge=1)
     cache_hit: bool = False
+    finish_reason: str | None = None
+    finish_message: str | None = None
 
 
 class ModelResult(StrictModel):
@@ -81,6 +84,7 @@ class ProfileExtractionOutput(StrictModel):
     missing_fields: list[str] = Field(default_factory=list)
     uncertain_fields: list[str] = Field(default_factory=list)
     extraction_notes: list[str] = Field(default_factory=list)
+    fidelity_flags: list[str] = Field(default_factory=list)
 
 
 class ProfileExtractionResult(ModelResult):

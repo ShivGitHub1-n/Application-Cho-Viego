@@ -20,6 +20,7 @@ from resume_tailor.application.llm_validation import (
     validate_rewrites,
     validate_shortening,
 )
+from resume_tailor.application.profile_extraction import audit_extracted_profile, normalize_extracted_profile
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
     BulletRewriteRequest,
@@ -187,7 +188,16 @@ class HybridLlmServices:
             source_format=source_format,
             extracted_text=extracted_text,
         )
-        return self._language_model.extract_profile(request)
+        result = self._language_model.extract_profile(request)
+        normalized_profile = normalize_extracted_profile(result.output.profile, extracted_text)
+        fidelity_flags = [*result.output.fidelity_flags, *audit_extracted_profile(normalized_profile, extracted_text)]
+        return result.model_copy(
+            update={
+                "output": result.output.model_copy(
+                    update={"profile": normalized_profile, "fidelity_flags": fidelity_flags}
+                )
+            }
+        )
 
     @staticmethod
     def _skill_fallback(plan: TailoringPlan, reason: str) -> TailoringPlan:

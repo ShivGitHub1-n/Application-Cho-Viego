@@ -47,9 +47,9 @@ class ClaimComposition(StrEnum):
 
 
 class EvidenceItem(BaseModel):
-    id: str
-    entity_id: str
-    source_text: str
+    id: str = Field(description="Stable unique evidence ID")
+    entity_id: str = Field(description="ID of the experience or project containing this bullet")
+    source_text: str = Field(description="Exact factual bullet text from the source resume")
     source_reference: str | None = None
     capabilities: list[str] = Field(default_factory=list)
     technologies: list[str] = Field(default_factory=list)
@@ -70,6 +70,9 @@ class ResumeItem(BaseModel):
     award_or_placement: str | None = None
     technologies: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
+    description: str | None = None
+    bullets: list[str] = Field(default_factory=list)
+    bullet_points: list[str] = Field(default_factory=list)
 
 
 class ContactInfo(BaseModel):
@@ -189,7 +192,13 @@ class MasterProfile(BaseModel):
     declared_skills: list[str] = Field(default_factory=list)
     technical_skills: list[TechnicalSkillCategory] = Field(default_factory=list)
     coursework: list[str] = Field(default_factory=list)
-    evidence: list[EvidenceItem] = Field(default_factory=list)
+    evidence: list[EvidenceItem] = Field(
+        default_factory=list,
+        description=(
+            "Canonical bullet-level evidence. Include one item for every meaningful experience "
+            "or project bullet and link it to the parent entity_id."
+        ),
+    )
     skill_normalization_decisions: list[SkillNormalizationDecision] = Field(default_factory=list)
 
     @field_validator("technical_skills", mode="before")

@@ -13,7 +13,7 @@ _RULES = """Use only supplied profile, job context, and evidence. Examples are i
 Tailor wording semantically rather than copying source sentences. You may substantially rewrite, combine same-entry evidence, split broad evidence into focused statements, reorder details, and use accurate job terminology.
 Classify every generated claim as explicitly_supported, strongly_implied, or unsupported. Unsupported claims must not be returned. Strongly implied claims are allowed only when linked to evidence and will require user review.
 Never invent employers, titles, dates, degrees, certifications, metrics, technologies, or major ownership. Do not merge evidence across entries. Preserve supported metrics and concrete facts unless the requested output explicitly permits compression.
-For profile extraction, copy factual source text exactly wherever a field is populated. Do not infer missing values. Put absent fields in missing_fields and ambiguous values in uncertain_fields. The extracted profile is a draft requiring user review.
+For profile extraction, copy factual source text exactly wherever a field is populated. Do not infer missing values. Put absent fields in missing_fields and ambiguous values in uncertain_fields. For every meaningful experience or project bullet, you MUST create one profile.evidence item with a stable unique ID, the exact bullet text in source_text, and the correct parent entity_id. Preserve technologies, actions, outcomes, and metrics in that evidence. Populate clearly labelled technical skill categories and listed skills exactly as shown; do not invent categories or skills. Never use headings, contact details, education labels, or decorative text as evidence. The extracted profile is a draft requiring user review.
 Return only the requested structured JSON schema. Report gaps when evidence is insufficient."""
 
 
@@ -23,7 +23,7 @@ def system_prompt() -> str:
 
 def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
     task = {
-        LlmOperation.PROFILE_EXTRACTION: "Convert the supplied resume text into a reviewable draft of the existing MasterProfile schema without inventing facts.",
+        LlmOperation.PROFILE_EXTRACTION: "Convert the supplied resume text into a reviewable draft of the existing MasterProfile schema. Populate linked bullet-level evidence for every experience and project bullet; do not return entries without evidence unless no bullet content exists.",
         LlmOperation.ANALYZE_OPPORTUNITY: "Analyze the opportunity and profile coverage summary.",
         LlmOperation.RECOMMEND_COMPOSITION: "Recommend evidence selection using only supplied IDs.",
         LlmOperation.RECOMMEND_SKILL_COMPOSITION: (

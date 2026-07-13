@@ -69,6 +69,7 @@ class GeminiResumeLanguageModel:
         self._model = settings.gemini_model
         self._temperature = settings.llm_temperature
         self._max_output_tokens = settings.llm_max_output_tokens
+        self._profile_extraction_max_output_tokens = settings.llm_profile_extraction_max_output_tokens
         self._cache = cache or InMemoryLlmCache(settings.llm_cache_ttl_seconds)
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
@@ -146,11 +147,35 @@ class GeminiResumeLanguageModel:
                 config=self._types.GenerateContentConfig(
                     system_instruction=system_prompt(),
                     temperature=self._temperature,
-                    max_output_tokens=self._max_output_tokens,
+                    max_output_tokens=(
+                        self._profile_extraction_max_output_tokens
+                        if operation == LlmOperation.PROFILE_EXTRACTION
+                        else self._max_output_tokens
+                    ),
                     response_mime_type="application/json",
-                    response_schema=gemini_response_schema(output_type),
+                    response_schema=gemini_response_schema(
+                        output_type,
+                        excluded_properties=(
+                            {"description", "bullets", "bullet_points"}
+                            if operation == LlmOperation.PROFILE_EXTRACTION
+                            else None
+                        ),
+                    ),
                 ),
             )
+            finish_reason, finish_message = self._finish_diagnostics(response)
+            usage = getattr(response, "usage_metadata", None)
+            if self._is_truncated(finish_reason, finish_message):
+                output_tokens = getattr(usage, "candidates_token_count", None)
+                raise LanguageModelError(
+                    LanguageModelErrorKind.TRUNCATED_RESPONSE,
+                    "Gemini profile extraction response was truncated before JSON completed "
+                    f"(finish_reason={finish_reason!r}, finish_message={finish_message!r}, "
+                    f"output_tokens={output_tokens!r}, "
+                    f"max_output_tokens={self._profile_extraction_max_output_tokens}). "
+                    "Increase the configured extraction token budget or reduce source size; "
+                    "the extraction was not retried automatically.",
+                )
             parsed = getattr(response, "parsed", None)
             if parsed is None:
                 response_text = getattr(response, "text", None)
@@ -178,6 +203,21 @@ class GeminiResumeLanguageModel:
         self._cache.set(cache_key, result)
         return result
 
+    @staticmethod
+    def _finish_diagnostics(response: Any) -> tuple[str | None, str | None]:
+        candidates = getattr(response, "candidates", None) or []
+        candidate = candidates[0] if candidates else None
+        if candidate is None:
+            return None, None
+        reason = getattr(candidate, "finish_reason", None)
+        message = getattr(candidate, "finish_message", None)
+        return (str(reason) if reason is not None else None, str(message) if message else None)
+
+    @staticmethod
+    def _is_truncated(finish_reason: str | None, finish_message: str | None) -> bool:
+        value = f"{finish_reason or ''} {finish_message or ''}".casefold()
+        return any(token in value for token in ("max_tokens", "max tokens", "length", "token limit"))
+
     def _metadata(self, operation: LlmOperation, response: Any, started: float) -> ModelCallMetadata:
         usage = getattr(response, "usage_metadata", None)
         return ModelCallMetadata(
@@ -188,6 +228,8 @@ class GeminiResumeLanguageModel:
             prompt_tokens=getattr(usage, "prompt_token_count", None),
             output_tokens=getattr(usage, "candidates_token_count", None),
             total_tokens=getattr(usage, "total_token_count", None),
+            finish_reason=self._finish_diagnostics(response)[0],
+            finish_message=self._finish_diagnostics(response)[1],
         )
 
     @staticmethod

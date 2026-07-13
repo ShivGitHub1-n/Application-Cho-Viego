@@ -109,6 +109,8 @@ if draft_output:
         st.warning("Uncertain fields: " + ", ".join(draft_output.uncertain_fields))
     if draft_output.extraction_notes:
         st.info("Extraction notes: " + " ".join(draft_output.extraction_notes))
+    if draft_output.fidelity_flags:
+        st.warning("Fidelity flags: " + " ".join(draft_output.fidelity_flags))
     st.text_area("Correct extracted profile JSON before approval", height=260, key="profile_extraction_json")
     if st.button("Approve and save extracted profile"):
         try:

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     llm_api_key_env_var: str = "GEMINI_API_KEY"
     llm_temperature: float = 0.1
     llm_max_output_tokens: int = 2048
+    llm_profile_extraction_max_output_tokens: int = 8192
     llm_timeout_seconds: int = 30
     llm_retry_count: int = 2
     llm_max_calls_per_generation: int = 12
