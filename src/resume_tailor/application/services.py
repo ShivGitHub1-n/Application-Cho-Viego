@@ -7,6 +7,7 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
+from resume_tailor.domain.llm_models import ProfileExtractionResult
 from resume_tailor.ports.interfaces import ResumeOptimizer, ResumeWriter
 
 
@@ -35,6 +36,15 @@ class TailorResumeService:
             return plan
         return self._hybrid_services.enrich_plan(plan, profile, posting)
 
+    def extract_profile_draft(
+        self, profile_id: str, source_format: str, extracted_text: str
+    ) -> ProfileExtractionResult:
+        if self._hybrid_services is None:
+            raise ValueError("Profile extraction requires a configured language model")
+        return self._hybrid_services.extract_profile_draft(
+            profile_id, source_format, extracted_text
+        )
+
     def build_document(
         self,
         plan: TailoringPlan,
@@ -43,7 +53,7 @@ class TailorResumeService:
     ) -> StructuredResume:
         self._plan_validator.validate(plan, profile)
         rewritten_plan = (
-            self._hybrid_services.rewrite_plan(plan, profile)
+            self._hybrid_services.rewrite_plan(plan, profile, approved_claim_ids)
             if self._hybrid_services is not None
             else plan
         )

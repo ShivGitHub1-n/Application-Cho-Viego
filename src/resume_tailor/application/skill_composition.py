@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from hashlib import sha256
+
+from resume_tailor.application.llm_validation import (
+    GroundingValidationError,
+    validate_demonstrated_skills,
+)
 from resume_tailor.domain.llm_models import SkillCompositionOutput
 from resume_tailor.domain.models import (
+    ClaimConfidence,
+    ClaimSupport,
     Decision,
+    GeneratedSkill,
     MasterProfile,
     RankedSkillCategory,
     SkillCategorySelection,
@@ -29,8 +38,19 @@ class DeterministicSkillCompositionReconciler:
             category.id: category
             for category in plan.ranked_skill_categories
             if category.status != SkillSelectionStatus.EXCLUDED_UNRELATED
+            and category.id in {selected.id for selected in plan.selected_skill_categories}
         }
         reviewed_categories = {category.id: category for category in profile.technical_skills}
+        evidence_to_entry = {item.id: item.entity_id for item in profile.evidence if item.confirmed}
+        try:
+            validate_demonstrated_skills(
+                output.demonstrated_skills,
+                set(eligible_categories),
+                evidence_to_entry,
+                {item.id: item for item in profile.evidence if item.confirmed},
+            )
+        except GroundingValidationError as error:
+            raise SkillCompositionReconciliationError(str(error)) from error
         proposed_category_ids = [category.category_id for category in output.categories]
         if len(proposed_category_ids) > plan.constraints.max_skill_lines:
             raise SkillCompositionReconciliationError(
@@ -189,6 +209,10 @@ class DeterministicSkillCompositionReconciler:
         selection = SkillCompositionSelection(
             categories=selection_categories,
             rationale=output.rationale,
+            demonstrated_skills=[
+                _generated_skill(proposal.category_id, proposal.value, proposal.source_evidence_ids, proposal.confidence)
+                for proposal in output.demonstrated_skills
+            ],
         )
         return plan.model_copy(
             update={
@@ -199,6 +223,7 @@ class DeterministicSkillCompositionReconciler:
                     skill.value for category in selected for skill in category.skills
                 ],
                 "skill_composition_selection": selection,
+                "demonstrated_skills": selection.demonstrated_skills,
                 "report": report,
             }
         )
@@ -212,6 +237,7 @@ class DeterministicSkillCompositionReconciler:
         from resume_tailor.domain.llm_models import (
             ProposedSkill,
             ProposedSkillCategory,
+            ProposedDemonstratedSkill,
             SkillCompositionOutput,
         )
 
@@ -238,6 +264,43 @@ class DeterministicSkillCompositionReconciler:
                     )
                     for item in selection.categories
                 ],
+                demonstrated_skills=[
+                    ProposedDemonstratedSkill(
+                        category_id=skill.category_id,
+                        value=skill.value,
+                        source_evidence_ids=skill.evidence_ids,
+                        confidence=(
+                            ClaimConfidence.EXPLICITLY_SUPPORTED
+                            if skill.support in {ClaimSupport.DIRECT, ClaimSupport.DERIVED}
+                            else ClaimConfidence.STRONGLY_IMPLIED
+                        ),
+                        rationale="Replayed from validated skill composition selection.",
+                    )
+                    for skill in selection.demonstrated_skills
+                ],
                 rationale=selection.rationale,
             ),
         )
+
+
+def _generated_skill(
+    category_id: str,
+    value: str,
+    evidence_ids: list[str],
+    confidence: ClaimConfidence,
+) -> GeneratedSkill:
+    digest = sha256(
+        f"{category_id}\0{value.casefold()}\0{'|'.join(evidence_ids)}".encode()
+    ).hexdigest()[:12]
+    support = (
+        ClaimSupport.DIRECT
+        if confidence == ClaimConfidence.EXPLICITLY_SUPPORTED
+        else ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW
+    )
+    return GeneratedSkill(
+        id=f"demonstrated-skill:{digest}",
+        category_id=category_id,
+        value=value,
+        evidence_ids=evidence_ids,
+        support=support,
+    )

@@ -11,6 +11,7 @@ from resume_tailor.domain.models import (
     ClaimComposition,
     ClaimSupport,
     Decision,
+    GeneratedSkill,
     DecisionReport,
     EntityKind,
     EvidenceItem,
@@ -23,6 +24,7 @@ from resume_tailor.domain.models import (
     RoleClassification,
     RoleFamily,
     RoleSignal,
+    ReviewedTechnicalSkill,
     StructuredBullet,
     StructuredResume,
     TailoringPlan,
@@ -660,11 +662,20 @@ class EvidenceBoundResumeWriter:
         experience_bullets: dict[str, list[StructuredBullet]] = {}
         project_bullets: dict[str, list[StructuredBullet]] = {}
         review_required: list[str] = []
+        review_pending_bullets: list[StructuredBullet] = []
         for candidate in plan.claim_candidates:
             if candidate.support == ClaimSupport.UNSUPPORTED:
                 continue
             if candidate.support == ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW and candidate.id not in approved_claim_ids:
                 review_required.append(candidate.id)
+                review_pending_bullets.append(
+                    StructuredBullet(
+                        id=candidate.id,
+                        text=candidate.text,
+                        evidence_ids=candidate.evidence_ids,
+                        support=candidate.support,
+                    )
+                )
                 continue
             bullet = StructuredBullet(
                 id=candidate.id,
@@ -674,6 +685,23 @@ class EvidenceBoundResumeWriter:
             )
             target = experience_bullets if entity_kinds[candidate.entity_id] == EntityKind.EXPERIENCE else project_bullets
             target.setdefault(candidate.entity_id, []).append(bullet)
+        technical_skills = [category.model_copy(deep=True) for category in plan.technical_skills]
+        review_pending_skills: list[GeneratedSkill] = []
+        selected_category_ids = {category.id for category in technical_skills}
+        for skill in plan.demonstrated_skills:
+            if skill.category_id not in selected_category_ids:
+                continue
+            if skill.support == ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW and skill.id not in approved_claim_ids:
+                review_required.append(skill.id)
+                review_pending_skills.append(skill)
+                continue
+            category = next(category for category in technical_skills if category.id == skill.category_id)
+            if skill.value.casefold() in {value.casefold() for value in category.values}:
+                continue
+            category.values.append(skill.value)
+            category.skills.append(
+                ReviewedTechnicalSkill(value=skill.value, source_reference="generated-demonstrated-skill")
+            )
         return StructuredResume(
             profile_id=profile.id,
             profile_version=profile.version,
@@ -684,7 +712,7 @@ class EvidenceBoundResumeWriter:
             strategy=plan.strategy,
             entity_titles={item.id: item.title for item in profile.experiences + profile.projects},
             education=plan.education,
-            technical_skills=plan.technical_skills,
+            technical_skills=technical_skills,
             experiences=plan.selected_experiences,
             projects=plan.selected_projects,
             experience_bullets=experience_bullets,
@@ -696,6 +724,9 @@ class EvidenceBoundResumeWriter:
             ] if plan.selected_skill_categories else plan.selected_skills,
             selected_coursework=plan.selected_coursework,
             review_required_claim_ids=review_required,
+            review_pending_bullets=review_pending_bullets,
+            review_pending_skills=review_pending_skills,
+            demonstrated_skills=plan.demonstrated_skills,
         )
 
     @staticmethod

@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from resume_tailor.domain.models import RoleFamily
+from resume_tailor.domain.models import ClaimConfidence, MasterProfile, RoleFamily
 
 
 class StrictModel(BaseModel):
@@ -12,6 +12,7 @@ class StrictModel(BaseModel):
 
 
 class LlmOperation(StrEnum):
+    PROFILE_EXTRACTION = "profile_extraction"
     ANALYZE_OPPORTUNITY = "analyze_opportunity"
     RECOMMEND_COMPOSITION = "recommend_composition"
     RECOMMEND_SKILL_COMPOSITION = "recommend_skill_composition"
@@ -68,6 +69,24 @@ class OpportunityAnalysisRequest(StrictModel):
     correction_notes: list[str] = Field(default_factory=list)
 
 
+class ProfileExtractionRequest(StrictModel):
+    profile_id: str = Field(min_length=1)
+    source_format: str
+    extracted_text: str = Field(min_length=1, max_length=100_000)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class ProfileExtractionOutput(StrictModel):
+    profile: MasterProfile
+    missing_fields: list[str] = Field(default_factory=list)
+    uncertain_fields: list[str] = Field(default_factory=list)
+    extraction_notes: list[str] = Field(default_factory=list)
+
+
+class ProfileExtractionResult(ModelResult):
+    output: ProfileExtractionOutput
+
+
 class OpportunityRequirement(StrictModel):
     label: str
     priority: str
@@ -96,6 +115,7 @@ class EligibleEvidence(StrictModel):
     entity_id: str
     source_text: str
     technologies: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
     outcomes: list[str] = Field(default_factory=list)
     estimated_lines: int = Field(gt=0)
 
@@ -151,12 +171,21 @@ class SkillCompositionRequest(StrictModel):
     posting_id: str
     job_signals: list[str] = Field(default_factory=list)
     categories: list[EligibleSkillCategory] = Field(min_length=1)
+    evidence: list[EligibleEvidence] = Field(default_factory=list)
     correction_notes: list[str] = Field(default_factory=list)
 
 
 class ProposedSkill(StrictModel):
     skill_id: str
     value: str
+
+
+class ProposedDemonstratedSkill(StrictModel):
+    category_id: str
+    value: str = Field(min_length=1, max_length=120)
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=4)
+    confidence: ClaimConfidence
+    rationale: str = Field(min_length=1, max_length=400)
 
 
 class ProposedSkillCategory(StrictModel):
@@ -167,6 +196,7 @@ class ProposedSkillCategory(StrictModel):
 
 class SkillCompositionOutput(StrictModel):
     categories: list[ProposedSkillCategory] = Field(min_length=1)
+    demonstrated_skills: list[ProposedDemonstratedSkill] = Field(default_factory=list)
     rationale: str = Field(max_length=800)
 
 
@@ -176,29 +206,35 @@ class SkillCompositionResult(ModelResult):
 
 class ApprovedEvidenceGroup(StrictModel):
     entry_id: str
-    evidence_ids: list[str] = Field(min_length=1, max_length=2)
-    source_texts: list[str] = Field(min_length=1, max_length=2)
+    evidence_ids: list[str] = Field(min_length=1, max_length=4)
+    source_texts: list[str] = Field(min_length=1, max_length=4)
     technologies: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
     metrics: list[str] = Field(default_factory=list)
     max_rendered_lines: int = Field(gt=0)
 
 
 class BulletRewriteRequest(StrictModel):
     primary_focus: str
+    target_terms: list[str] = Field(default_factory=list)
     groups: list[ApprovedEvidenceGroup] = Field(min_length=1)
+    max_bullets_per_entry: int = Field(gt=0)
+    max_total_lines: int = Field(gt=0)
     correction_notes: list[str] = Field(default_factory=list)
 
 
 class BulletRewrite(StrictModel):
     entry_id: str
     final_bullet_text: str = Field(min_length=1, max_length=500)
-    source_evidence_ids: list[str] = Field(min_length=1, max_length=2)
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=4)
     preserved_technologies: list[str] = Field(default_factory=list)
     preserved_metrics: list[str] = Field(default_factory=list)
     emphasized_terms: list[str] = Field(default_factory=list)
     evidence_combined: bool
     concise_alternative: str = Field(min_length=1, max_length=500)
     confidence: float = Field(ge=0, le=1)
+    support: ClaimConfidence = ClaimConfidence.EXPLICITLY_SUPPORTED
+    support_rationale: str = Field(default="", max_length=400)
 
 
 class BulletRewriteOutput(StrictModel):

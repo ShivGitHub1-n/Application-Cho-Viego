@@ -13,6 +13,8 @@ from resume_tailor.domain.llm_models import (
     ModelCallMetadata,
     OpportunityAnalysisRequest,
     OpportunityAnalysisResult,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
     SkillCompositionRequest,
     SkillCompositionResult,
 )
@@ -25,6 +27,9 @@ class FakeResumeLanguageModel:
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
         return self._next("analyze_opportunity")
+
+    def extract_profile(self, request: ProfileExtractionRequest) -> ProfileExtractionResult:
+        return self._next("extract_profile")
 
     def recommend_composition(
         self, request: CompositionRecommendationRequest

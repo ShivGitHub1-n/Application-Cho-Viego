@@ -18,6 +18,8 @@ from resume_tailor.domain.llm_models import (
     CompositionRecommendationResult,
     OpportunityAnalysisRequest,
     OpportunityAnalysisResult,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
     SkillCompositionRequest,
     SkillCompositionResult,
 )
@@ -52,6 +54,8 @@ class ResumeWriter(Protocol):
 
 
 class ResumeLanguageModel(Protocol):
+    def extract_profile(self, request: ProfileExtractionRequest) -> ProfileExtractionResult: ...
+
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult: ...
 
     def recommend_composition(

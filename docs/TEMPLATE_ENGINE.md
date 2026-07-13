@@ -10,7 +10,7 @@ Templates are versioned assets with a declared schema and field mapping. A rende
 
 ## One-page optimization
 
-The decision engine receives template constraints as a content budget. The PDF rendered by the controlled application runtime is authoritative for page count. If the result overflows, return a new constrained plan with explicit recommended reductions or fail clearly; never silently alter formatting to make content fit. DOCX is an editable artifact and may repaginate in another office runtime.
+The renderer receives template constraints as a content budget. The final DOCX is rendered through an exact provider and measured for actual page count. If it overflows, only deterministic optional-content reduction may run; geometry is never changed by page fitting. Estimated or unavailable measurement raises a controlled verification error. Underfill expansion is disabled while reference-derived geometry is being validated.
 
 ## MVP choices
 

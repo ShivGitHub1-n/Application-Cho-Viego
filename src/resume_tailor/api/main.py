@@ -13,7 +13,10 @@ from resume_tailor.domain.models import (
     TemplateConstraints,
 )
 from resume_tailor.infrastructure.dependencies import create_tailor_service
-from resume_tailor.infrastructure.rendering import ManagedResumeRenderer
+from resume_tailor.infrastructure.rendering import (
+    ManagedResumeRenderer,
+    PageCountVerificationError,
+)
 
 
 class HealthResponse(BaseModel):
@@ -61,7 +64,10 @@ def build_resume_docx(request: DocumentRequest) -> Response:
     resume = _validated_resume(request)
     with TemporaryDirectory() as directory:
         output_path = Path(directory) / "tailored-resume.docx"
-        ManagedResumeRenderer().render_docx(resume, output_path)
+        try:
+            ManagedResumeRenderer().render_docx(resume, output_path)
+        except PageCountVerificationError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
         content = output_path.read_bytes()
     return Response(
         content=content,

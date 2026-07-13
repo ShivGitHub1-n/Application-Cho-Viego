@@ -26,5 +26,6 @@ The API health check is available at `http://localhost:8000/health`. Use `POST /
 - [Optimization-engine design](docs/RESUME_OPTIMIZATION_ENGINE.md)
 - [Master profile](docs/MASTER_PROFILE.md)
 - [Template engine](docs/TEMPLATE_ENGINE.md)
+- [Known issues and frozen layout scope](KNOWN_ISSUES.md)
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Contributing](docs/CONTRIBUTING.md)

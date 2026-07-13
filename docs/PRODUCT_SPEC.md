@@ -15,7 +15,7 @@ The initial user is an engineering student applying for internships, co-ops, and
 3. The system classifies the role, optionally gathers company context, and evaluates candidate evidence.
 4. The decision engine allocates the one-page content budget and returns a tailored structured resume plus a decision report.
 5. The renderer applies only approved structured content to the chosen template and exports DOCX/PDF.
-6. The user reviews reasoning and claims before downloading or saving a version.
+6. The user reviews reasoning, claims, and the generated structured resume content before downloading or saving a version.
 
 ## Success criteria
 
@@ -27,4 +27,3 @@ The initial user is an engineering student applying for internships, co-ops, and
 ## Non-goals for the MVP
 
 - Autonomous job applications, fabricated achievements, free-form document styling, or unreviewed web scraping.
-

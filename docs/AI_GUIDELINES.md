@@ -4,7 +4,7 @@
 
 The model classifies postings, proposes a structured decision plan, rewrites approved evidence, and produces concise explanations. It must return machine-validated JSON matching application schemas.
 
-Each operation receives only the minimum relevant payload. Opportunity analysis receives a posting and coverage summary; composition receives eligible ID-linked evidence; writing receives selected same-entry evidence only; shortening receives an overflow-targeted bullet only.
+Each operation receives only the minimum relevant payload. Opportunity analysis receives a posting and coverage summary; composition receives eligible ID-linked evidence; skill composition receives reviewed categories plus confirmed evidence; writing receives selected same-entry evidence only; shortening receives an overflow-targeted bullet only.
 
 ## Never do
 
@@ -22,8 +22,8 @@ Provide evidence IDs, role signals, template budget, output schema, and explicit
 
 Provider failures, malformed output, safety blocks, and exhausted validation retries must fall back to deterministic selection and source-grounded wording. Never log API keys, raw prompts, raw model responses, or full resumes by default.
 
-Composition recommendations may only narrow or reorder candidates already produced by the deterministic optimizer. The application replays the recommendation through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged; composition never creates or rewrites candidate evidence.
+Composition recommendations may narrow or reorder candidates already produced by the deterministic optimizer. Evidence-linked bullet rewriting may combine or split same-entry evidence, materially change wording, and use accurate job terminology within the validated line and bullet budgets. Demonstrated skills may be proposed only for existing selected categories and must link to confirmed evidence. The application replays all recommendations through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged.
 
 ## Inference guidelines
 
-Safe inference translates existing evidence into common recruiter terminology when the relationship is strong and non-material. Mark it `strong_inference_pending_review` in the decision report and require approval before export. When ambiguity changes a factual claim, omit it and identify the uncovered role requirement. User edits create new claim candidates that must be revalidated.
+There are three claim levels: `explicitly_supported`, `strongly_implied`, and `unsupported`. Unsupported claims are never returned. Safe inference translates existing evidence into common recruiter terminology when the relationship is strong and non-material. Mark it `strong_inference_pending_review` in the decision report and require approval before export. Strongly implied rewritten bullets and demonstrated skills are surfaced in the review stage. When ambiguity changes a factual claim, omit it and identify the uncovered role requirement. User edits create new claim candidates that must be revalidated.

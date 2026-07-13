@@ -13,6 +13,7 @@ A missing or structurally invalid reference raises `ReferenceDocxAnalysisError`;
 - page geometry, margins, header/footer distances, orientation, and columns;
 - semantic role definitions containing paragraph formatting, primary typography, run patterns, tabs, borders, bullets, and hyperlink behavior;
 - content-free section role sequences and neighboring-role relationships;
+- transition records containing source/destination spacing contributions, empty-paragraph and DrawingML involvement, section-first-role context, and dominant role-pair resolution;
 - inspected package-part names.
 
 Measurements use native OOXML units (`twips`, `half_points`, and border `eighth_points`) to avoid lossy conversion. Each scalar formatting property includes provenance: direct paragraph/run property, named style, document default, section property, numbering definition, relationship, inferred recurring pattern, or not present.
@@ -34,6 +35,13 @@ The python-docx object model validates document and section access. Direct OOXML
 - `numbering.xml`: numbering IDs, levels, formats, marker text, and list indentation;
 - `document.xml.rels`: hyperlink relationship presence and external/internal handling, with targets deliberately omitted;
 - theme, settings, page, header, and footer metadata where present.
+
+Numeric `before` and `after` spacing is kept separate from `beforeAutospacing`,
+`afterAutospacing`, `contextualSpacing`, line spacing, and line rules. A
+transition retains its observed raw values and records a dominant
+role-pair-specific resolution with inferred provenance. Section-heading
+transitions additionally retain the semantic role immediately following the
+heading so intentionally different section openings are not flattened.
 
 ## JSON safety
 
@@ -63,3 +71,4 @@ The zeroes above illustrate the schema only; real values always come from the an
 - Visual rendering is a verification aid; DOCX structure remains authoritative.
 - A later renderer should accept a validated `LayoutProfile`, map structured resume elements to semantic roles, and apply the observed values deterministically. It should not re-infer roles or silently fall back to hardcoded layout values.
 
+`BulletLayout` also records whether the observed marker is Word numbering or a literal run, plus marker-only typography and provenance. This is necessary for private-use Symbol or Wingdings glyphs: applying their code point with the body font produces a missing-glyph square.

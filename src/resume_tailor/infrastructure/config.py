@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "development"
     app_data_directory: Path = Path("data")
+    profile_store_filename: str = "resume_tailor.sqlite3"
     llm_provider: Literal["gemini"] = "gemini"
     gemini_api_key: str | None = None
     gemini_model: str | None = None

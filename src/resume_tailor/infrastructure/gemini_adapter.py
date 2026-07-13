@@ -25,6 +25,9 @@ from resume_tailor.domain.llm_models import (
     OpportunityAnalysisOutput,
     OpportunityAnalysisRequest,
     OpportunityAnalysisResult,
+    ProfileExtractionOutput,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
     SkillCompositionOutput,
     SkillCompositionRequest,
     SkillCompositionResult,
@@ -74,6 +77,14 @@ class GeminiResumeLanguageModel:
             request,
             OpportunityAnalysisOutput,
             OpportunityAnalysisResult,
+        )
+
+    def extract_profile(self, request: ProfileExtractionRequest) -> ProfileExtractionResult:
+        return self._generate(
+            LlmOperation.PROFILE_EXTRACTION,
+            request,
+            ProfileExtractionOutput,
+            ProfileExtractionResult,
         )
 
     def recommend_composition(

@@ -16,10 +16,12 @@ from resume_tailor.domain.llm_models import (
     LlmOperation,
     ProposedSkill,
     ProposedSkillCategory,
+    ProposedDemonstratedSkill,
     SkillCompositionOutput,
     SkillCompositionResult,
 )
 from resume_tailor.domain.models import (
+    ClaimConfidence,
     EducationRecord,
     EntityKind,
     EvidenceItem,
@@ -152,6 +154,58 @@ def _proposal(plan, *, category_ids=None, skills_by_category=None):
             )
         )
     return SkillCompositionOutput(categories=categories, rationale="Prefer focused backend skills.")
+
+
+def test_demonstrated_skill_is_evidence_linked_and_reviewable() -> None:
+    profile, _, _, plan = _plan()
+    category_id = plan.selected_skill_categories[0].id
+    output = _proposal(plan).model_copy(
+        update={
+            "demonstrated_skills": [
+                ProposedDemonstratedSkill(
+                    category_id=category_id,
+                    value="Sensor Integration",
+                    source_evidence_ids=["backend-evidence"],
+                    confidence=ClaimConfidence.STRONGLY_IMPLIED,
+                    rationale="The source describes building and validating a hardware-facing service.",
+                )
+            ]
+        }
+    )
+
+    reconciled = DeterministicSkillCompositionReconciler().reconcile(plan, profile, output)
+
+    assert len(reconciled.demonstrated_skills) == 1
+    generated = reconciled.demonstrated_skills[0]
+    assert generated.category_id == category_id
+    assert generated.evidence_ids == ["backend-evidence"]
+    assert generated.support.value == "strong_inference_pending_review"
+
+
+def test_demonstrated_skill_cannot_use_an_unselected_category() -> None:
+    profile, _, _, plan = _plan()
+    selected_ids = {category.id for category in plan.selected_skill_categories}
+    unselected = next(
+        category.id
+        for category in plan.ranked_skill_categories
+        if category.id not in selected_ids
+    )
+    output = _proposal(plan).model_copy(
+        update={
+            "demonstrated_skills": [
+                ProposedDemonstratedSkill(
+                    category_id=unselected,
+                    value="Unsupported Placement",
+                    source_evidence_ids=["backend-evidence"],
+                    confidence=ClaimConfidence.STRONGLY_IMPLIED,
+                    rationale="Invalid category placement.",
+                )
+            ]
+        }
+    )
+
+    with pytest.raises(SkillCompositionReconciliationError, match="skill category"):
+        DeterministicSkillCompositionReconciler().reconcile(plan, profile, output)
 
 
 def test_arbitrary_categories_normalize_with_stable_ids_and_exact_values() -> None:

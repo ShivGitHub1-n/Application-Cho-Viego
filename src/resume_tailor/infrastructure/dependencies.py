@@ -4,6 +4,7 @@ from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
 from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer, EvidenceBoundResumeWriter
+from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
 
@@ -22,6 +23,13 @@ def create_tailor_service(settings: Settings | None = None) -> TailorResumeServi
         DeterministicResumeOptimizer(),
         EvidenceBoundResumeWriter(),
         hybrid_services=hybrid_services,
+    )
+
+
+def create_profile_repository(settings: Settings | None = None) -> SQLiteMasterProfileRepository:
+    resolved_settings = settings or Settings()
+    return SQLiteMasterProfileRepository(
+        resolved_settings.app_data_directory / resolved_settings.profile_store_filename
     )
 
 

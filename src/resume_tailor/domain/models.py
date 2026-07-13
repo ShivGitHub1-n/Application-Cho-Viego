@@ -15,6 +15,12 @@ class ClaimSupport(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+class ClaimConfidence(StrEnum):
+    EXPLICITLY_SUPPORTED = "explicitly_supported"
+    STRONGLY_IMPLIED = "strongly_implied"
+    UNSUPPORTED = "unsupported"
+
+
 class EntityKind(StrEnum):
     EXPERIENCE = "experience"
     PROJECT = "project"
@@ -61,6 +67,7 @@ class ResumeItem(BaseModel):
     location: str | None = None
     subtitle: str | None = None
     technology_label: str | None = None
+    award_or_placement: str | None = None
     technologies: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
 
@@ -75,6 +82,8 @@ class ContactInfo(BaseModel):
 class EducationRecord(BaseModel):
     school: str
     program: str
+    minor_or_specialization: str | None = None
+    co_op_designation: str | None = None
     start_date: str | None = None
     expected_graduation_date: str | None = None
     graduation_date: str | None = None
@@ -82,6 +91,17 @@ class EducationRecord(BaseModel):
     gpa: str | None = None
     awards: list[str] = Field(default_factory=list)
     relevant_coursework: list[str] = Field(default_factory=list)
+
+    @field_validator("gpa", mode="before")
+    @classmethod
+    def normalize_gpa(cls, value: object) -> object:
+        if value is None or isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            raise ValueError("GPA must be text or a number, not a boolean")
+        if isinstance(value, (int, float)):
+            return str(value)
+        raise ValueError("GPA must be text or a number")
 
 
 class ReviewedTechnicalSkill(BaseModel):
@@ -143,9 +163,18 @@ class SkillCategorySelection(BaseModel):
     skill_ids: list[str] = Field(min_length=1)
 
 
+class GeneratedSkill(BaseModel):
+    id: str
+    category_id: str
+    value: str
+    evidence_ids: list[str] = Field(min_length=1)
+    support: ClaimSupport
+
+
 class SkillCompositionSelection(BaseModel):
     categories: list[SkillCategorySelection] = Field(min_length=1)
     rationale: str
+    demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
 
 
 class MasterProfile(BaseModel):
@@ -240,7 +269,48 @@ class MasterProfile(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def normalize_coursework_authority(self) -> MasterProfile:
+        canonical = [
+            course
+            for education in self.education
+            for course in education.relevant_coursework
+        ]
+        canonical = list(dict.fromkeys(canonical))
+        if canonical:
+            if self.coursework and self.coursework != canonical:
+                raise ValueError(
+                    "Top-level coursework must match education relevant_coursework"
+                )
+            self.coursework = canonical
+        elif self.coursework and len(self.education) == 1:
+            self.education[0].relevant_coursework = list(self.coursework)
+        return self
+
+    @model_validator(mode="after")
+    def derive_legacy_declared_skills(self) -> MasterProfile:
+        if self.technical_skills:
+            self.declared_skills = [
+                skill.value
+                for category in self.technical_skills
+                for skill in category.skills
+            ]
+        return self
+
+    @model_validator(mode="after")
     def validate_evidence_entities(self) -> MasterProfile:
+        entries = self.experiences + self.projects
+        entry_ids = [item.id for item in entries]
+        evidence_ids = [item.id for item in self.evidence]
+        if any(not value.strip() for value in entry_ids + evidence_ids):
+            raise ValueError("Entry and evidence IDs must be non-empty")
+        duplicate_entries = sorted({value for value in entry_ids if entry_ids.count(value) > 1})
+        duplicate_evidence = sorted(
+            {value for value in evidence_ids if evidence_ids.count(value) > 1}
+        )
+        if duplicate_entries:
+            raise ValueError(f"Duplicate resume entry IDs: {duplicate_entries}")
+        if duplicate_evidence:
+            raise ValueError(f"Duplicate evidence IDs: {duplicate_evidence}")
         entity_ids = {item.id for item in self.experiences + self.projects}
         unknown_entities = {item.entity_id for item in self.evidence} - entity_ids
         if unknown_entities:
@@ -367,6 +437,7 @@ class TailoringPlan(BaseModel):
     selected_coursework: list[str] = Field(default_factory=list)
     estimated_lines: int = 0
     composition_selection: CompositionSelection | None = None
+    demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def derive_legacy_selected_skills(self) -> TailoringPlan:
@@ -404,6 +475,9 @@ class StructuredResume(BaseModel):
     selected_skills: list[str] = Field(default_factory=list)
     selected_coursework: list[str] = Field(default_factory=list)
     review_required_claim_ids: list[str] = Field(default_factory=list)
+    review_pending_bullets: list[StructuredBullet] = Field(default_factory=list)
+    review_pending_skills: list[GeneratedSkill] = Field(default_factory=list)
+    demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def derive_legacy_selected_skills(self) -> StructuredResume:

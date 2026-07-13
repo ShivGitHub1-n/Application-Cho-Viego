@@ -87,6 +87,7 @@ class DeterministicPlanIntegrityValidator:
             "selected_projects",
             "estimated_lines",
             "composition_selection",
+            "demonstrated_skills",
         )
         for field in comparable_fields:
             if getattr(plan, field) != getattr(trusted, field):

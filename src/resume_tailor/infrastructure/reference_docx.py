@@ -14,6 +14,7 @@ from resume_tailor.domain.layout import (
     BulletLayout,
     HyperlinkLayout,
     LayoutProfile,
+    MetadataAnchorGroup,
     ObservedValue,
     PageLayout,
     ParagraphLayout,
@@ -85,9 +86,17 @@ def analyze_reference_docx(path: Path) -> LayoutProfile:
 
     roles = _infer_roles(nonempty)
     semantic_roles = _aggregate_roles(nonempty, roles, external_rel_ids)
+    page_layout = _page_layout(document)
+    metadata_anchor_groups = _metadata_anchor_groups(page_layout, semantic_roles)
+    _validate_metadata_anchor_groups(page_layout, metadata_anchor_groups)
+    semantic_roles = _attach_metadata_anchor_group_ids(
+        semantic_roles,
+        metadata_anchor_groups,
+    )
     return LayoutProfile(
         page=_page_layout(document),
         semantic_roles=semantic_roles,
+        metadata_anchor_groups=metadata_anchor_groups,
         section_patterns=_section_patterns(nonempty, roles),
         transition_spacings=_transition_spacings(paragraphs, nonempty, roles),
         inspected_parts=sorted(
@@ -162,6 +171,27 @@ def _value(element: ET.Element | None, provenance: str, attribute: str = "val", 
     return ObservedValue(value=value, provenance=provenance)  # type: ignore[arg-type]
 
 
+def _twips_value(element: ET.Element | None, provenance: str, attribute: str) -> ObservedValue:
+    """Read a numeric spacing attribute without confusing auto flags for twips."""
+    raw = _attr(element, attribute)
+    if raw is None:
+        return ObservedValue(value=None, provenance=provenance)
+    try:
+        return ObservedValue(value=int(raw), provenance=provenance)
+    except ValueError:
+        return ObservedValue(value=None, provenance=provenance)
+
+
+def _flag_value(element: ET.Element | None, provenance: str, attribute: str) -> ObservedValue:
+    raw = _attr(element, attribute)
+    if raw is None:
+        return ObservedValue(value=None, provenance=provenance)
+    return ObservedValue(
+        value=raw in {"true", "1", "on"},
+        provenance=provenance,
+    )
+
+
 def _paragraph_layout(p_pr, style_id, styles, defaults) -> ParagraphLayout:
     def get(tag):
         return _property(p_pr, style_id, styles, defaults["pPr"], tag)
@@ -169,8 +199,11 @@ def _paragraph_layout(p_pr, style_id, styles, defaults) -> ParagraphLayout:
     ind, ind_source = get("ind")
     return ParagraphLayout(
         alignment=_value(*get("jc")),
-        space_before_twips=_value(spacing, spacing_source, "before"),
-        space_after_twips=_value(spacing, spacing_source, "after"),
+        space_before_twips=_twips_value(spacing, spacing_source, "before"),
+        space_after_twips=_twips_value(spacing, spacing_source, "after"),
+        before_auto_spacing=_flag_value(spacing, spacing_source, "beforeAutospacing"),
+        after_auto_spacing=_flag_value(spacing, spacing_source, "afterAutospacing"),
+        contextual_spacing=_value(*get("contextualSpacing")),
         line_spacing_twips=_value(spacing, spacing_source, "line"),
         line_spacing_rule=_value(spacing, spacing_source, "lineRule"),
         left_indent_twips=_value(ind, ind_source, "left"),
@@ -339,12 +372,25 @@ def _bullet(p_pr, style_id, styles, defaults, numbering_map, text):
     num_id = level_id = None
     number_format = None
     representation = None
+    marker_typography = None
+    mechanism = "literal_marker"
+    provenance = "direct_run_property"
     if num_pr is not None:
         num_id = int(_attr(num_pr.find(f"{W}numId"), "val") or 0)
         level_id = int(_attr(num_pr.find(f"{W}ilvl"), "val") or 0)
         level = numbering_map.get(num_id, {}).get(level_id)
         number_format = _attr(level.find(f"{W}numFmt") if level is not None else None, "val")
         representation = _attr(level.find(f"{W}lvlText") if level is not None else None, "val")
+        level_r_pr = level.find(f"{W}rPr") if level is not None else None
+        marker_typography = _typography(
+            level_r_pr,
+            None,
+            styles,
+            defaults,
+            direct_source="numbering_definition",
+        )
+        mechanism = "numbering"
+        provenance = "numbering_definition"
     elif text.lstrip().startswith(("•", "-", "–", "—")):
         representation = text.lstrip()[0]
     else:
@@ -357,12 +403,22 @@ def _bullet(p_pr, style_id, styles, defaults, numbering_map, text):
         numbering_id=num_id,
         numbering_level=level_id,
         numbering_format=number_format,
+        marker_typography=marker_typography,
+        mechanism=mechanism,
+        provenance=provenance,
         left_indent_twips=left,
         hanging_indent_twips=hanging,
         wrapped_line_alignment_twips=left,
-        space_before_twips=int(_attr(spacing, "before")) if _attr(spacing, "before") else None,
-        space_after_twips=int(_attr(spacing, "after")) if _attr(spacing, "after") else None,
+        space_before_twips=_int_or_none(_attr(spacing, "before")),
+        space_after_twips=_int_or_none(_attr(spacing, "after")),
     )
+
+
+def _int_or_none(value: str | None) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
 
 
 def _infer_roles(paragraphs: list[_Paragraph]) -> list[str]:
@@ -426,6 +482,15 @@ def _infer_roles(paragraphs: list[_Paragraph]) -> list[str]:
                 roles[i] = "education_institution_date_row" if position % 2 == 0 else "education_program_location_row"
             for i in bullets:
                 roles[i] = "education_detail_bullet"
+        elif bullets:
+            # A project block may use numbered paragraphs without a semantic
+            # metadata tab. Its structural shape is still a title followed by
+            # bullets, so classify it from roles and neighbors, never text.
+            first = members[0]
+            if not paragraphs[first].bullet:
+                roles[first] = "project_title_metadata_row"
+            for i in bullets:
+                roles[i] = "project_bullet"
     _mark_transitions(paragraphs, roles)
     return roles
 
@@ -495,6 +560,89 @@ def _aggregate_roles(paragraphs, roles, external_rel_ids):
             }
         )
     return result
+
+
+def _metadata_anchor_groups(
+    page: PageLayout,
+    semantic_roles: dict[str, SemanticRoleLayout],
+) -> list[MetadataAnchorGroup]:
+    """Cluster recurring metadata tabs using a usable-width-relative tolerance."""
+    tolerance = max(1, round(page.usable_width_twips * 0.015))
+    observations = sorted(
+        (
+            tab.position_twips,
+            role_name,
+        )
+        for role_name, role in semantic_roles.items()
+        if role_name != "section_transition"
+        for tab in role.tab_stops
+        if tab.semantic_use in {"right_aligned_metadata", "positioned_metadata_column"}
+    )
+    clusters: list[list[tuple[int, str]]] = []
+    for position, role_name in observations:
+        if not clusters or position - clusters[-1][-1][0] > tolerance:
+            clusters.append([])
+        clusters[-1].append((position, role_name))
+
+    groups: list[MetadataAnchorGroup] = []
+    for index, cluster in enumerate(clusters):
+        positions = sorted(position for position, _ in cluster)
+        middle = len(positions) // 2
+        representative = (
+            positions[middle]
+            if len(positions) % 2
+            else round((positions[middle - 1] + positions[middle]) / 2)
+        )
+        groups.append(
+            MetadataAnchorGroup(
+                group_id=f"metadata_anchor_{index}",
+                observed_positions_twips=positions,
+                representative_position_twips=representative,
+                role_groups=sorted({role_name for _, role_name in cluster}),
+                tolerance_twips=tolerance,
+                relative_tolerance=tolerance / page.usable_width_twips,
+                provenance=[
+                    "direct_paragraph_property",
+                    "clustered_by_usable_width_relative_tolerance",
+                    "representative_median",
+                ],
+            )
+        )
+    return groups
+
+
+def _attach_metadata_anchor_group_ids(
+    semantic_roles: dict[str, SemanticRoleLayout],
+    groups: list[MetadataAnchorGroup],
+) -> dict[str, SemanticRoleLayout]:
+    return {
+        role_name: role.model_copy(
+            update={
+                "metadata_anchor_group_ids": [
+                    group.group_id
+                    for group in groups
+                    if role_name in group.role_groups
+                ]
+            }
+        )
+        for role_name, role in semantic_roles.items()
+    }
+
+
+def _validate_metadata_anchor_groups(
+    page: PageLayout,
+    groups: list[MetadataAnchorGroup],
+) -> None:
+    for group in groups:
+        for position in [
+            *group.observed_positions_twips,
+            group.representative_position_twips,
+        ]:
+            if position < 0 or position > page.usable_width_twips:
+                raise ReferenceDocxAnalysisError(
+                    "Reference metadata tab position falls outside the usable page width: "
+                    f"{position} twips versus {page.usable_width_twips} twips."
+                )
 
 
 def _run_pattern(paragraph):
@@ -585,6 +733,7 @@ def _transition_spacings(
     rendered-gap value that OOXML does not contain.
     """
     grouped: dict[str, TransitionSpacing] = {}
+    transitions: list[TransitionSpacing] = []
     for position in range(len(semantic_paragraphs) - 1):
         source = semantic_paragraphs[position]
         destination = semantic_paragraphs[position + 1]
@@ -605,6 +754,11 @@ def _transition_spacings(
         transition = TransitionSpacing(
             source_role=roles[position],
             destination_role=roles[position + 1],
+            destination_section_first_role=(
+                roles[position + 2]
+                if roles[position + 1] == "section_heading" and position + 2 < len(roles)
+                else None
+            ),
             source_space_after_twips=source.paragraph_layout.space_after_twips,
             destination_space_before_twips=destination.paragraph_layout.space_before_twips,
             empty_paragraph_count=len(empty),
@@ -628,7 +782,71 @@ def _transition_spacings(
             grouped[signature].occurrence_count += 1
         else:
             grouped[signature] = transition
-    return list(grouped.values())
+    transitions = list(grouped.values())
+    return _resolve_transition_values(transitions)
+
+
+def _resolve_transition_values(
+    transitions: list[TransitionSpacing],
+) -> list[TransitionSpacing]:
+    """Attach dominant, role-pair-specific values without flattening transitions."""
+    groups: dict[tuple[str, str, str | None], list[TransitionSpacing]] = defaultdict(list)
+    for transition in transitions:
+        groups[
+            (
+                transition.source_role,
+                transition.destination_role,
+                transition.destination_section_first_role
+                if transition.destination_role == "section_heading"
+                else None,
+            )
+        ].append(transition)
+
+    resolved: list[TransitionSpacing] = []
+    for transition in transitions:
+        group = groups[
+            (
+                transition.source_role,
+                transition.destination_role,
+                transition.destination_section_first_role
+                if transition.destination_role == "section_heading"
+                else None,
+            )
+        ]
+        source = _dominant_twips(
+            [
+                (item.source_space_after_twips, item.occurrence_count)
+                for item in group
+            ]
+        )
+        destination = _dominant_twips(
+            [
+                (item.destination_space_before_twips, item.occurrence_count)
+                for item in group
+            ]
+        )
+        resolved.append(
+            transition.model_copy(
+                update={
+                    "resolved_source_space_after_twips": source,
+                    "resolved_destination_space_before_twips": destination,
+                    "provenance": [
+                        *transition.provenance,
+                        "resolved_by_dominant_semantic_transition_value",
+                    ],
+                }
+            )
+        )
+    return resolved
+
+
+def _dominant_twips(values: list[tuple[ObservedValue, int]]) -> ObservedValue:
+    counts: dict[int | None, int] = defaultdict(int)
+    for observed, occurrence_count in values:
+        value = observed.value if isinstance(observed.value, int) and not isinstance(observed.value, bool) else None
+        counts[value] += occurrence_count
+    value = max(counts, key=lambda item: (counts[item], item is not None, -(item or 0)))
+    return ObservedValue(value=value, provenance="inferred_recurring_pattern")
 
 
 def _page_layout(document):

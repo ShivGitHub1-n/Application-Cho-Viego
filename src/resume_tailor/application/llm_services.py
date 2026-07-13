@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from hashlib import sha256
 from typing import Callable, TypeVar
 
 from pydantic import BaseModel
@@ -30,11 +31,15 @@ from resume_tailor.domain.llm_models import (
     EligibleSkill,
     EligibleSkillCategory,
     LanguageModelError,
+    LanguageModelErrorKind,
     OpportunityAnalysisRequest,
     SkillCompositionRequest,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
 )
 from resume_tailor.domain.models import (
     ClaimCandidate,
+    ClaimComposition,
     CompositionEvidenceGroup,
     CompositionSelection,
     JobPosting,
@@ -42,6 +47,8 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     Decision,
     SkillSelectionStatus,
+    ClaimConfidence,
+    ClaimSupport,
 )
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
@@ -72,6 +79,7 @@ class HybridLlmServices:
             skill_composition_reconciler or DeterministicSkillCompositionReconciler()
         )
         self._generation_call_counts: dict[str, int] = {}
+        self._rewrite_cache: dict[str, TailoringPlan] = {}
 
     def enrich_plan(self, plan: TailoringPlan, profile: MasterProfile, posting: JobPosting) -> TailoringPlan:
         generation_key = self._generation_key(plan)
@@ -110,7 +118,7 @@ class HybridLlmServices:
                 report.assumptions.append(f"LLM opportunity focus: {result.output.primary_focus}")
         enriched = plan.model_copy(update={"report": report})
         if self._enable_composition and enriched.ranked_skill_categories:
-            skill_request = self._skill_composition_request(enriched)
+            skill_request = self._skill_composition_request(enriched, profile)
             if skill_request is not None:
                 skill_result = self._retry(
                     generation_key,
@@ -166,6 +174,21 @@ class HybridLlmServices:
                     pass
         return enriched
 
+    def extract_profile_draft(
+        self, profile_id: str, source_format: str, extracted_text: str
+    ) -> ProfileExtractionResult:
+        if self._language_model is None:
+            raise LanguageModelError(
+                LanguageModelErrorKind.CONFIGURATION,
+                "Profile extraction requires a configured language model.",
+            )
+        request = ProfileExtractionRequest(
+            profile_id=profile_id,
+            source_format=source_format,
+            extracted_text=extracted_text,
+        )
+        return self._language_model.extract_profile(request)
+
     @staticmethod
     def _skill_fallback(plan: TailoringPlan, reason: str) -> TailoringPlan:
         report = plan.report.model_copy(deep=True)
@@ -179,24 +202,117 @@ class HybridLlmServices:
         )
         return plan.model_copy(update={"report": report})
 
-    def rewrite_plan(self, plan: TailoringPlan, profile: MasterProfile) -> TailoringPlan:
+    def rewrite_plan(
+        self,
+        plan: TailoringPlan,
+        profile: MasterProfile,
+        approved_claim_ids: set[str] | None = None,
+    ) -> TailoringPlan:
         if self._language_model is None or not self._enable_bullet_rewrite or plan.strategy is None:
             return plan
+        rewrite_cache_key = sha256(plan.model_dump_json().encode()).hexdigest()
+        cached = self._rewrite_cache.get(rewrite_cache_key)
+        if cached is not None:
+            return cached
         groups = self._approved_groups(plan, profile)
         if not groups:
             return plan
-        request = BulletRewriteRequest(primary_focus=plan.strategy.primary_focus, groups=groups)
+        request = BulletRewriteRequest(
+            primary_focus=plan.strategy.primary_focus,
+            target_terms=sorted(
+                {
+                    term
+                    for signal in plan.report.role.signals
+                    for term in [signal.label, *signal.keywords]
+                }
+            ),
+            groups=groups,
+            max_bullets_per_entry=plan.constraints.max_bullets_per_entry,
+            max_total_lines=plan.constraints.max_total_lines,
+        )
         generation_key = self._generation_key(plan)
-        result = self._retry(generation_key, self._language_model.rewrite_bullets, request, lambda output: validate_rewrites(output, groups))
+        result = self._retry(
+            generation_key,
+            self._language_model.rewrite_bullets,
+            request,
+            lambda output: validate_rewrites(
+                output,
+                groups,
+                max_bullets_per_entry=request.max_bullets_per_entry,
+                max_total_lines=request.max_total_lines,
+            ),
+        )
         self._generation_call_counts.pop(generation_key, None)
         if result is None:
             return plan
-        rewritten = {tuple(bullet.source_evidence_ids): bullet for bullet in result.output.bullets}
+        generated = [self._rewrite_candidate(bullet, groups) for bullet in result.output.bullets]
+        generated_by_entry: defaultdict[str, list[ClaimCandidate]] = defaultdict(list)
+        covered_by_entry: defaultdict[str, set[str]] = defaultdict(set)
+        for candidate in generated:
+            generated_by_entry[candidate.entity_id].append(candidate)
+            covered_by_entry[candidate.entity_id].update(candidate.evidence_ids)
+
         candidates: list[ClaimCandidate] = []
+        inserted_entries: set[str] = set()
         for candidate in plan.claim_candidates:
-            rewrite = rewritten.get(tuple(candidate.evidence_ids))
-            candidates.append(candidate if rewrite is None else candidate.model_copy(update={"text": rewrite.final_bullet_text}))
-        return plan.model_copy(update={"claim_candidates": candidates})
+            covered = covered_by_entry[candidate.entity_id]
+            if covered.intersection(candidate.evidence_ids) and set(candidate.evidence_ids).issubset(covered):
+                if candidate.entity_id not in inserted_entries:
+                    candidates.extend(generated_by_entry[candidate.entity_id])
+                    inserted_entries.add(candidate.entity_id)
+                continue
+            candidates.append(candidate)
+        for entry_id, entry_candidates in generated_by_entry.items():
+            if entry_id not in inserted_entries:
+                candidates.extend(entry_candidates)
+        report = plan.report.model_copy(deep=True)
+        report.decisions.append(
+            Decision(
+                action="gemini_bullet_rewrite_applied",
+                entity_id="document",
+                reason="Evidence-linked bullets were semantically tailored within deterministic budgets.",
+                evidence_ids=[evidence_id for candidate in generated for evidence_id in candidate.evidence_ids],
+                constraint="validated evidence linkage, protected facts, and one-page content budget",
+            )
+        )
+        rewritten_plan = plan.model_copy(update={"claim_candidates": candidates, "report": report})
+        self._rewrite_cache[rewrite_cache_key] = rewritten_plan
+        return rewritten_plan
+
+    @staticmethod
+    def _rewrite_candidate(bullet, groups: list[ApprovedEvidenceGroup]) -> ClaimCandidate:
+        group_by_evidence = {
+            evidence_id: group
+            for group in groups
+            for evidence_id in group.evidence_ids
+        }
+        max_lines = min(
+            group_by_evidence[evidence_id].max_rendered_lines
+            for evidence_id in bullet.source_evidence_ids
+        )
+        digest = sha256(
+            f"{bullet.entry_id}\0{bullet.final_bullet_text}\0{'|'.join(bullet.source_evidence_ids)}".encode()
+        ).hexdigest()[:12]
+        support = (
+            ClaimSupport.DIRECT
+            if bullet.support == ClaimConfidence.EXPLICITLY_SUPPORTED
+            else ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW
+        )
+        return ClaimCandidate(
+            id=f"gemini-bullet:{digest}",
+            entity_id=bullet.entry_id,
+            text=bullet.final_bullet_text,
+            evidence_ids=bullet.source_evidence_ids,
+            support=support,
+            estimated_lines=max(1, (len(bullet.final_bullet_text) + 89) // 90),
+            composition=(
+                ClaimComposition.COMBINED
+                if len(bullet.source_evidence_ids) > 1
+                else ClaimComposition.SINGLE
+            ),
+            required_terms=[*bullet.preserved_technologies, *bullet.preserved_metrics],
+            max_rendered_lines=max_lines,
+        )
 
     def shorten_bullet(self, request: BulletShorteningRequest) -> str:
         if self._language_model is None:
@@ -256,6 +372,7 @@ class HybridLlmServices:
                         entity_id=source.entity_id,
                         source_text=source.source_text,
                         technologies=source.technologies,
+                        capabilities=source.capabilities,
                         outcomes=source.outcomes,
                         estimated_lines=candidate.estimated_lines,
                     )
@@ -281,7 +398,7 @@ class HybridLlmServices:
         )
 
     @staticmethod
-    def _skill_composition_request(plan: TailoringPlan) -> SkillCompositionRequest | None:
+    def _skill_composition_request(plan: TailoringPlan, profile: MasterProfile) -> SkillCompositionRequest | None:
         categories = [
             EligibleSkillCategory(
                 category_id=category.id,
@@ -314,6 +431,19 @@ class HybridLlmServices:
                 for signal in plan.report.role.signals
             ],
             categories=categories,
+            evidence=[
+                EligibleEvidence(
+                    evidence_id=item.id,
+                    entity_id=item.entity_id,
+                    source_text=item.source_text,
+                    technologies=item.technologies,
+                    capabilities=item.capabilities,
+                    outcomes=item.outcomes,
+                    estimated_lines=1,
+                )
+                for item in profile.evidence
+                if item.confirmed and item.entity_id in {candidate.entity_id for candidate in plan.claim_candidates}
+            ],
         )
 
     @staticmethod
@@ -328,6 +458,11 @@ class HybridLlmServices:
                     technology
                     for evidence_id in candidate.evidence_ids
                     for technology in evidence_by_id[evidence_id].technologies
+                ],
+                capabilities=[
+                    capability
+                    for evidence_id in candidate.evidence_ids
+                    for capability in evidence_by_id[evidence_id].capabilities
                 ],
                 metrics=[
                     outcome

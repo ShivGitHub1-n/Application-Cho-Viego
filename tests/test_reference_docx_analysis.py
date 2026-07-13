@@ -49,6 +49,50 @@ def test_header_roles_and_centered_contact_are_distinct(profile: LayoutProfile) 
     assert name.primary_typography != contact.primary_typography
 
 
+def test_spacing_controls_and_transition_resolution_are_distinct(profile: LayoutProfile) -> None:
+    name = profile.semantic_roles["name"].paragraph
+    assert name.before_auto_spacing.value is True
+    assert name.space_before_twips.value == 100
+    assert name.contextual_spacing.value is None
+    assert all(
+        transition.resolved_destination_space_before_twips is not None
+        for transition in profile.transition_spacings
+    )
+    assert all(
+        "resolved_by_dominant_semantic_transition_value" in transition.provenance
+        for transition in profile.transition_spacings
+    )
+
+
+def test_metadata_anchor_groups_are_relative_and_role_scoped(profile: LayoutProfile) -> None:
+    assert profile.page.usable_width_twips == (
+        profile.page.width_twips
+        - profile.page.left_margin_twips
+        - profile.page.right_margin_twips
+    )
+    assert profile.page.usable_height_twips == (
+        profile.page.height_twips
+        - profile.page.top_margin_twips
+        - profile.page.bottom_margin_twips
+    )
+    assert profile.metadata_anchor_groups
+    assert all(
+        group.tolerance_twips == round(
+            profile.page.usable_width_twips * group.relative_tolerance
+        )
+        for group in profile.metadata_anchor_groups
+    )
+    assert any(
+        "education_institution_date_row" in group.role_groups
+        and "employer_location_row" in group.role_groups
+        for group in profile.metadata_anchor_groups
+    )
+    assert any(
+        "experience_title_date_row" in group.role_groups
+        for group in profile.metadata_anchor_groups
+    )
+
+
 def test_section_borders_tabs_bullets_and_role_specific_spacing_are_captured(
     profile: LayoutProfile,
 ) -> None:
@@ -84,6 +128,12 @@ def test_section_borders_tabs_bullets_and_role_specific_spacing_are_captured(
     assert ("experience_bullet", "experience_bullet") in transition_pairs
     assert ("experience_bullet", "interior_entry_transition") in transition_pairs
     assert ("final_paragraph_in_section", "section_heading") in transition_pairs
+    assert ("project_title_metadata_row", "project_bullet") in transition_pairs
+    assert any(
+        transition.destination_section_first_role == "skill_category_row"
+        for transition in profile.transition_spacings
+        if transition.destination_role == "section_heading"
+    )
     spacing_signatures = {
         (
             transition.source_space_after_twips.value,
@@ -94,6 +144,19 @@ def test_section_borders_tabs_bullets_and_role_specific_spacing_are_captured(
         for transition in profile.transition_spacings
     }
     assert len(spacing_signatures) > 1
+
+
+def test_numbering_marker_typography_is_captured_from_numbering_definition(
+    profile: LayoutProfile,
+) -> None:
+    for role_name in ("education_detail_bullet", "experience_bullet"):
+        bullet = profile.semantic_roles[role_name].bullet
+        assert bullet is not None
+        assert bullet.mechanism == "numbering"
+        assert bullet.provenance == "numbering_definition"
+        assert bullet.marker_typography is not None
+        assert bullet.marker_typography.font_family.value == "Wingdings"
+        assert bullet.marker_typography.font_family.provenance == "numbering_definition"
 
 
 def test_structurally_equivalent_section_headings_do_not_depend_on_their_text(
