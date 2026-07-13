@@ -5,12 +5,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from docx import Document
-from docx.shared import Inches
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
+from resume_tailor.domain.layout import LayoutProfile
 from resume_tailor.domain.models import StructuredBullet, StructuredResume
+from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
+from resume_tailor.infrastructure.reference_docx import analyze_reference_docx
 
 
 class PageOverflowError(ValueError):
@@ -31,6 +33,20 @@ class ManagedResumeRenderer:
     _body_font = "Helvetica"
     _body_size = 9
 
+    def __init__(
+        self,
+        layout_profile: LayoutProfile | None = None,
+        reference_path: Path | None = None,
+    ) -> None:
+        resolved_reference = reference_path or (
+            Path(__file__).resolve().parents[3] / "manual-test" / "reference-resume.docx"
+        )
+        self._layout_profile = (
+            layout_profile
+            if layout_profile is not None
+            else analyze_reference_docx(resolved_reference)
+        )
+
     def render(self, resume: StructuredResume, output_directory: Path) -> ManagedRenderResult:
         output_directory.mkdir(parents=True, exist_ok=True)
         stem = f"resume-{uuid4().hex}"
@@ -46,43 +62,11 @@ class ManagedResumeRenderer:
         return ManagedRenderResult(docx_path=docx_path, pdf_path=pdf_path, page_count=1)
 
     def _render_docx(self, resume: StructuredResume, path: Path) -> None:
-        document = Document()
-        section = document.sections[0]
-        section.top_margin = Inches(0.55)
-        section.bottom_margin = Inches(0.55)
-        section.left_margin = Inches(0.6)
-        section.right_margin = Inches(0.6)
-        document.add_heading(resume.display_name, level=0)
-        if resume.contact_line:
-            document.add_paragraph(resume.contact_line)
-        self._add_education(document, resume)
-        self._add_docx_section(document, "Experience", resume.experience_bullets, resume.entity_titles)
-        self._add_docx_section(document, "Projects", resume.project_bullets, resume.entity_titles)
-        if resume.selected_skills:
-            self._add_docx_text(document, "Skills", ", ".join(resume.selected_skills))
-        if resume.selected_coursework:
-            self._add_docx_text(document, "Coursework", ", ".join(resume.selected_coursework))
-        document.save(path)
+        render_structured_resume(resume, self._layout_profile, path)
 
-    def _add_docx_section(
-        self,
-        document: Document,
-        heading: str,
-        bullets: dict[str, list[StructuredBullet]],
-        titles: dict[str, str],
-    ) -> None:
-        if not bullets:
-            return
-        document.add_heading(heading, level=1)
-        for entity_id, entity_bullets in bullets.items():
-            document.add_paragraph(titles.get(entity_id, entity_id), style="Heading 2")
-            for bullet in entity_bullets:
-                document.add_paragraph(bullet.text, style="List Bullet")
-
-    def _add_docx_text(self, document: Document, heading: str, text: str) -> None:
-        paragraph = document.add_paragraph()
-        paragraph.add_run(f"{heading}: ").bold = True
-        paragraph.add_run(text)
+    def render_docx(self, resume: StructuredResume, output_path: Path) -> Path:
+        """Render DOCX only; used by delivery surfaces that do not request PDF."""
+        return render_structured_resume(resume, self._layout_profile, output_path)
 
     def _add_education(self, document: Document, resume: StructuredResume) -> None:
         if not resume.education:

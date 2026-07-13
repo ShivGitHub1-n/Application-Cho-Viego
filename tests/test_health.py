@@ -151,3 +151,12 @@ def test_api_plan_and_document_use_reconciled_composition(monkeypatch) -> None:
     assert document_response.status_code == 200
     bullets = document_response.json()["experience_bullets"]["experience-api"]
     assert [bullet["id"] for bullet in bullets] == ["evidence-api-2"]
+    docx_response = client.post(
+        "/resume-docx",
+        json={"profile": profile, "plan": plan_response.json()},
+    )
+    assert docx_response.status_code == 200
+    assert docx_response.content.startswith(b"PK")
+    assert docx_response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
