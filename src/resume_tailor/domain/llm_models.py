@@ -14,6 +14,7 @@ class StrictModel(BaseModel):
 class LlmOperation(StrEnum):
     ANALYZE_OPPORTUNITY = "analyze_opportunity"
     RECOMMEND_COMPOSITION = "recommend_composition"
+    RECOMMEND_SKILL_COMPOSITION = "recommend_skill_composition"
     REWRITE_BULLETS = "rewrite_bullets"
     SHORTEN_BULLETS = "shorten_bullets"
 
@@ -130,6 +131,47 @@ class CompositionRecommendationOutput(StrictModel):
 
 class CompositionRecommendationResult(ModelResult):
     output: CompositionRecommendationOutput
+
+
+class EligibleSkill(StrictModel):
+    skill_id: str
+    value: str
+    relevance_score: float = Field(ge=0)
+    supporting_job_signals: list[str] = Field(default_factory=list)
+
+
+class EligibleSkillCategory(StrictModel):
+    category_id: str
+    label: str
+    relevance_score: float = Field(ge=0)
+    skills: list[EligibleSkill] = Field(min_length=1)
+
+
+class SkillCompositionRequest(StrictModel):
+    posting_id: str
+    job_signals: list[str] = Field(default_factory=list)
+    categories: list[EligibleSkillCategory] = Field(min_length=1)
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class ProposedSkill(StrictModel):
+    skill_id: str
+    value: str
+
+
+class ProposedSkillCategory(StrictModel):
+    category_id: str
+    label: str
+    skills: list[ProposedSkill] = Field(min_length=1)
+
+
+class SkillCompositionOutput(StrictModel):
+    categories: list[ProposedSkillCategory] = Field(min_length=1)
+    rationale: str = Field(max_length=800)
+
+
+class SkillCompositionResult(ModelResult):
+    output: SkillCompositionOutput
 
 
 class ApprovedEvidenceGroup(StrictModel):

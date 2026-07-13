@@ -25,6 +25,9 @@ from resume_tailor.domain.llm_models import (
     OpportunityAnalysisOutput,
     OpportunityAnalysisRequest,
     OpportunityAnalysisResult,
+    SkillCompositionOutput,
+    SkillCompositionRequest,
+    SkillCompositionResult,
 )
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
@@ -81,6 +84,16 @@ class GeminiResumeLanguageModel:
             request,
             CompositionRecommendationOutput,
             CompositionRecommendationResult,
+        )
+
+    def recommend_skill_composition(
+        self, request: SkillCompositionRequest
+    ) -> SkillCompositionResult:
+        return self._generate(
+            LlmOperation.RECOMMEND_SKILL_COMPOSITION,
+            request,
+            SkillCompositionOutput,
+            SkillCompositionResult,
         )
 
     def rewrite_bullets(self, request: BulletRewriteRequest) -> BulletRewriteResult:

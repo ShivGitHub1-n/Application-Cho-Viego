@@ -85,6 +85,16 @@ class DeterministicCompositionReconciler:
             raise CompositionReconciliationError("selected entry IDs contain duplicates")
 
         ordered = [candidate for entry_id in selection.selected_entry_ids for candidate in by_entity[entry_id]]
+        selected_experiences = [
+            entities[entry_id]
+            for entry_id in selection.selected_entry_ids
+            if entities[entry_id].kind == EntityKind.EXPERIENCE
+        ]
+        selected_projects = [
+            entities[entry_id]
+            for entry_id in selection.selected_entry_ids
+            if entities[entry_id].kind == EntityKind.PROJECT
+        ]
         self._validate_budgets(ordered, entities, plan)
         estimated_lines = self._line_cost(ordered, entities, plan)
         report = plan.report.model_copy(deep=True)
@@ -114,6 +124,8 @@ class DeterministicCompositionReconciler:
                 "selected_entity_ids": selection.selected_entry_ids,
                 "selected_claim_ids": [candidate.id for candidate in ordered],
                 "claim_candidates": ordered,
+                "selected_experiences": selected_experiences,
+                "selected_projects": selected_projects,
                 "estimated_lines": estimated_lines,
                 "composition_selection": selection,
                 "report": report,

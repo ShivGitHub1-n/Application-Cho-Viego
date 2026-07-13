@@ -5,6 +5,7 @@ from resume_tailor.domain.llm_models import (
     LanguageModelErrorKind,
     OpportunityAnalysisOutput,
     OpportunityAnalysisRequest,
+    SkillCompositionOutput,
 )
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
@@ -25,6 +26,7 @@ def test_provider_schemas_exclude_unsupported_additional_properties() -> None:
         CompositionRecommendationOutput,
         BulletRewriteOutput,
         BulletShorteningOutput,
+        SkillCompositionOutput,
     ):
         schema = gemini_response_schema(model_type)
 

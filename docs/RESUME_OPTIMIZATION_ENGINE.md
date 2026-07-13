@@ -34,6 +34,8 @@ Editing a claim creates a new candidate. Previous inference approval does not tr
 
 Verified declared skills may appear in the skills section and provide limited fit evidence. They cannot become experience or project claims without linked assertions. Closely related direct assertions from the same entry may form a combined candidate only when both source texts and all evidence IDs are preserved and the candidate fits the future two-line packing limit.
 
+Categorized reviewed skills are scored independently from evidence claims. The optimizer preserves a ranked eligible category/skill pool, chooses an initial set under the configured skill-line planning bound, and derives the temporary flat compatibility list from that categorized selection. Model-assisted skill composition can only narrow or reorder that pool and is replayed by the plan-integrity validator.
+
 ## Review contract
 
 The review shows only material decisions: emphasis, omission, page-driven reductions, skill/coursework prioritization, uncovered significant signals, and approval-required wording. Each record links to evidence IDs and applicable constraints. It never exposes model chain-of-thought.

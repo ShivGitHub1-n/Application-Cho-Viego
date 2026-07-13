@@ -9,6 +9,10 @@ from resume_tailor.application.composition import (
     CompositionReconciliationError,
     DeterministicCompositionReconciler,
 )
+from resume_tailor.application.skill_composition import (
+    DeterministicSkillCompositionReconciler,
+    SkillCompositionReconciliationError,
+)
 from resume_tailor.application.llm_validation import (
     GroundingValidationError,
     validate_composition,
@@ -23,8 +27,11 @@ from resume_tailor.domain.llm_models import (
     EvidenceCoverageSummary,
     EligibleEntry,
     EligibleEvidence,
+    EligibleSkill,
+    EligibleSkillCategory,
     LanguageModelError,
     OpportunityAnalysisRequest,
+    SkillCompositionRequest,
 )
 from resume_tailor.domain.models import (
     ClaimCandidate,
@@ -33,6 +40,8 @@ from resume_tailor.domain.models import (
     JobPosting,
     MasterProfile,
     TailoringPlan,
+    Decision,
+    SkillSelectionStatus,
 )
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
@@ -50,6 +59,7 @@ class HybridLlmServices:
         enable_composition: bool,
         enable_bullet_rewrite: bool,
         composition_reconciler: DeterministicCompositionReconciler | None = None,
+        skill_composition_reconciler: DeterministicSkillCompositionReconciler | None = None,
     ) -> None:
         self._language_model = language_model
         self._retry_count = retry_count
@@ -58,6 +68,9 @@ class HybridLlmServices:
         self._enable_composition = enable_composition
         self._enable_bullet_rewrite = enable_bullet_rewrite
         self._composition_reconciler = composition_reconciler or DeterministicCompositionReconciler()
+        self._skill_composition_reconciler = (
+            skill_composition_reconciler or DeterministicSkillCompositionReconciler()
+        )
         self._generation_call_counts: dict[str, int] = {}
 
     def enrich_plan(self, plan: TailoringPlan, profile: MasterProfile, posting: JobPosting) -> TailoringPlan:
@@ -96,6 +109,26 @@ class HybridLlmServices:
             if result is not None:
                 report.assumptions.append(f"LLM opportunity focus: {result.output.primary_focus}")
         enriched = plan.model_copy(update={"report": report})
+        if self._enable_composition and enriched.ranked_skill_categories:
+            skill_request = self._skill_composition_request(enriched)
+            if skill_request is not None:
+                skill_result = self._retry(
+                    generation_key,
+                    self._language_model.recommend_skill_composition,
+                    skill_request,
+                    None,
+                )
+                if skill_result is not None:
+                    try:
+                        enriched = self._skill_composition_reconciler.reconcile(
+                            enriched, profile, skill_result.output
+                        )
+                    except SkillCompositionReconciliationError as error:
+                        enriched = self._skill_fallback(enriched, str(error))
+                else:
+                    enriched = self._skill_fallback(
+                        enriched, "Provider or schema failure; deterministic selection preserved."
+                    )
         if self._enable_composition:
             request = self._composition_request(plan, profile)
             result = self._retry(
@@ -132,6 +165,19 @@ class HybridLlmServices:
                 except CompositionReconciliationError:
                     pass
         return enriched
+
+    @staticmethod
+    def _skill_fallback(plan: TailoringPlan, reason: str) -> TailoringPlan:
+        report = plan.report.model_copy(deep=True)
+        report.decisions.append(
+            Decision(
+                action="gemini_skill_fallback",
+                entity_id="technical-skills",
+                reason=reason,
+                constraint="deterministic categorized-skill selection preserved",
+            )
+        )
+        return plan.model_copy(update={"report": report})
 
     def rewrite_plan(self, plan: TailoringPlan, profile: MasterProfile) -> TailoringPlan:
         if self._language_model is None or not self._enable_bullet_rewrite or plan.strategy is None:
@@ -232,6 +278,42 @@ class HybridLlmServices:
             primary_focus=plan.strategy.primary_focus if plan.strategy else "",
             entries=entries,
             max_total_lines=plan.constraints.max_total_lines,
+        )
+
+    @staticmethod
+    def _skill_composition_request(plan: TailoringPlan) -> SkillCompositionRequest | None:
+        categories = [
+            EligibleSkillCategory(
+                category_id=category.id,
+                label=category.label,
+                relevance_score=category.relevance_score,
+                skills=[
+                    EligibleSkill(
+                        skill_id=skill.id,
+                        value=skill.value,
+                        relevance_score=skill.relevance_score,
+                        supporting_job_signals=skill.supporting_job_signals,
+                    )
+                    for skill in category.skills
+                    if skill.status != SkillSelectionStatus.EXCLUDED_UNRELATED
+                ],
+            )
+            for category in plan.ranked_skill_categories
+            if category.status != SkillSelectionStatus.EXCLUDED_UNRELATED
+            and any(
+                skill.status != SkillSelectionStatus.EXCLUDED_UNRELATED
+                for skill in category.skills
+            )
+        ]
+        if not categories:
+            return None
+        return SkillCompositionRequest(
+            posting_id=plan.posting_id,
+            job_signals=[
+                f"{signal.id}: {signal.label}"
+                for signal in plan.report.role.signals
+            ],
+            categories=categories,
         )
 
     @staticmethod

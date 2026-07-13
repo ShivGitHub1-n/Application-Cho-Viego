@@ -13,6 +13,8 @@ from resume_tailor.domain.llm_models import (
     ModelCallMetadata,
     OpportunityAnalysisRequest,
     OpportunityAnalysisResult,
+    SkillCompositionRequest,
+    SkillCompositionResult,
 )
 
 
@@ -28,6 +30,11 @@ class FakeResumeLanguageModel:
         self, request: CompositionRecommendationRequest
     ) -> CompositionRecommendationResult:
         return self._next("recommend_composition")
+
+    def recommend_skill_composition(
+        self, request: SkillCompositionRequest
+    ) -> SkillCompositionResult:
+        return self._next("recommend_skill_composition")
 
     def rewrite_bullets(self, request: BulletRewriteRequest) -> BulletRewriteResult:
         return self._next("rewrite_bullets")

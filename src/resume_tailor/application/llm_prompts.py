@@ -23,6 +23,10 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
     task = {
         LlmOperation.ANALYZE_OPPORTUNITY: "Analyze the opportunity and profile coverage summary.",
         LlmOperation.RECOMMEND_COMPOSITION: "Recommend evidence selection using only supplied IDs.",
+        LlmOperation.RECOMMEND_SKILL_COMPOSITION: (
+            "Select and order only the supplied reviewed skill category and skill IDs; "
+            "copy every supplied label and value exactly."
+        ),
         LlmOperation.REWRITE_BULLETS: "Rewrite approved same-entry evidence into concise grounded bullets.",
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
     }[operation]

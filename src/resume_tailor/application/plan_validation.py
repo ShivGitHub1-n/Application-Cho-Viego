@@ -2,6 +2,10 @@ from resume_tailor.application.composition import (
     CompositionReconciliationError,
     DeterministicCompositionReconciler,
 )
+from resume_tailor.application.skill_composition import (
+    DeterministicSkillCompositionReconciler,
+    SkillCompositionReconciliationError,
+)
 from resume_tailor.domain.models import MasterProfile, TailoringPlan
 from resume_tailor.ports.interfaces import ResumeOptimizer
 
@@ -14,6 +18,7 @@ class DeterministicPlanIntegrityValidator:
     def __init__(self, optimizer: ResumeOptimizer) -> None:
         self._optimizer = optimizer
         self._composition_reconciler = DeterministicCompositionReconciler()
+        self._skill_composition_reconciler = DeterministicSkillCompositionReconciler()
 
     def validate(self, plan: TailoringPlan, profile: MasterProfile) -> None:
         failures = self._structural_failures(plan, profile)
@@ -26,6 +31,13 @@ class DeterministicPlanIntegrityValidator:
                     )
                 except CompositionReconciliationError as error:
                     failures.append(str(error))
+            if plan.skill_composition_selection is not None:
+                try:
+                    trusted = self._skill_composition_reconciler.replay(
+                        trusted, profile, plan.skill_composition_selection
+                    )
+                except (SkillCompositionReconciliationError, KeyError, StopIteration) as error:
+                    failures.append(f"invalid skill composition: {error}")
             failures.extend(self._reconstruction_failures(plan, trusted))
         if failures:
             raise PlanIntegrityError("Invalid tailoring plan: " + "; ".join(failures))
@@ -66,6 +78,13 @@ class DeterministicPlanIntegrityValidator:
             "claim_candidates",
             "selected_skills",
             "selected_coursework",
+            "education",
+            "technical_skills",
+            "selected_skill_categories",
+            "ranked_skill_categories",
+            "skill_composition_selection",
+            "selected_experiences",
+            "selected_projects",
             "estimated_lines",
             "composition_selection",
         )

@@ -4,6 +4,8 @@ import math
 from dataclasses import dataclass
 from itertools import combinations
 
+from resume_tailor.application.skill_selection import DeterministicSkillSelector
+
 from resume_tailor.domain.models import (
     ClaimCandidate,
     ClaimComposition,
@@ -185,8 +187,13 @@ class MultiRoleOpportunityAnalyzer:
 
 
 class DeterministicResumeOptimizer:
-    def __init__(self, opportunity_analyzer: MultiRoleOpportunityAnalyzer | None = None) -> None:
+    def __init__(
+        self,
+        opportunity_analyzer: MultiRoleOpportunityAnalyzer | None = None,
+        skill_selector: DeterministicSkillSelector | None = None,
+    ) -> None:
         self._opportunity_analyzer = opportunity_analyzer or MultiRoleOpportunityAnalyzer()
+        self._skill_selector = skill_selector or DeterministicSkillSelector()
 
     def create_plan(
         self,
@@ -217,12 +224,25 @@ class DeterministicResumeOptimizer:
         selected_records = [record for package in selected_packages for record in package.candidates]
         selected_entity_ids = [package.entity_id for package in selected_packages]
         covered_signal_ids = set().union(*(package.signal_ids for package in selected_packages)) if selected_packages else set()
-        selected_skills = self._select_skills(profile, selected_records, role)
+        skill_plan = self._skill_selector.select(
+            profile,
+            posting,
+            role,
+            constraints.max_skill_lines,
+        )
+        selected_skills = (
+            skill_plan.flattened_selected_values
+            if profile.technical_skills
+            else self._select_skills(profile, selected_records, role)
+        )
         selected_coursework = self._select_coursework(profile.coursework, role)
         estimated_lines = sum(package.line_cost for package in selected_packages)
         estimated_lines += int(bool(selected_skills)) + int(bool(selected_coursework))
         strategy = self._strategy(role, fit)
-        decisions = self._build_decisions(entities, selected_packages, records, role, constraints)
+        decisions = [
+            *self._build_decisions(entities, selected_packages, records, role, constraints),
+            *skill_plan.decisions,
+        ]
         uncovered = [signal.label for signal in role.signals if signal.id not in covered_signal_ids]
         return TailoringPlan(
             profile_id=profile.id,
@@ -242,6 +262,18 @@ class DeterministicResumeOptimizer:
             selected_entity_ids=selected_entity_ids,
             selected_claim_ids=[record.candidate.id for record in selected_records],
             claim_candidates=[record.candidate for record in selected_records],
+            education=profile.education,
+            technical_skills=skill_plan.selected_profile_categories,
+            selected_skill_categories=skill_plan.selected,
+            ranked_skill_categories=skill_plan.ranked,
+            selected_experiences=[
+                item for entity_id in selected_entity_ids for item in profile.experiences
+                if item.id == entity_id
+            ],
+            selected_projects=[
+                item for entity_id in selected_entity_ids for item in profile.projects
+                if item.id == entity_id
+            ],
             selected_skills=selected_skills,
             selected_coursework=selected_coursework,
             estimated_lines=estimated_lines,
@@ -651,10 +683,17 @@ class EvidenceBoundResumeWriter:
             contact_line=self._contact_line(profile),
             strategy=plan.strategy,
             entity_titles={item.id: item.title for item in profile.experiences + profile.projects},
-            education=profile.education,
+            education=plan.education,
+            technical_skills=plan.technical_skills,
+            experiences=plan.selected_experiences,
+            projects=plan.selected_projects,
             experience_bullets=experience_bullets,
             project_bullets=project_bullets,
-            selected_skills=plan.selected_skills,
+            selected_skills=[
+                skill.value
+                for category in plan.selected_skill_categories
+                for skill in category.skills
+            ] if plan.selected_skill_categories else plan.selected_skills,
             selected_coursework=plan.selected_coursework,
             review_required_claim_ids=review_required,
         )
