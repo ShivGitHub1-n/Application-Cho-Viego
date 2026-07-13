@@ -37,6 +37,23 @@ class _EstimatedPageCountProvider:
         )
 
 
+@dataclass
+class _PathCapturingPageCountProvider:
+    path: Path | None = None
+
+    def measure(self, docx_path: Path) -> PageCountMeasurement:
+        self.path = docx_path
+        assert docx_path.is_absolute()
+        assert docx_path.is_file()
+        assert docx_path.stat().st_size > 0
+        return PageCountMeasurement(
+            page_count=1,
+            provider="path-capturing-provider",
+            confidence="exact",
+            exact=True,
+        )
+
+
 def test_managed_renderer_exports_docx_and_one_page_pdf(tmp_path: Path) -> None:
     resume = StructuredResume(
         profile_id="profile-1",
@@ -71,6 +88,29 @@ def test_managed_renderer_exports_docx_and_one_page_pdf(tmp_path: Path) -> None:
     assert result.exact_page_count_verified is True
     assert result.docx_path.exists()
     assert result.pdf_path.read_bytes().startswith(b"%PDF")
+
+
+def test_page_count_provider_receives_absolute_existing_docx_with_spaces(tmp_path: Path) -> None:
+    provider = _PathCapturingPageCountProvider()
+    output = tmp_path / "directory with spaces" / "nested output"
+    resume = StructuredResume(
+        profile_id="profile-path",
+        profile_version=1,
+        posting_id="posting-path",
+        template_id="managed-engineering-v1",
+        display_name="Candidate",
+        strategy=ResumeStrategy(
+            role_family="embedded_firmware",
+            primary_focus="verified engineering work",
+            rationale="Use verified evidence.",
+        ),
+    )
+
+    result = ManagedResumeRenderer(page_count_provider=provider).render(resume, output)
+
+    assert provider.path is not None
+    assert provider.path.parent == output.resolve()
+    assert result.docx_path.is_absolute()
 
 
 def test_managed_renderer_rejects_overflow(tmp_path: Path) -> None:

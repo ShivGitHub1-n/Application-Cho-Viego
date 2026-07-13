@@ -48,6 +48,7 @@ class LibreOfficeDocxPageCountProvider:
         self._executable = executable or shutil.which("soffice") or shutil.which("libreoffice")
 
     def measure(self, docx_path: Path) -> PageCountMeasurement:
+        docx_path = _validated_docx_path(docx_path, "LibreOffice")
         if self._executable is None:
             raise PageCountVerificationError(
                 "Exact DOCX page-count verification requires LibreOffice or Microsoft Word; "
@@ -71,12 +72,14 @@ class LibreOfficeDocxPageCountProvider:
             if result.returncode != 0:
                 raise PageCountVerificationError(
                     f"LibreOffice could not render the DOCX for page-count verification: "
-                    f"{result.stderr.strip() or result.stdout.strip()}"
+                    f"{result.stderr.strip() or result.stdout.strip()} "
+                    f"({_docx_diagnostics(docx_path, 'LibreOffice')})"
                 )
             pdf_path = Path(directory) / f"{docx_path.stem}.pdf"
             if not pdf_path.is_file():
                 raise PageCountVerificationError(
-                    "LibreOffice reported success but did not produce a PDF for page counting."
+                    "LibreOffice reported success but did not produce a PDF for page counting "
+                    f"({_docx_diagnostics(docx_path, 'LibreOffice')})."
                 )
             page_count = _count_pdf_pages(pdf_path)
             return PageCountMeasurement(
@@ -91,6 +94,7 @@ class MicrosoftWordDocxPageCountProvider:
     """Measure DOCX pages with Word through its native Windows COM automation."""
 
     def measure(self, docx_path: Path) -> PageCountMeasurement:
+        docx_path = _validated_docx_path(docx_path, "Microsoft Word")
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None:
             raise PageCountVerificationError(
@@ -138,13 +142,15 @@ finally {
         if result.returncode != 0:
             raise PageCountVerificationError(
                 "Microsoft Word could not render the DOCX for page-count verification: "
-                f"{result.stderr.strip() or result.stdout.strip()}"
+                f"{result.stderr.strip() or result.stdout.strip()} "
+                f"({_docx_diagnostics(docx_path, 'Microsoft Word')})"
             )
         try:
             page_count = int(result.stdout.strip().splitlines()[-1])
         except (IndexError, ValueError) as error:
             raise PageCountVerificationError(
-                "Microsoft Word returned no usable page count for the DOCX."
+                "Microsoft Word returned no usable page count for the DOCX "
+                f"({_docx_diagnostics(docx_path, 'Microsoft Word')})."
             ) from error
         return PageCountMeasurement(
             page_count=page_count,
@@ -171,6 +177,23 @@ class ExactDocxPageCountProvider:
             except PageCountVerificationError as error:
                 failures.append(str(error))
         raise PageCountVerificationError("Exact DOCX page-count verification failed: " + " ".join(failures))
+
+
+def _validated_docx_path(path: Path, provider: str) -> Path:
+    resolved = Path(path).expanduser().resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    if not resolved.is_file() or resolved.stat().st_size <= 0:
+        raise PageCountVerificationError(
+            f"{provider} cannot measure the DOCX because the candidate file is unavailable "
+            f"({_docx_diagnostics(resolved, provider)})."
+        )
+    return resolved
+
+
+def _docx_diagnostics(path: Path, provider: str) -> str:
+    exists = path.is_file()
+    size = path.stat().st_size if exists else 0
+    return f"provider={provider}; path={path}; exists={exists}; size={size} bytes"
 
 
 @dataclass(frozen=True)
@@ -232,6 +255,7 @@ class ManagedResumeRenderer:
         return False
 
     def render(self, resume: StructuredResume, output_directory: Path) -> ManagedRenderResult:
+        output_directory = Path(output_directory).expanduser().resolve()
         output_directory.mkdir(parents=True, exist_ok=True)
         stem = f"resume-{uuid4().hex}"
         docx_path = output_directory / f"{stem}.docx"
@@ -265,12 +289,19 @@ class ManagedResumeRenderer:
         return output_path
 
     def _render_verified_docx(self, resume: StructuredResume, path: Path) -> StructuredResume:
+        path = Path(path).expanduser().resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
         candidate = resume
         self._last_measurement = None
         self._initial_measurement = None
         self._last_overflow_reduction_count = 0
         for _ in range(self._max_overflow_reductions + 1):
             render_structured_resume(candidate, self._layout_profile, path)
+            if not path.is_file() or path.stat().st_size <= 0:
+                raise PageCountVerificationError(
+                    "DOCX rendering completed without a non-empty candidate file "
+                    f"({_docx_diagnostics(path, 'page-count verification')})."
+                )
             try:
                 measurement = self._page_count_provider.measure(path)
             except Exception:

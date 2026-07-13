@@ -2,28 +2,20 @@
 
 ## Vision
 
-Resume Tailor helps job seekers create one-page, role-specific resumes that remain truthful to their actual experience. It behaves as a resume strategist: it decides what deserves space, explains those tradeoffs, and produces content ready for a deterministic renderer.
+Resume Tailor helps job seekers create one-page, role-specific resumes that remain truthful to their actual experience. It decides what deserves space, explains those tradeoffs, and produces content ready for a deterministic renderer.
 
-## Target users
+## Stable product requirements
 
-The initial user is an engineering student applying for internships, co-ops, and entry-level roles. The data model supports any job seeker and future multi-user accounts.
+- The product stores a persistent, user-reviewed master resume/profile.
+- A pasted job description is the required baseline input for tailoring.
+- A job URL and web research may optionally enrich the pasted description; pasted text remains the fallback when URL research is unavailable.
+- Gemini provides semantic matching, evidence-grounded rewriting, skill and course selection, and content prioritization. AI output is typed structured content with evidence references.
+- Tailored wording may be materially different from the source wording when it remains grounded in the user's evidence.
+- Education, awards, certifications, dates, employers, titles, and locations are locked by default and remain unchanged unless the user edits them.
+- Job-specific changes may select or rewrite coursework, technical skills, entries, projects, bullets, and emphasis.
+- The system must verify that the generated resume is exactly one page before export.
+- Exported formatting must ultimately conform to the established resume template; styling remains the renderer's responsibility.
 
-## Core workflow
+## Later-stage scope
 
-1. A user creates a master profile from one or more resumes and supporting evidence.
-2. The user selects a versioned template and supplies a job description, optionally with a job URL.
-3. The system classifies the role, optionally gathers company context, and evaluates candidate evidence.
-4. The decision engine allocates the one-page content budget and returns a tailored structured resume plus a decision report.
-5. The renderer applies only approved structured content to the chosen template and exports DOCX/PDF.
-6. The user reviews reasoning, claims, and the generated structured resume content before downloading or saving a version.
-
-## Success criteria
-
-- Every resume claim is supported or explicitly labeled as safe inferred wording.
-- Every material inclusion, removal, or reorder decision has an understandable reason.
-- A result is reproducible from its profile version, posting snapshot, template version, and model configuration.
-- The final layout is controlled by templates and remains stable across generations.
-
-## Non-goals for the MVP
-
-- Autonomous job applications, fabricated achievements, free-form document styling, or unreviewed web scraping.
+Cover letters, authentication, multi-user deployment, application tracking, and recommendations are later-stage capabilities.

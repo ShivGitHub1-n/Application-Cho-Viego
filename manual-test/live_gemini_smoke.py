@@ -120,6 +120,12 @@ def extraction_only_report(output: ProfileExtractionOutput) -> str:
     return "\n".join(lines)
 
 
+def _print_operation_counts(gemini: CountingLanguageModel) -> None:
+    print("Gemini operation counts:")
+    for operation, count in sorted(gemini.calls.items()):
+        print(f"  {operation}: {count}")
+
+
 def main() -> int:
     resume_path = _required_path("RESUME_FILE")
     job_description = _job_description()
@@ -206,15 +212,17 @@ def main() -> int:
     output_directory = Path(os.getenv("SMOKE_OUTPUT_DIR", "manual-test/live-smoke-output"))
     output_directory.mkdir(parents=True, exist_ok=True)
     renderer = ManagedResumeRenderer()
-    result = renderer.render(approved_resume, output_directory)
+    try:
+        result = renderer.render(approved_resume, output_directory)
+    except Exception:
+        _print_operation_counts(gemini)
+        raise
     if result.page_count != 1 or not result.exact_page_count_verified:
         raise RuntimeError("Smoke test did not produce an exactly verified one-page DOCX")
     print(f"Final page count: {result.page_count} ({result.measurement_provider})")
     print(f"DOCX export path: {result.docx_path}")
     print(f"Fallback behavior: {plan.report.warnings or 'none reported'}")
-    print("Gemini operation counts:")
-    for operation, count in sorted(gemini.calls.items()):
-        print(f"  {operation}: {count}")
+    _print_operation_counts(gemini)
     return 0
 
 
