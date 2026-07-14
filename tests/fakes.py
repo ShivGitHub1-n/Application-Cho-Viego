@@ -9,6 +9,8 @@ from resume_tailor.domain.llm_models import (
     BulletShorteningResult,
     CompositionRecommendationRequest,
     CompositionRecommendationResult,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
     LlmOperation,
     ModelCallMetadata,
     OpportunityAnalysisRequest,
@@ -46,6 +48,9 @@ class FakeResumeLanguageModel:
 
     def shorten_bullets(self, request: BulletShorteningRequest) -> BulletShorteningResult:
         return self._next("shorten_bullets")
+
+    def draft_cover_letter(self, request: CoverLetterDraftRequest) -> CoverLetterDraftResult:
+        return self._next("draft_cover_letter")
 
     def _next(self, name: str) -> object:
         self.calls[name] += 1

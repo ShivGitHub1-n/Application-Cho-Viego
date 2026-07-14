@@ -6,6 +6,7 @@ import streamlit as st
 
 from resume_tailor.application.job_intake import InvalidJobDescriptionError, build_job_posting, normalize_job_description
 from resume_tailor.application.workflow_state import invalidate_derived_workflow
+from resume_tailor.domain.cover_letter import CoverLetterRecipient
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import MasterProfile, StructuredResume, TemplateConstraints
 from resume_tailor.infrastructure.dependencies import create_profile_repository, create_tailor_service
@@ -24,6 +25,19 @@ profile_repository = create_profile_repository()
 
 def clear_tailoring_state() -> None:
     invalidate_derived_workflow(st.session_state)
+
+
+def clear_cover_letter_state() -> None:
+    for key in (
+        "cover_letter",
+        "cover_letter_reviewed",
+        "cover_letter_profile_fingerprint",
+        "cover_letter_posting_fingerprint",
+        "cover_letter_plan_fingerprint",
+        "cover_letter_evidence_fingerprint",
+        "cover_letter_recipient_fingerprint",
+    ):
+        st.session_state.pop(key, None)
 
 
 def profile_fingerprint(profile: MasterProfile) -> str:
@@ -219,6 +233,7 @@ if st.button("Recommend resume strategy", type="primary"):
         st.session_state["workflow_posting_fingerprint"] = posting.model_dump_json()
         st.session_state["plan"] = plan
         st.session_state.pop("resume", None)
+        clear_cover_letter_state()
         st.session_state["generated_content_reviewed"] = False
     except (json.JSONDecodeError, InvalidJobDescriptionError, ValueError) as error:
         st.error(f"Profile or job description is invalid: {error}")
@@ -295,3 +310,101 @@ if plan and profile:
                         st.download_button("Download PDF", result.pdf_path.read_bytes(), "tailored-resume.pdf")
                 except PageOverflowError as error:
                     st.error(str(error))
+
+# Cover letters are a separate derived workflow. They reuse the active plan and selected
+# evidence, but never share generated-resume or approval state.
+if profile is None or plan is None or not getattr(plan, "strategy", None):
+    st.subheader("Cover letter")
+    st.info("Create a valid master profile, pasted job posting, and tailoring plan to enable cover-letter drafting.")
+else:
+    st.subheader("Cover letter")
+    st.caption("This draft reuses the current tailoring plan and selected confirmed evidence.")
+    recipient_name = st.text_input("Recipient name (optional)", key="cover_recipient_name")
+    recipient_title = st.text_input("Recipient title (optional)", key="cover_recipient_title")
+    recipient_company = st.text_input(
+        "Recipient/company override (optional)", value=posting.company_name or "", key="cover_recipient_company"
+    )
+    recipient = CoverLetterRecipient(
+        name=recipient_name.strip() or None,
+        title=recipient_title.strip() or None,
+        company=recipient_company.strip() or posting.company_name,
+    )
+    evidence_fingerprint = ":".join(sorted(
+        item.id for item in profile.evidence
+        if item.confirmed and item.entity_id in set(plan.selected_entity_ids)
+    ))
+    recipient_fingerprint = recipient.model_dump_json()
+    plan_fingerprint = plan.model_dump_json()
+    current_cover_fingerprints = {
+        "cover_letter_profile_fingerprint": profile_fingerprint(profile),
+        "cover_letter_posting_fingerprint": posting.model_dump_json(),
+        "cover_letter_plan_fingerprint": plan_fingerprint,
+        "cover_letter_evidence_fingerprint": evidence_fingerprint,
+        "cover_letter_recipient_fingerprint": recipient_fingerprint,
+    }
+    if any(
+        st.session_state.get(key) is not None and st.session_state.get(key) != value
+        for key, value in current_cover_fingerprints.items()
+    ):
+        clear_cover_letter_state()
+    if st.button("Generate cover-letter draft", key="generate_cover_letter"):
+        try:
+            st.session_state["cover_letter"] = service.draft_cover_letter(
+                profile, posting, plan, recipient=recipient
+            )
+            st.session_state["cover_letter_reviewed"] = False
+            st.session_state.update(current_cover_fingerprints)
+        except (ValueError, LanguageModelError) as error:
+            st.error(f"Cover-letter drafting failed: {error}")
+
+    letter = st.session_state.get("cover_letter")
+    if letter:
+        st.markdown("**Draft review**")
+        st.write(f"{letter.date_text}")
+        st.write(letter.salutation)
+        for paragraph in letter.paragraphs:
+            st.write(paragraph.text)
+            for claim in paragraph.claims:
+                label = "Explicitly supported" if claim.confidence.value == "explicitly_supported" else "Strongly implied — approval required"
+                st.caption(f"{label}: {claim.text} (evidence: {', '.join(claim.evidence_ids)})")
+        st.write(letter.closing)
+        st.write(letter.signoff)
+        st.write(f"**{letter.signoff_name}**")
+        pending_approved = {
+            claim.id
+            for claim in letter.pending_claims
+            if st.checkbox(
+                f"Approve strongly implied claim: {claim.text}",
+                key=f"cover-approve-{claim.id}",
+            )
+        }
+        reviewed = st.checkbox(
+            "I reviewed the complete cover letter and its supporting evidence.",
+            key="cover_letter_reviewed",
+        )
+        if st.button(
+            "Confirm cover-letter review",
+            key="confirm_cover_letter_review",
+            disabled=not reviewed,
+        ):
+            st.session_state["cover_letter"] = service.approve_cover_letter(
+                letter, pending_approved, reviewed=reviewed
+            )
+            st.success("Cover-letter review recorded.")
+        letter = st.session_state.get("cover_letter")
+        can_export = bool(letter and letter.complete_review_confirmed and not letter.pending_claims)
+        st.caption("Exact one-page verification is required before export.")
+        if st.button("Export reviewed cover letter", key="export_cover_letter", disabled=not can_export):
+            try:
+                with TemporaryDirectory() as directory:
+                    exported = service.export_cover_letter(letter, Path(directory))
+                    st.session_state["cover_letter"] = exported
+                    st.download_button(
+                        "Download cover-letter DOCX",
+                        Path(exported.export_path).read_bytes(),
+                        "cover-letter.docx",
+                        key="download_cover_letter",
+                    )
+                    st.success(f"Verified exactly one page via {exported.page_count}-page DOCX measurement.")
+            except (ValueError, PageOverflowError) as error:
+                st.error(f"Cover-letter export failed: {error}")

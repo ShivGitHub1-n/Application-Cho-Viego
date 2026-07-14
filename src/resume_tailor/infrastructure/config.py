@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_enable_composition: bool = True
     llm_enable_bullet_rewrite: bool = True
     llm_enable_shortening: bool = False
+    llm_enable_cover_letter: bool = True
     llm_deterministic_fallback: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

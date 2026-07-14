@@ -14,6 +14,8 @@ from resume_tailor.domain.llm_models import (
     BulletRewriteResult,
     BulletShorteningRequest,
     BulletShorteningResult,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
     CompositionRecommendationRequest,
     CompositionRecommendationResult,
     OpportunityAnalysisRequest,
@@ -69,6 +71,8 @@ class ResumeLanguageModel(Protocol):
     def rewrite_bullets(self, request: BulletRewriteRequest) -> BulletRewriteResult: ...
 
     def shorten_bullets(self, request: BulletShorteningRequest) -> BulletShorteningResult: ...
+
+    def draft_cover_letter(self, request: CoverLetterDraftRequest) -> CoverLetterDraftResult: ...
 
 
 class RenderResult(Protocol):
