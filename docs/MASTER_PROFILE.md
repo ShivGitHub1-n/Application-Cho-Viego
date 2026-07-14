@@ -44,3 +44,7 @@ Manual reviewed fixtures should be maintained from the factual master resume, wi
 ## Versioning and ownership
 
 Every profile belongs to a user ID, may have many master-resume versions, and is immutable once referenced by a generated resume. This supports future authentication and reproducibility without schema redesign.
+
+## Structured review editor
+
+The Streamlit extraction-review workflow uses a detached structured editor state for contact information, education, experiences, projects, evidence statements, and categorized technical skills. Conversion back to `MasterProfile` is deterministic and runs the existing Pydantic validation before persistence. Existing entry and evidence IDs are preserved; new IDs are generated deterministically. The SQLite `MasterProfileRepository` remains the only save pathway. Resume and cover-letter derived state is invalidated only when the canonical saved profile changes. An explicitly labeled raw JSON fallback uses the same validation and repository pathway and refuses unsupported top-level fields that cannot be losslessly round-tripped.

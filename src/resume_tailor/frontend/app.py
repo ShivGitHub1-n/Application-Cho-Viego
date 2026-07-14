@@ -1,10 +1,27 @@
 import json
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import streamlit as st
+from pydantic import ValidationError
 
 from resume_tailor.application.job_intake import InvalidJobDescriptionError, build_job_posting, normalize_job_description
+from resume_tailor.application.profile_editor import (
+    add_bullet,
+    add_education,
+    add_entry,
+    add_skill_category,
+    editor_state_to_profile,
+    move_item,
+    profile_change_fingerprint,
+    profile_to_editor_state,
+    remove_bullet,
+    remove_education,
+    remove_entry,
+    remove_skill_category,
+    unknown_profile_fields,
+)
 from resume_tailor.application.workflow_state import invalidate_derived_workflow
 from resume_tailor.domain.cover_letter import CoverLetterRecipient
 from resume_tailor.domain.llm_models import LanguageModelError
@@ -44,6 +61,37 @@ def profile_fingerprint(profile: MasterProfile) -> str:
     return profile.model_dump_json()
 
 
+def initialize_profile_editor(profile: MasterProfile, source_key: str) -> None:
+    if st.session_state.get("profile_editor_source_key") == source_key:
+        return
+    st.session_state["profile_editor_state"] = profile_to_editor_state(profile)
+    st.session_state["profile_editor_source_key"] = source_key
+    st.session_state["profile_editor_raw_json"] = json.dumps(
+        profile.model_dump(mode="json"), indent=2
+    )
+    st.session_state.pop("profile_editor_errors", None)
+
+
+def persist_profile_from_editor(profile: MasterProfile) -> bool:
+    previous = st.session_state.get("profile")
+    changed = previous is None or profile_change_fingerprint(previous) != profile_change_fingerprint(profile)
+    try:
+        profile_repository.save(profile)
+    except (ProfileStoreError, ValueError) as error:
+        st.session_state["profile_editor_errors"] = [f"Persistence failed: {error}"]
+        return False
+    if changed:
+        clear_tailoring_state()
+    st.session_state["profile"] = profile
+    st.session_state["profile_id"] = profile.id
+    st.session_state["profile_load_status"] = "Profile saved successfully."
+    initialize_profile_editor(profile, f"saved:{profile.id}:{profile_change_fingerprint(profile)}")
+    st.session_state.pop("profile_extraction_draft", None)
+    st.session_state.pop("profile_extraction_source", None)
+    st.session_state.pop("profile_editor_errors", None)
+    return True
+
+
 if "profile_load_status" not in st.session_state:
     try:
         persisted = profile_repository.get("local-profile")
@@ -51,6 +99,7 @@ if "profile_load_status" not in st.session_state:
             st.session_state["profile"] = persisted
             st.session_state["profile_id"] = persisted.id
             st.session_state["profile_load_status"] = "Loaded from persistent storage."
+            initialize_profile_editor(persisted, f"saved:{persisted.id}:{profile_change_fingerprint(persisted)}")
         else:
             st.session_state["profile_load_status"] = "No saved profile found."
     except (ProfileStoreError, CorruptStoredProfileError) as error:
@@ -106,16 +155,16 @@ if st.button("Extract profile draft from resume"):
         )
         st.session_state["profile_extraction_draft"] = result.output
         st.session_state["profile_extraction_source"] = extracted
+        initialize_profile_editor(
+            result.output.profile,
+            f"extracted:{result.output.profile.id}:{profile_change_fingerprint(result.output.profile)}",
+        )
         st.success("Draft profile extracted. Review and correct it before approval.")
     except (ResumeExtractionError, ValueError, LanguageModelError) as error:
         st.error(f"Resume extraction failed: {error}")
 
 draft_output = st.session_state.get("profile_extraction_draft")
 if draft_output:
-    if "profile_extraction_json" not in st.session_state:
-        st.session_state["profile_extraction_json"] = json.dumps(
-            draft_output.profile.model_dump(mode="json"), indent=2
-        )
     st.subheader("Extracted profile draft")
     if draft_output.missing_fields:
         st.warning("Missing fields: " + ", ".join(draft_output.missing_fields))
@@ -125,25 +174,10 @@ if draft_output:
         st.info("Extraction notes: " + " ".join(draft_output.extraction_notes))
     if draft_output.fidelity_flags:
         st.warning("Fidelity flags: " + " ".join(draft_output.fidelity_flags))
-    st.text_area("Correct extracted profile JSON before approval", height=260, key="profile_extraction_json")
-    if st.button("Approve and save extracted profile"):
-        try:
-            approved_profile = MasterProfile.model_validate(
-                json.loads(st.session_state["profile_extraction_json"])
-            )
-            profile_repository.save(approved_profile)
-            clear_tailoring_state()
-            st.session_state["profile"] = approved_profile
-            st.session_state["profile_id"] = approved_profile.id
-            st.session_state["profile_load_status"] = "Saved successfully after extraction review."
-            st.session_state.pop("profile_extraction_draft", None)
-            st.session_state.pop("profile_extraction_json", None)
-            st.success("Extracted profile approved and saved.")
-        except (json.JSONDecodeError, ValueError, ProfileStoreError) as error:
-            st.error(f"Extracted profile was not saved: {error}")
+    st.info("Use the structured master-profile editor below to review and correct this draft before saving.")
 
 profile_json = st.text_area(
-    "Reviewed career profile (JSON)",
+    "Advanced profile input (JSON)",
     placeholder='{"id":"profile-1","user_id":"local-user","display_name":"Your Name","experiences":[],"projects":[],"evidence":[]}',
     height=180,
     key="profile_json_input",
@@ -174,15 +208,17 @@ if st.session_state.get("workflow_profile_fingerprint") and profile_json.strip()
 
 if save_profile:
     try:
-        profile = MasterProfile.model_validate(json.loads(profile_json))
+        raw_profile_payload = json.loads(profile_json)
+        if not isinstance(raw_profile_payload, dict):
+            raise ValueError("Profile JSON must be an object.")
+        unknown = unknown_profile_fields(raw_profile_payload)
+        if unknown:
+            raise ValueError("Unsupported top-level fields cannot be safely round-tripped: " + ", ".join(unknown))
+        profile = MasterProfile.model_validate(raw_profile_payload)
         if profile.id != profile_id.strip():
             raise ValueError("Profile ID field must match the profile JSON id")
-        profile_repository.save(profile)
-        clear_tailoring_state()
-        st.session_state["profile"] = profile
-        st.session_state["profile_id"] = profile.id
-        st.session_state["profile_load_status"] = "Saved successfully."
-        st.success("Master profile saved.")
+        if persist_profile_from_editor(profile):
+            st.success("Master profile saved.")
     except (json.JSONDecodeError, ValueError, ProfileStoreError) as error:
         st.error(f"Profile was not saved: {error}")
 
@@ -196,6 +232,7 @@ if load_profile:
             st.session_state["profile"] = loaded
             st.session_state["profile_id"] = loaded.id
             st.session_state["profile_load_status"] = "Loaded from persistent storage."
+            initialize_profile_editor(loaded, f"saved:{loaded.id}:{profile_change_fingerprint(loaded)}")
             st.success("Master profile loaded. Review the active profile before tailoring.")
     except (ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
         st.error(f"Profile could not be loaded: {error}")
@@ -408,3 +445,212 @@ else:
                     st.success(f"Verified exactly one page via {exported.page_count}-page DOCX measurement.")
             except (ValueError, PageOverflowError) as error:
                 st.error(f"Cover-letter export failed: {error}")
+
+
+def _editor_widget_key(token: str, *parts: object) -> str:
+    return "profile-editor-" + sha256((token + ":" + ":".join(map(str, parts))).encode()).hexdigest()[:18]
+
+
+def _comma_text(value: list[str]) -> str:
+    return ", ".join(value)
+
+
+def render_profile_editor(profile: MasterProfile) -> None:
+    """Render the structured editor; all mutations remain session-local until save."""
+
+    source_key = st.session_state.get("profile_editor_source_key", f"saved:{profile.id}")
+    initialize_profile_editor(profile, source_key)
+    state = st.session_state["profile_editor_state"]
+    token = str(source_key)
+    st.divider()
+    st.header("Structured master-profile editor")
+    st.caption("Review and correct the profile locally. Nothing is persisted until you validate and save it.")
+
+    with st.expander("Personal information", expanded=True):
+        state["display_name"] = st.text_input("Candidate name", state.get("display_name", ""), key=_editor_widget_key(token, "name"))
+        contact = state.setdefault("contact", {})
+        contact["phone"] = st.text_input("Phone", contact.get("phone", ""), key=_editor_widget_key(token, "phone"))
+        contact["email"] = st.text_input("Email", contact.get("email", ""), key=_editor_widget_key(token, "email"))
+        contact["location"] = st.text_input("Meaningful location", contact.get("location", ""), key=_editor_widget_key(token, "location"))
+        if str(contact.get("location", "")).strip().casefold() == "canada":
+            st.warning("A standalone country is not a meaningful resume location; it will be omitted on save.")
+        st.markdown("**Links**")
+        for index, link in enumerate(list(contact.get("links", []))):
+            link_key = link.get("id", f"link-{index}")
+            cols = st.columns([5, 1])
+            with cols[0]:
+                link["value"] = st.text_input(
+                    f"Link {index + 1}", link.get("value", ""), key=_editor_widget_key(token, "link", link_key)
+                )
+            with cols[1]:
+                if st.button("Remove", key=_editor_widget_key(token, "remove-link", link_key)):
+                    contact["links"].pop(index)
+                    st.rerun()
+        if st.button("Add link", key=_editor_widget_key(token, "add-link")):
+            used = {item.get("id") for item in contact.get("links", [])}
+            contact.setdefault("links", []).append({"id": f"link-{len(used)}", "value": ""})
+            st.rerun()
+
+    with st.expander("Education", expanded=True):
+        for index, record in enumerate(state.get("education", [])):
+            with st.container(border=True):
+                st.markdown(f"**Education {index + 1}**")
+                record["school"] = st.text_input("Institution", record.get("school", ""), key=_editor_widget_key(token, "education", index, "school"))
+                record["program"] = st.text_input("Degree or program", record.get("program", ""), key=_editor_widget_key(token, "education", index, "program"))
+                c1, c2 = st.columns(2)
+                with c1:
+                    record["minor_or_specialization"] = st.text_input("Minor or specialization", record.get("minor_or_specialization", ""), key=_editor_widget_key(token, "education", index, "minor"))
+                    record["start_date"] = st.text_input("Start date", record.get("start_date", ""), key=_editor_widget_key(token, "education", index, "start"))
+                    record["graduation_date"] = st.text_input("Graduation date", record.get("graduation_date", ""), key=_editor_widget_key(token, "education", index, "graduation"))
+                    record["location"] = st.text_input("Location", record.get("location", ""), key=_editor_widget_key(token, "education", index, "location"))
+                with c2:
+                    record["co_op_designation"] = st.text_input("Co-op designation", record.get("co_op_designation", ""), key=_editor_widget_key(token, "education", index, "coop"))
+                    record["expected_graduation_date"] = st.text_input("Expected graduation date", record.get("expected_graduation_date", ""), key=_editor_widget_key(token, "education", index, "expected"))
+                    record["gpa"] = st.text_input("GPA", record.get("gpa", ""), key=_editor_widget_key(token, "education", index, "gpa"))
+                record["awards"] = st.text_input("Awards (comma-separated)", _comma_text(record.get("awards", [])), key=_editor_widget_key(token, "education", index, "awards")).split(",")
+                record["relevant_coursework"] = st.text_input("Relevant coursework (comma-separated)", _comma_text(record.get("relevant_coursework", [])), key=_editor_widget_key(token, "education", index, "coursework")).split(",")
+                buttons = st.columns(3)
+                with buttons[0]:
+                    if st.button("Move up", key=_editor_widget_key(token, "education-up", index)) and index > 0:
+                        state = move_item(state, "education", index, -1)
+                        st.session_state["profile_editor_state"] = state
+                        st.rerun()
+                with buttons[1]:
+                    if st.button("Move down", key=_editor_widget_key(token, "education-down", index)) and index < len(state.get("education", [])) - 1:
+                        state = move_item(state, "education", index, 1)
+                        st.session_state["profile_editor_state"] = state
+                        st.rerun()
+                with buttons[2]:
+                    if st.button("Remove education", key=_editor_widget_key(token, "education-remove", index)):
+                        st.session_state["profile_editor_state"] = remove_education(state, index)
+                        st.rerun()
+        if st.button("Add education", key=_editor_widget_key(token, "education-add")):
+            st.session_state["profile_editor_state"] = add_education(state)
+            st.rerun()
+
+    def render_entries(kind: str, heading: str) -> None:
+        with st.expander(heading, expanded=True):
+            for index, entry in enumerate(state.get(kind, [])):
+                entry_id = entry.get("id", f"{kind}-{index}")
+                with st.container(border=True):
+                    st.markdown(f"**{heading[:-1]} {index + 1}** · `{entry_id}`")
+                    entry["title"] = st.text_input("Name or title", entry.get("title", ""), key=_editor_widget_key(token, kind, entry_id, "title"))
+                    entry["organization"] = st.text_input("Employer or organization", entry.get("organization", ""), key=_editor_widget_key(token, kind, entry_id, "organization"))
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        entry["start_date"] = st.text_input("Start date", entry.get("start_date", ""), key=_editor_widget_key(token, kind, entry_id, "start"))
+                    with c2:
+                        entry["end_date"] = st.text_input("End date", entry.get("end_date", ""), key=_editor_widget_key(token, kind, entry_id, "end"))
+                    with c3:
+                        entry["location"] = st.text_input("Location", entry.get("location", ""), key=_editor_widget_key(token, kind, entry_id, "location"))
+                    entry["subtitle"] = st.text_input("Subtitle", entry.get("subtitle", ""), key=_editor_widget_key(token, kind, entry_id, "subtitle"))
+                    entry["technology_label"] = st.text_input("Technology label", entry.get("technology_label", ""), key=_editor_widget_key(token, kind, entry_id, "technology-label"))
+                    entry["award_or_placement"] = st.text_input("Award or placement", entry.get("award_or_placement", ""), key=_editor_widget_key(token, kind, entry_id, "award"))
+                    entry["technologies"] = st.text_input("Technologies (comma-separated)", _comma_text(entry.get("technologies", [])), key=_editor_widget_key(token, kind, entry_id, "technologies")).split(",")
+                    entry["capabilities"] = st.text_input("Capabilities (comma-separated)", _comma_text(entry.get("capabilities", [])), key=_editor_widget_key(token, kind, entry_id, "capabilities")).split(",")
+                    entry["description"] = st.text_area("Description", entry.get("description", ""), key=_editor_widget_key(token, kind, entry_id, "description"))
+                    st.markdown("**Evidence statements / bullets**")
+                    for bullet_index, bullet in enumerate(list(entry.get("bullets", []))):
+                        bullet_id = bullet.get("id", f"bullet-{bullet_index}")
+                        bullet["text"] = st.text_area(f"Bullet {bullet_index + 1} · {bullet_id}", bullet.get("text", ""), key=_editor_widget_key(token, kind, entry_id, "bullet", bullet_id))
+                        bullet["source_reference"] = st.text_input("Evidence source reference", bullet.get("source_reference", "") or "", key=_editor_widget_key(token, kind, entry_id, "bullet-source", bullet_id))
+                        bullet["technologies"] = st.text_input("Evidence technologies", _comma_text(bullet.get("technologies", [])), key=_editor_widget_key(token, kind, entry_id, "bullet-tech", bullet_id)).split(",")
+                        bullet["capabilities"] = st.text_input("Evidence capabilities", _comma_text(bullet.get("capabilities", [])), key=_editor_widget_key(token, kind, entry_id, "bullet-cap", bullet_id)).split(",")
+                        bullet["outcomes"] = st.text_input("Evidence outcomes", _comma_text(bullet.get("outcomes", [])), key=_editor_widget_key(token, kind, entry_id, "bullet-outcomes", bullet_id)).split(",")
+                        bullet["confirmed"] = st.checkbox("Evidence is confirmed", bool(bullet.get("confirmed", True)), key=_editor_widget_key(token, kind, entry_id, "bullet-confirmed", bullet_id))
+                        if st.button("Remove bullet", key=_editor_widget_key(token, kind, entry_id, "bullet-remove", bullet_id)):
+                            st.session_state["profile_editor_state"] = remove_bullet(state, kind, entry_id, bullet_id)
+                            st.rerun()
+                    if st.button("Add bullet", key=_editor_widget_key(token, kind, entry_id, "bullet-add")):
+                        st.session_state["profile_editor_state"] = add_bullet(state, kind, entry_id)
+                        st.rerun()
+                    buttons = st.columns(4)
+                    with buttons[0]:
+                        if st.button("Move up", key=_editor_widget_key(token, kind, entry_id, "up")) and index > 0:
+                            st.session_state["profile_editor_state"] = move_item(state, kind, index, -1)
+                            st.rerun()
+                    with buttons[1]:
+                        if st.button("Move down", key=_editor_widget_key(token, kind, entry_id, "down")) and index < len(state.get(kind, [])) - 1:
+                            st.session_state["profile_editor_state"] = move_item(state, kind, index, 1)
+                            st.rerun()
+                    with buttons[2]:
+                        if st.button("Remove entry", key=_editor_widget_key(token, kind, entry_id, "remove")):
+                            st.session_state["profile_editor_state"] = remove_entry(state, kind, entry_id)
+                            st.rerun()
+            if st.button(f"Add {heading[:-1].lower()}", key=_editor_widget_key(token, kind, "add")):
+                st.session_state["profile_editor_state"] = add_entry(state, kind)  # type: ignore[arg-type]
+                st.rerun()
+
+    render_entries("experiences", "Experiences")
+    render_entries("projects", "Projects")
+
+    with st.expander("Technical skills", expanded=True):
+        state["declared_skills"] = st.text_input(
+            "Legacy declared skills (comma-separated)",
+            _comma_text(state.get("declared_skills", [])),
+            key=_editor_widget_key(token, "declared-skills"),
+        ).split(",")
+        for index, category in enumerate(list(state.get("technical_skills", []))):
+            category_id = category.get("id", f"category-{index}")
+            category["category"] = st.text_input("Category name", category.get("category", ""), key=_editor_widget_key(token, "category", category_id, "label"))
+            for skill_index, skill in enumerate(list(category.get("skills", []))):
+                skill_id = skill.get("id") or f"skill-{skill_index}"
+                cols = st.columns([5, 1])
+                with cols[0]:
+                    skill["value"] = st.text_input("Skill", skill.get("value", ""), key=_editor_widget_key(token, "category", category_id, "skill", skill_id))
+                with cols[1]:
+                    if st.button("Remove", key=_editor_widget_key(token, "category", category_id, "skill-remove", skill_id)):
+                        category["skills"].pop(skill_index)
+                        st.rerun()
+            if st.button("Add skill", key=_editor_widget_key(token, "category", category_id, "skill-add")):
+                category.setdefault("skills", []).append({"id": None, "value": ""})
+                st.rerun()
+            if st.button("Remove category", key=_editor_widget_key(token, "category", category_id, "remove")):
+                st.session_state["profile_editor_state"] = remove_skill_category(state, category_id)
+                st.rerun()
+        if st.button("Add skill category", key=_editor_widget_key(token, "category-add")):
+            st.session_state["profile_editor_state"] = add_skill_category(state)
+            st.rerun()
+
+    errors = st.session_state.get("profile_editor_errors", [])
+    for error in errors:
+        st.error(error)
+    if st.button("Validate and Save Profile", type="primary", key=_editor_widget_key(token, "save")):
+        try:
+            edited_profile = editor_state_to_profile(state)
+            if edited_profile.id != profile.id:
+                raise ValueError("Profile ID cannot be changed in the editor.")
+            if persist_profile_from_editor(edited_profile):
+                st.success("Validated profile saved. Downstream documents were refreshed only if the profile changed.")
+        except (ValidationError, ValueError, TypeError) as error:
+            st.session_state["profile_editor_errors"] = [str(error)]
+            st.error(f"Profile was not saved: {error}")
+
+    with st.expander("Advanced fallback: raw profile JSON"):
+        st.caption("Use this only for schema fields not yet exposed above. It uses the same domain validation and SQLite save pathway.")
+        raw = st.text_area("Raw profile JSON", key="profile_editor_raw_json", height=260)
+        if st.button("Validate and Save Raw JSON", key=_editor_widget_key(token, "raw-save")):
+            try:
+                raw_payload = json.loads(raw)
+                if not isinstance(raw_payload, dict):
+                    raise ValueError("Profile JSON must be an object.")
+                unknown = unknown_profile_fields(raw_payload)
+                if unknown:
+                    raise ValueError("Unsupported top-level fields cannot be safely round-tripped: " + ", ".join(unknown))
+                raw_profile = MasterProfile.model_validate(raw_payload)
+                if raw_profile.id != profile.id:
+                    raise ValueError("Profile ID cannot be changed in the editor.")
+                if persist_profile_from_editor(raw_profile):
+                    st.success("Validated raw profile saved.")
+            except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as error:
+                st.session_state["profile_editor_errors"] = [str(error)]
+                st.error(f"Raw profile was not saved: {error}")
+
+
+active_editor_profile = (
+    draft_output.profile
+    if draft_output is not None
+    else st.session_state.get("profile")
+)
+if active_editor_profile is not None:
+    render_profile_editor(active_editor_profile)
