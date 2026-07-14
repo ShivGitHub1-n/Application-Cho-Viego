@@ -18,6 +18,7 @@ class LlmOperation(StrEnum):
     RECOMMEND_SKILL_COMPOSITION = "recommend_skill_composition"
     REWRITE_BULLETS = "rewrite_bullets"
     SHORTEN_BULLETS = "shorten_bullets"
+    COVER_LETTER_DRAFT = "cover_letter_draft"
 
 
 class LanguageModelErrorKind(StrEnum):
@@ -271,3 +272,53 @@ class BulletShorteningOutput(StrictModel):
 
 class BulletShorteningResult(ModelResult):
     output: BulletShorteningOutput
+
+
+class CoverLetterEvidence(StrictModel):
+    evidence_id: str
+    source_text: str
+    entity_id: str
+    technologies: list[str] = Field(default_factory=list)
+    outcomes: list[str] = Field(default_factory=list)
+
+
+class CoverLetterDraftRequest(StrictModel):
+    job_title: str
+    company_name: str | None = None
+    job_description: str
+    strategy: str
+    selected_entry_ids: list[str] = Field(min_length=1)
+    selected_evidence: list[CoverLetterEvidence] = Field(min_length=1)
+    selected_skills: list[str] = Field(default_factory=list)
+    selected_coursework: list[str] = Field(default_factory=list)
+    recipient_name: str | None = None
+    recipient_title: str | None = None
+    recipient_address_lines: list[str] = Field(default_factory=list)
+    approximate_body_lines: int = Field(gt=0)
+    compact: bool = False
+    writing_constraints: list[str] = Field(default_factory=list)
+
+
+class CoverLetterDraftClaim(StrictModel):
+    text: str = Field(min_length=1, max_length=900)
+    evidence_ids: list[str] = Field(min_length=1)
+    confidence: ClaimConfidence
+    optional: bool = False
+    reduction_priority: int = Field(default=50, ge=0, le=100)
+
+
+class CoverLetterDraftParagraph(StrictModel):
+    purpose: str
+    text: str = Field(min_length=1, max_length=2400)
+    claims: list[CoverLetterDraftClaim] = Field(default_factory=list)
+    optional: bool = False
+    reduction_priority: int = Field(default=50, ge=0, le=100)
+
+
+class CoverLetterDraftOutput(StrictModel):
+    paragraphs: list[CoverLetterDraftParagraph] = Field(min_length=2)
+    rationale: str = Field(default="", max_length=800)
+
+
+class CoverLetterDraftResult(ModelResult):
+    output: CoverLetterDraftOutput

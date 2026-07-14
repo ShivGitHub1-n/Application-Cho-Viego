@@ -9,6 +9,13 @@ DERIVED_WORKFLOW_KEYS = (
     "generated_content_reviewed",
     "workflow_profile_fingerprint",
     "workflow_posting_fingerprint",
+    "cover_letter",
+    "cover_letter_reviewed",
+    "cover_letter_profile_fingerprint",
+    "cover_letter_posting_fingerprint",
+    "cover_letter_plan_fingerprint",
+    "cover_letter_evidence_fingerprint",
+    "cover_letter_recipient_fingerprint",
 )
 
 

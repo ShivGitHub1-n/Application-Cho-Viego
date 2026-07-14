@@ -1,4 +1,6 @@
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.cover_letter import CoverLetterService
+from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.infrastructure.config import Settings
@@ -19,10 +21,15 @@ def create_tailor_service(settings: Settings | None = None) -> TailorResumeServi
         enable_composition=resolved_settings.llm_enable_composition,
         enable_bullet_rewrite=resolved_settings.llm_enable_bullet_rewrite,
     )
+    cover_letter_service = CoverLetterService(
+        language_model=language_model if resolved_settings.llm_enable_cover_letter else None,
+        renderer=CoverLetterRenderer(),
+    )
     return TailorResumeService(
         DeterministicResumeOptimizer(),
         EvidenceBoundResumeWriter(),
         hybrid_services=hybrid_services,
+        cover_letter_service=cover_letter_service,
     )
 
 
@@ -40,6 +47,7 @@ def _create_language_model(settings: Settings) -> ResumeLanguageModel | None:
             settings.llm_enable_composition,
             settings.llm_enable_bullet_rewrite,
             settings.llm_enable_shortening,
+            settings.llm_enable_cover_letter,
         ]
     )
     if not enabled:

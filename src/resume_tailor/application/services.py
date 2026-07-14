@@ -1,4 +1,7 @@
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.cover_letter import CoverLetterService
+from resume_tailor.domain.cover_letter import CoverLetter, CoverLetterRecipient
+from pathlib import Path
 from resume_tailor.application.plan_validation import DeterministicPlanIntegrityValidator
 from resume_tailor.domain.models import (
     JobPosting,
@@ -19,10 +22,12 @@ class TailorResumeService:
         optimizer: ResumeOptimizer,
         resume_writer: ResumeWriter,
         hybrid_services: HybridLlmServices | None = None,
+        cover_letter_service: CoverLetterService | None = None,
     ) -> None:
         self._optimizer = optimizer
         self._resume_writer = resume_writer
         self._hybrid_services = hybrid_services
+        self._cover_letter_service = cover_letter_service
         self._plan_validator = DeterministicPlanIntegrityValidator(optimizer)
 
     def create_plan(
@@ -58,3 +63,30 @@ class TailorResumeService:
             else plan
         )
         return self._resume_writer.write(rewritten_plan, profile, approved_claim_ids)
+
+    def draft_cover_letter(
+        self,
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan,
+        *,
+        recipient: CoverLetterRecipient | None = None,
+        compact: bool = False,
+    ) -> CoverLetter:
+        if self._cover_letter_service is None:
+            raise ValueError("Cover-letter service is not configured")
+        return self._cover_letter_service.draft(
+            profile, posting, plan, recipient=recipient, compact=compact
+        )
+
+    def approve_cover_letter(
+        self, letter: CoverLetter, approved_claim_ids: set[str], *, reviewed: bool
+    ) -> CoverLetter:
+        if self._cover_letter_service is None:
+            raise ValueError("Cover-letter service is not configured")
+        return self._cover_letter_service.approve(letter, approved_claim_ids, reviewed=reviewed)
+
+    def export_cover_letter(self, letter: CoverLetter, output_directory: Path) -> CoverLetter:
+        if self._cover_letter_service is None:
+            raise ValueError("Cover-letter service is not configured")
+        return self._cover_letter_service.export(letter, output_directory)

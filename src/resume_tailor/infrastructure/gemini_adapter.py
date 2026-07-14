@@ -14,6 +14,9 @@ from resume_tailor.domain.llm_models import (
     BulletShorteningOutput,
     BulletShorteningRequest,
     BulletShorteningResult,
+    CoverLetterDraftOutput,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
     CompositionRecommendationOutput,
     CompositionRecommendationRequest,
     CompositionRecommendationResult,
@@ -122,6 +125,14 @@ class GeminiResumeLanguageModel:
             request,
             BulletShorteningOutput,
             BulletShorteningResult,
+        )
+
+    def draft_cover_letter(self, request: CoverLetterDraftRequest) -> CoverLetterDraftResult:
+        return self._generate(
+            LlmOperation.COVER_LETTER_DRAFT,
+            request,
+            CoverLetterDraftOutput,
+            CoverLetterDraftResult,
         )
 
     def close(self) -> None:

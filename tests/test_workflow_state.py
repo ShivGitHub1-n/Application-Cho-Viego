@@ -13,3 +13,15 @@ def test_invalidate_derived_workflow_clears_stale_plan_resume_and_approval() -> 
     }
     invalidate_derived_workflow(state)
     assert state == {"profile": "master", "posting": "job"}
+
+
+def test_invalidate_derived_workflow_clears_cover_letter_state() -> None:
+    state = {
+        "profile": "master",
+        "posting": "job",
+        "cover_letter": "draft",
+        "cover_letter_reviewed": True,
+        "cover_letter_plan_fingerprint": "old-plan",
+    }
+    invalidate_derived_workflow(state)
+    assert state == {"profile": "master", "posting": "job"}

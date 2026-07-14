@@ -1,0 +1,129 @@
+{
+  "id": "profile-completeness-fixture",
+  "user_id": "fixture-user",
+  "version": 1,
+  "display_name": "Example Candidate",
+  "contact": {
+    "email": "candidate@example.test",
+    "location": "Toronto, ON"
+  },
+  "education": [
+    {
+      "school": "Example Institute",
+      "program": "Bachelor of Engineering",
+      "start_date": "September 2022",
+      "expected_graduation_date": "April 2026",
+      "location": "Toronto, ON",
+      "awards": ["Dean's List"],
+      "relevant_coursework": ["Embedded Systems", "Controls"]
+    }
+  ],
+  "experiences": [
+    {
+      "id": "experience-one",
+      "title": "Embedded Systems Intern",
+      "kind": "experience",
+      "organization": "Example Robotics",
+      "start_date": "May 2024",
+      "end_date": "August 2024",
+      "location": "Toronto, ON"
+    },
+    {
+      "id": "experience-two",
+      "title": "Software Engineering Intern",
+      "kind": "experience",
+      "organization": "Example Software",
+      "start_date": "May 2023",
+      "end_date": "August 2023",
+      "location": "Waterloo, ON"
+    },
+    {
+      "id": "experience-three",
+      "title": "Research Assistant",
+      "kind": "experience",
+      "organization": "Example Institute Lab",
+      "start_date": "September 2023",
+      "end_date": "April 2024",
+      "location": "Toronto, ON"
+    },
+    {
+      "id": "experience-four",
+      "title": "Engineering Assistant",
+      "kind": "experience",
+      "organization": "Example Manufacturing",
+      "start_date": "May 2022",
+      "end_date": "August 2022"
+    }
+  ],
+  "projects": [
+    {
+      "id": "project-one",
+      "title": "Sensor Platform",
+      "kind": "project",
+      "technology_label": "Python, C++"
+    },
+    {
+      "id": "project-two",
+      "title": "Automation Challenge",
+      "kind": "project",
+      "technology_label": "ROS 2",
+      "award_or_placement": "3rd Place, Example Hacks"
+    },
+    {
+      "id": "project-three",
+      "title": "Digital Monitor",
+      "kind": "project",
+      "technology_label": "JavaScript"
+    }
+  ],
+  "technical_skills": [
+    {"category": "Languages", "values": ["Python", "C++"]},
+    {"category": "Frameworks", "values": ["ROS 2", "FastAPI"]},
+    {"category": "Tools", "values": ["Git", "Docker"]},
+    {"category": "Hardware", "values": ["STM32", "SPI"]}
+  ],
+  "evidence": [
+    {
+      "id": "evidence-one",
+      "entity_id": "experience-one",
+      "source_text": "Built and tested an embedded sensor interface.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-two",
+      "entity_id": "experience-two",
+      "source_text": "Automated a software reporting workflow.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-three",
+      "entity_id": "experience-three",
+      "source_text": "Evaluated a research prototype.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-four",
+      "entity_id": "experience-four",
+      "source_text": "Supported an engineering process.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-project-one",
+      "entity_id": "project-one",
+      "source_text": "Created a sensor platform prototype.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-project-two",
+      "entity_id": "project-two",
+      "source_text": "Built an automation challenge project.",
+      "confirmed": true
+    },
+    {
+      "id": "evidence-project-three",
+      "entity_id": "project-three",
+      "source_text": "Developed a digital monitoring prototype.",
+      "confirmed": true
+    }
+  ]
+}
