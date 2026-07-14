@@ -146,8 +146,9 @@ def test_education_coursework_is_canonical_and_cannot_diverge() -> None:
         )
 
 
-def test_manual_profile_is_canonical_complete_and_evidence_valid() -> None:
-    payload = json.loads(Path("manual-test/profile.json").read_text(encoding="utf-8"))
+def test_fixture_profile_is_canonical_complete_and_evidence_valid() -> None:
+    fixture_path = Path(__file__).parent / "fixtures" / "profile_completeness.json"
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     profile = MasterProfile.model_validate(payload)
     report = validate_master_profile_completeness(profile)
 
@@ -159,7 +160,7 @@ def test_manual_profile_is_canonical_complete_and_evidence_valid() -> None:
     assert all(item.organization and item.start_date and item.end_date for item in profile.experiences)
     assert sum(bool(item.location) for item in profile.experiences) == 3
     assert all(item.technology_label for item in profile.projects)
-    assert profile.projects[1].award_or_placement == "3rd Place, MPC Hacks"
+    assert profile.projects[1].award_or_placement == "3rd Place, Example Hacks"
     assert report.evidence_integrity.all_evidence_references_valid is True
     assert report.evidence_integrity.orphan_evidence_ids == []
     assert report.evidence_integrity.duplicate_entry_ids == []

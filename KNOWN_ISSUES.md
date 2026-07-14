@@ -48,4 +48,4 @@ Non-blocking formatting refinement remains deferred under the frozen-layout poli
 
 ## Remaining product work
 
-The remaining product work includes URL/web research, structured editing, cover letters, authentication, deployment, application tracking, and recommendations.
+The remaining product work includes URL/web research, structured editing, authentication, deployment, application tracking, and recommendations. Cover-letter quality and broader role-family validation remain areas for follow-up review.

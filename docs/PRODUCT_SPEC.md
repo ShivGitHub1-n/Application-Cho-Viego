@@ -18,4 +18,4 @@ Resume Tailor helps job seekers create one-page, role-specific resumes that rema
 
 ## Later-stage scope
 
-Cover letters, authentication, multi-user deployment, application tracking, and recommendations are later-stage capabilities.
+Authentication, multi-user deployment, application tracking, and recommendations are later-stage capabilities. The first evidence-grounded cover-letter workflow is part of the MVP.

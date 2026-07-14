@@ -33,6 +33,10 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
         ),
         LlmOperation.REWRITE_BULLETS: "Tailor approved evidence into concise bullets with materially new wording when useful.",
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
+        LlmOperation.COVER_LETTER_DRAFT: (
+            "Draft a concise, natural, evidence-grounded cover letter from the supplied selected "
+            "evidence and existing tailoring strategy. Return paragraph claims linked to evidence IDs."
+        ),
     }[operation]
     payload = json.dumps(request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
     return f"TASK:\n{task}\n\nINPUT:\n{payload}"
