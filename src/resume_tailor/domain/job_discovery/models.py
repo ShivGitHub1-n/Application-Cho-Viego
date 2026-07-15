@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -79,3 +80,66 @@ class JobSearchPreferenceSuggestion(BaseModel):
     work_arrangement_mode: WorkArrangementPreferenceMode = WorkArrangementPreferenceMode.PREFERRED
     preferred_companies: list[str]
     rationale: list[str]
+
+
+class ProfileCapabilityEvidence(BaseModel):
+    source_type: Literal[
+        "confirmed_evidence",
+        "resume_item",
+        "reviewed_skill",
+        "coursework",
+        "education",
+        "title",
+    ]
+    source_id: str
+    source_text: str
+    demonstrated: bool
+
+
+class ProfileCapabilityIndex(BaseModel):
+    terms: dict[str, list[ProfileCapabilityEvidence]]
+
+
+class RequirementCategory(StrEnum):
+    TECHNOLOGY = "technology"
+    EXPERIENCE = "experience"
+    EDUCATION = "education"
+    CERTIFICATION = "certification"
+    AUTHORIZATION = "authorization"
+    LOCATION = "location"
+    WORK_ARRANGEMENT = "work_arrangement"
+    RESPONSIBILITY = "responsibility"
+    ROLE = "role"
+
+
+class RequirementImportance(StrEnum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+    UNKNOWN = "unknown"
+
+
+class JobRequirement(BaseModel):
+    term: str
+    category: RequirementCategory
+    importance: RequirementImportance
+    source_text: str
+    source_start: int
+    source_end: int
+
+
+class JobRequirementSignals(BaseModel):
+    required_terms: list[str] = []
+    preferred_terms: list[str] = []
+    unknown_terms: list[str] = []
+    responsibilities: list[str] = []
+    experience_years: int | None = None
+    degree_requirements: list[str] = []
+    graduation_requirements: list[str] = []
+    certification_requirements: list[str] = []
+    work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
+    authorization_language: list[str] = []
+    role_signals: list[str] = []
+    job_level: JobLevel = JobLevel.UNKNOWN
+    location: NormalizedLocation | None = None
+    requirements: list[JobRequirement] = []
+    material_gaps: list[str] = []
