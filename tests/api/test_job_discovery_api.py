@@ -7,11 +7,17 @@ from fastapi.testclient import TestClient
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle, get_job_discovery_services
 from resume_tailor.api.main import app
 from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
+from resume_tailor.application.job_discovery.saved import (
+    DiscoveredJobNotFoundError,
+    SavedJobNotFoundError,
+)
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
     DiscoveryRunStatus,
     JobSearchPreferences,
     JobSearchPreferenceSuggestion,
+    SavedJob,
+    SavedJobAvailability,
     WorkArrangement,
 )
 from resume_tailor.domain.models import RoleFamily
@@ -76,6 +82,19 @@ def _run(status: DiscoveryRunStatus = DiscoveryRunStatus.COMPLETED) -> Discovery
     )
 
 
+def _saved_job() -> SavedJob:
+    from tests.application.job_discovery.test_saved_jobs import _job
+
+    return SavedJob(
+        id="saved-1",
+        user_id="local-user",
+        job_id="job-1",
+        availability=SavedJobAvailability.UNKNOWN,
+        saved_at=WHEN,
+        posting_snapshot=_job("Original description."),
+    )
+
+
 class FakeSuggest:
     def __init__(self, error: Exception | None = None) -> None:
         self.calls = []
@@ -125,6 +144,38 @@ class FakeRuns:
         return self.run
 
 
+class FakeSave:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls = []
+        self.error = error
+        self.saved = _saved_job()
+
+    def save(self, user_id: str, job_id: str, *, saved_at: datetime):
+        self.calls.append((user_id, job_id, saved_at))
+        if self.error:
+            raise self.error
+        return self.saved
+
+    def list(self, user_id: str):
+        self.calls.append(("list", user_id))
+        return [self.saved] if user_id == self.saved.user_id else []
+
+
+class FakeCheckAvailability:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls = []
+        self.error = error
+        self.saved = _saved_job().model_copy(
+            update={"availability": SavedJobAvailability.AVAILABLE}
+        )
+
+    def check(self, user_id: str, saved_id: str, *, checked_at: datetime):
+        self.calls.append((user_id, saved_id, checked_at))
+        if self.error:
+            raise self.error
+        return self.saved
+
+
 def _bundle(
     *,
     run: DiscoveryRun | None = None,
@@ -136,6 +187,8 @@ def _bundle(
         current_preferences=FakeCurrentPreferences(),
         refresh=FakeRefresh(run or _run(status)),
         runs=FakeRuns(run or _run(status)),
+        save=FakeSave(),
+        check_saved_availability=FakeCheckAvailability(),
     )
 
 
@@ -150,7 +203,9 @@ def test_router_is_included_with_exact_supportable_paths() -> None:
     assert ("/job-discovery/preferences/confirm", "POST") in routes
     assert ("/job-discovery/refresh", "POST") in routes
     assert ("/job-discovery/runs/{run_id}", "GET") in routes
-    assert ("/job-discovery/saved", "POST") not in routes
+    assert ("/job-discovery/saved", "POST") in routes
+    assert ("/job-discovery/saved", "GET") in routes
+    assert ("/job-discovery/saved/{saved_id}/availability", "POST") in routes
 
 
 def test_api_uses_overridable_service_dependency() -> None:
@@ -270,3 +325,41 @@ def test_refresh_request_validation_is_standard_fastapi_validation() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_save_list_and_availability_routes_delegate_to_services_with_typed_shapes() -> None:
+    bundle = _bundle()
+    app.dependency_overrides[get_job_discovery_services] = lambda: bundle
+    try:
+        client = TestClient(app)
+        saved = client.post("/job-discovery/saved", json={"job_id": "job-1"})
+        listed = client.get("/job-discovery/saved")
+        checked = client.post("/job-discovery/saved/saved-1/availability")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert saved.status_code == 200
+    assert saved.json().keys() == {"saved_job"}
+    assert listed.status_code == 200
+    assert listed.json().keys() == {"saved_jobs"}
+    assert checked.status_code == 200
+    assert checked.json().keys() == {"saved_job"}
+    assert bundle.save.calls[0][0:2] == ("local-user", "job-1")
+    assert bundle.save.calls[1] == ("list", "local-user")
+    assert bundle.check_saved_availability.calls[0][0:2] == ("local-user", "saved-1")
+
+
+def test_saved_routes_map_unknown_resources_and_ownership_failures_to_404() -> None:
+    bundle = _bundle()
+    bundle.save = FakeSave(DiscoveredJobNotFoundError("missing"))
+    bundle.check_saved_availability = FakeCheckAvailability(SavedJobNotFoundError("other user"))
+    app.dependency_overrides[get_job_discovery_services] = lambda: bundle
+    try:
+        client = TestClient(app)
+        unknown_job = client.post("/job-discovery/saved", json={"job_id": "missing"})
+        ownership = client.post("/job-discovery/saved/saved-1/availability")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert unknown_job.status_code == 404
+    assert ownership.status_code == 404

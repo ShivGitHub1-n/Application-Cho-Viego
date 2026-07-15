@@ -32,11 +32,28 @@
 
 ## Phase 6 — Job Discovery
 
-- Add compliant job-source connectors, fit ranking, and direct handoff to tailoring.
+- Completed MVP: provider-neutral Greenhouse and Lever connectors, offline
+  fixture coverage, deterministic normalization, deduplication, eligibility,
+  fit scoring, explicit match labels, refresh orchestration, SQLite discovery
+  persistence, typed FastAPI delivery, thin Streamlit discovery delivery, and
+  immutable saved-job snapshots with manual availability checks.
+- Production source coverage remains empty by default. Employers are added
+  only through explicitly approved curated registry configuration; unsupported
+  sources are not scraped.
+- Live source checks remain opt-in under the `job_source_integration` pytest
+  marker and require explicit approved configuration.
 
 ## Phase 7 — Application Management
 
 - Add application records, version history, tracking, analytics, and interview preparation.
+
+## Deferred job-discovery follow-up
+
+- Keep deferred: background scheduling, automatic application submission,
+  application-status tracking, authentication, LinkedIn or Indeed scraping,
+  arbitrary career-page scraping, additional ATS providers, paid search
+  providers, geocoding and radius calculations, Gemini job-fit analysis, and
+  model-assisted finalist explanations.
 
 ## Architecture evolution
 

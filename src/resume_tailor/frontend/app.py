@@ -6,7 +6,11 @@ from tempfile import TemporaryDirectory
 import streamlit as st
 from pydantic import ValidationError
 
-from resume_tailor.application.job_intake import InvalidJobDescriptionError, build_job_posting, normalize_job_description
+from resume_tailor.application.job_intake import (
+    InvalidJobDescriptionError,
+    build_job_posting,
+    normalize_job_description,
+)
 from resume_tailor.application.profile_editor import (
     add_bullet,
     add_education,
@@ -26,11 +30,26 @@ from resume_tailor.application.workflow_state import invalidate_derived_workflow
 from resume_tailor.domain.cover_letter import CoverLetterRecipient
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import MasterProfile, StructuredResume, TemplateConstraints
-from resume_tailor.infrastructure.dependencies import create_profile_repository, create_tailor_service
+from resume_tailor.frontend.job_discovery_view import (
+    ApplicationJobDiscoveryDeliveryApi,
+    render_job_discovery_view,
+)
+from resume_tailor.infrastructure.config import Settings
+from resume_tailor.infrastructure.dependencies import (
+    create_job_discovery_services,
+    create_profile_repository,
+    create_tailor_service,
+)
+from resume_tailor.infrastructure.job_discovery_sqlite import SQLiteDiscoveredJobRepository
+from resume_tailor.infrastructure.profile_repository import (
+    CorruptStoredProfileError,
+    ProfileStoreError,
+)
 from resume_tailor.infrastructure.rendering import ManagedResumeRenderer, PageOverflowError
-from resume_tailor.infrastructure.profile_repository import CorruptStoredProfileError, ProfileStoreError
-from resume_tailor.infrastructure.resume_extraction import ResumeExtractionError, extract_resume_text
-
+from resume_tailor.infrastructure.resume_extraction import (
+    ResumeExtractionError,
+    extract_resume_text,
+)
 
 st.set_page_config(page_title="Resume Tailor", page_icon="📄", layout="wide")
 st.title("Resume Tailor")
@@ -654,3 +673,19 @@ active_editor_profile = (
 )
 if active_editor_profile is not None:
     render_profile_editor(active_editor_profile)
+
+
+if active_editor_profile is not None:
+    _job_discovery_settings = Settings()
+    _job_discovery_services = create_job_discovery_services(_job_discovery_settings)
+    _job_discovery_database = (
+        _job_discovery_settings.app_data_directory
+        / _job_discovery_settings.profile_store_filename
+    )
+    render_job_discovery_view(
+        ApplicationJobDiscoveryDeliveryApi(
+            _job_discovery_services,
+            [active_editor_profile],
+            SQLiteDiscoveredJobRepository(_job_discovery_database),
+        )
+    )

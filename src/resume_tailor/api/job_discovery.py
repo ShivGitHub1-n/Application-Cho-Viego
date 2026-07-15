@@ -14,6 +14,10 @@ from resume_tailor.application.job_discovery.queries import (
     DiscoveryRunNotFoundError,
     PreferencesNotFoundError,
 )
+from resume_tailor.application.job_discovery.saved import (
+    DiscoveredJobNotFoundError,
+    SavedJobNotFoundError,
+)
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
     JobRecommendation,
@@ -180,6 +184,60 @@ def get_discovery_run(
         services.close()
 
 
+@router.post("/saved", response_model=SavedJobResponse)
+def save_job(
+    request: SaveJobRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> SavedJobResponse:
+    if services.save is None:
+        raise HTTPException(status_code=503, detail="Saved-job persistence is unavailable.")
+    try:
+        try:
+            saved = services.save.save(
+                "local-user",
+                request.job_id,
+                saved_at=datetime.now(UTC),
+            )
+        except DiscoveredJobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Discovered job was not found.") from error
+        return SavedJobResponse(saved_job=saved)
+    finally:
+        services.close()
+
+
+@router.get("/saved", response_model=SavedJobsResponse)
+def list_saved_jobs(
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> SavedJobsResponse:
+    if services.save is None:
+        raise HTTPException(status_code=503, detail="Saved-job persistence is unavailable.")
+    try:
+        return SavedJobsResponse(saved_jobs=services.save.list("local-user"))
+    finally:
+        services.close()
+
+
+@router.post("/saved/{saved_id}/availability", response_model=AvailabilityResponse)
+def check_saved_job_availability(
+    saved_id: str = Path(min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> AvailabilityResponse:
+    if services.check_saved_availability is None:
+        raise HTTPException(status_code=503, detail="Saved-job availability is unavailable.")
+    try:
+        try:
+            saved = services.check_saved_availability.check(
+                "local-user",
+                saved_id,
+                checked_at=datetime.now(UTC),
+            )
+        except SavedJobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Saved job was not found.") from error
+        return AvailabilityResponse(saved_job=saved)
+    finally:
+        services.close()
+
+
 __all__ = [
     "AvailabilityResponse",
     "ConfirmPreferencesRequest",
@@ -192,7 +250,10 @@ __all__ = [
     "SavedJobResponse",
     "SavedJobsResponse",
     "get_discovery_run",
+    "check_saved_job_availability",
+    "list_saved_jobs",
     "refresh_discovery",
     "router",
+    "save_job",
     "suggest_preferences",
 ]

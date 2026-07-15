@@ -11,6 +11,10 @@ from resume_tailor.application.job_discovery.queries import (
     GetDiscoveryRunService,
 )
 from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
+from resume_tailor.application.job_discovery.saved import (
+    CheckSavedJobAvailabilityService,
+    SaveJobService,
+)
 from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.job_discovery.models import ConnectorType, SupportedJobSource
@@ -24,6 +28,7 @@ from resume_tailor.infrastructure.job_discovery_sqlite import (
     SQLiteDiscoveryRunRepository,
     SQLiteJobRecommendationRepository,
     SQLiteJobSearchPreferencesRepository,
+    SQLiteSavedJobRepository,
     SQLiteSupportedJobSourceRepository,
 )
 from resume_tailor.infrastructure.job_sources.greenhouse import GreenhouseConnector
@@ -89,6 +94,7 @@ def create_job_discovery_services(
     job_repository = SQLiteDiscoveredJobRepository(database)
     recommendation_repository = SQLiteJobRecommendationRepository(database)
     run_repository = SQLiteDiscoveryRunRepository(database)
+    saved_job_repository = SQLiteSavedJobRepository(database)
     source_repository = SQLiteSupportedJobSourceRepository(database)
 
     registry_configuration = resolved_settings.job_discovery_source_registry_path
@@ -97,6 +103,9 @@ def create_job_discovery_services(
     )
     for source in configured_sources:
         source_repository.save(source)
+    configured_source_repository = _ConfiguredSourceRepository(
+        configured_sources if resolved_settings.job_discovery_enabled else []
+    )
 
     client = httpx.Client()
     greenhouse = GreenhouseConnector(
@@ -121,9 +130,7 @@ def create_job_discovery_services(
             profiles=profiles,
             preferences=preference_repository,
             sources=(
-                _ConfiguredSourceRepository(configured_sources)
-                if resolved_settings.job_discovery_enabled
-                else _ConfiguredSourceRepository([])
+                configured_source_repository
             ),
             connectors={
                 ConnectorType.GREENHOUSE: greenhouse,
@@ -139,6 +146,12 @@ def create_job_discovery_services(
         ),
         current_preferences=GetCurrentJobSearchPreferencesService(preference_repository),
         runs=GetDiscoveryRunService(run_repository, recommendation_repository),
+        save=SaveJobService(job_repository, saved_job_repository),
+        check_saved_availability=CheckSavedJobAvailabilityService(
+            saved_job_repository,
+            configured_source_repository,
+            {ConnectorType.GREENHOUSE: greenhouse, ConnectorType.LEVER: lever},
+        ),
         close_resources=client.close,
     )
 
