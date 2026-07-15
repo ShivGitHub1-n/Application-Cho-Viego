@@ -239,6 +239,13 @@ def test_successful_one_source_refresh_persists_jobs_recommendations_and_run() -
     assert run.returned_count == 1
     assert len(jobs.jobs) == 1
     assert [item.rank for item in recommendations.list_for_run(run.id)] == [1]
+    recommendation = recommendations.list_for_run(run.id)[0]
+    assert (
+        recommendation.user_id,
+        recommendation.profile_id,
+        recommendation.profile_version,
+        recommendation.preference_version,
+    ) == ("u1", "p1", 3, 5)
     assert runs.created[0].status is DiscoveryRunStatus.RUNNING
     assert runs.completed[-1] == run
     assert connector.calls == [(source.source_id, WHEN)]

@@ -344,6 +344,10 @@ class DeduplicationResult(BaseModel):
 class JobRecommendation(BaseModel):
     id: str
     run_id: str
+    user_id: str
+    profile_id: str
+    profile_version: int | None
+    preference_version: int
     job_id: str
     group: RecommendationGroup
     primary_role_family: RoleFamily | None

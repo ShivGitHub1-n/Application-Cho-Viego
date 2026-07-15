@@ -204,6 +204,24 @@ def test_transport_failure_maps_to_transport_error() -> None:
         GreenhouseConnector(client).fetch(_source(), fetched_at=WHEN)
 
 
+def test_retryable_transport_failure_is_retried_with_a_bounded_attempt_count() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise httpx.ConnectError("offline", request=request)
+        return httpx.Response(200, json=_fixture("greenhouse_valid.json"), request=request)
+
+    result = GreenhouseConnector(
+        httpx.Client(transport=httpx.MockTransport(handler))
+    ).fetch(_source(), fetched_at=WHEN)
+
+    assert result.records
+    assert calls == 3
+
+
 def test_availability_returns_verified_active_with_high_confidence() -> None:
     payload = {
         "id": 100,

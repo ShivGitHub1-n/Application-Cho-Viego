@@ -50,9 +50,9 @@ class GetDiscoveryRunService:
         self._runs = runs
         self._recommendations = recommendations
 
-    def get(self, run_id: str) -> DiscoveryRunDetails:
+    def get(self, user_id: str, run_id: str) -> DiscoveryRunDetails:
         run = self._runs.get(run_id)
-        if run is None:
+        if run is None or run.user_id != user_id:
             raise DiscoveryRunNotFoundError(f"Discovery run {run_id!r} was not found.")
         return DiscoveryRunDetails(
             run=run,

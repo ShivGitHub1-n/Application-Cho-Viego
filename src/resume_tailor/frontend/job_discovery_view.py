@@ -71,7 +71,7 @@ class ApplicationJobDiscoveryDeliveryApi:
             "local-user", profile_id, preferences, started_at=datetime.now(UTC)
         )
         details = (
-            self._services.runs.get(run.id)
+            self._services.runs.get(run.user_id, run.id)
             if self._services.runs is not None
             else None
         )

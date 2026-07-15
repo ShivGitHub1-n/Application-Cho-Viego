@@ -139,8 +139,10 @@ class FakeRuns:
         self.run = run
         self.calls = []
 
-    def get(self, run_id: str):
-        self.calls.append(run_id)
+    def get(self, user_id: str, run_id: str):
+        self.calls.append((user_id, run_id))
+        if self.run is not None and self.run.user_id != user_id:
+            return None
         return self.run
 
 
@@ -300,11 +302,18 @@ def test_run_retrieval_success_and_unknown_run() -> None:
     bundle = _bundle()
     app.dependency_overrides[get_job_discovery_services] = lambda: bundle
     try:
-        response = TestClient(app).get("/job-discovery/runs/run-1")
+        response = TestClient(app).get("/job-discovery/runs/run-1?user_id=u1")
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["run"]["id"] == "run-1"
+
+    app.dependency_overrides[get_job_discovery_services] = lambda: _bundle()
+    try:
+        forbidden = TestClient(app).get("/job-discovery/runs/run-1?user_id=other-user")
+    finally:
+        app.dependency_overrides.clear()
+    assert forbidden.status_code == 404
 
     unknown = _bundle(run=None)
     unknown.runs.run = None

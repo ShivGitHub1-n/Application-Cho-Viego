@@ -94,6 +94,10 @@ def _recommendation(run_id: str, job_id: str = "job-1", rank: int = 1) -> JobRec
     return JobRecommendation(
         id=f"rec-{run_id}-{job_id}",
         run_id=run_id,
+        user_id="u1",
+        profile_id="p1",
+        profile_version=3,
+        preference_version=1,
         job_id=job_id,
         group=RecommendationGroup.PRIMARY,
         primary_role_family=RoleFamily.SOFTWARE_DATA_ENGINEERING,

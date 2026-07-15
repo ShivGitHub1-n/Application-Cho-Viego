@@ -383,4 +383,4 @@ class DeterministicExplanationBuilder:
             *education_reasons,
             *preferred_company_reasons,
         ]
-        return reasons, [gap[3] for gap in gaps[:5]]
+        return reasons, [gap[3] for gap in gaps[:3]]

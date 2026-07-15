@@ -20,12 +20,21 @@ def request_json(
     timeout: float,
     params: dict[str, Any] | None = None,
 ) -> Any:
-    try:
-        response = client.get(url, params=params, timeout=timeout)
-    except httpx.TimeoutException as exc:
-        raise JobSourceTransportError("job source request timed out") from exc
-    except httpx.RequestError as exc:
-        raise JobSourceTransportError("job source request failed") from exc
+    for attempt in range(3):
+        try:
+            response = client.get(url, params=params, timeout=timeout)
+        except httpx.TimeoutException as exc:
+            if attempt == 2:
+                raise JobSourceTransportError("job source request timed out") from exc
+            continue
+        except httpx.RequestError as exc:
+            if attempt == 2:
+                raise JobSourceTransportError("job source request failed") from exc
+            continue
+
+        if response.status_code >= 500 and attempt < 2:
+            continue
+        break
 
     if response.status_code in (401, 403):
         raise JobSourceAuthenticationError("job source rejected the request")
