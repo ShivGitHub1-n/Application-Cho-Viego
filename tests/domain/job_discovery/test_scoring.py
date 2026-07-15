@@ -12,6 +12,7 @@ import pytest
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
     JobLevel,
+    JobRequirementSignals,
     JobSearchPreferences,
     MatchLabel,
     ProfileCapabilityEvidence,
@@ -251,6 +252,22 @@ def test_missing_description_is_provisional_and_capped() -> None:
     assert result.provisional is True
     assert result.total <= 54
     assert result.label is MatchLabel.PROVISIONAL
+
+
+def test_material_gaps_are_limited_to_three() -> None:
+    job = _job().model_copy(
+        update={
+            "requirements": JobRequirementSignals(
+                required_terms=["cuda", "go", "rust", "kubernetes"],
+            )
+        }
+    )
+
+    _, gaps = DeterministicExplanationBuilder().reasons_and_gaps(
+        job, job.requirements, ProfileCapabilityIndex(terms={})
+    )
+
+    assert len(gaps) == 3
 
 
 def test_scoring_is_pure_and_hash_seed_deterministic() -> None:

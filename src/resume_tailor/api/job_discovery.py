@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel
 
 from resume_tailor.api.dependencies import (
@@ -146,7 +146,7 @@ def refresh_discovery(
             raise HTTPException(status_code=404, detail="Preferences were not found.") from error
         if services.runs is None:
             return RefreshDiscoveryResponse(run=run, recommendations=[])
-        details = services.runs.get(run.id)
+        details = services.runs.get(request.user_id, run.id)
         if details is None or isinstance(details, DiscoveryRun):
             return RefreshDiscoveryResponse(run=run, recommendations=[])
         return RefreshDiscoveryResponse(
@@ -163,13 +163,14 @@ def refresh_discovery(
 )
 def get_discovery_run(
     run_id: str = Path(min_length=1),
+    user_id: str = Query(default="local-user", min_length=1),
     services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
 ) -> RefreshDiscoveryResponse:
     if services.runs is None:
         raise HTTPException(status_code=503, detail="Discovery run retrieval is unavailable.")
     try:
         try:
-            details = services.runs.get(run_id)
+            details = services.runs.get(user_id, run_id)
         except DiscoveryRunNotFoundError as error:
             raise HTTPException(status_code=404, detail="Discovery run was not found.") from error
         if details is None:
