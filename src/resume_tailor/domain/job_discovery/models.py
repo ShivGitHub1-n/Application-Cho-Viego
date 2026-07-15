@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
 from resume_tailor.domain.models import RoleFamily
 
@@ -71,6 +71,20 @@ class EligibilityReasonCode(StrEnum):
 class RecommendationGroup(StrEnum):
     PRIMARY = "primary"
     FALLBACK = "fallback"
+
+
+class DiscoveryRunStatus(StrEnum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_WARNINGS = "completed_with_warnings"
+    FAILED_ALL_SOURCES = "failed_all_sources"
+    NO_SOURCES_CONFIGURED = "no_sources_configured"
+
+
+class SavedJobAvailability(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
 
 
 class JobLevel(StrEnum):
@@ -339,3 +353,70 @@ class JobRecommendation(BaseModel):
     gaps: list[str] = Field(default_factory=list)
     rank: int
     created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_must_be_timezone_aware(cls, value: datetime) -> datetime:
+        _require_timezone_aware(value, "created_at")
+        return value
+
+
+class SavedJob(BaseModel):
+    id: str
+    user_id: str
+    job_id: str
+    availability: SavedJobAvailability
+    saved_at: datetime
+    checked_at: datetime | None = None
+    snapshot_schema_version: int = 1
+    posting_snapshot: DiscoveredJob
+
+    @field_validator("saved_at", "checked_at")
+    @classmethod
+    def _saved_timestamps_must_be_timezone_aware(
+        cls, value: datetime | None
+    ) -> datetime | None:
+        if value is not None:
+            _require_timezone_aware(value, "saved job timestamp")
+        return value
+
+
+class DiscoveryRun(BaseModel):
+    id: str
+    user_id: str
+    profile_id: str
+    profile_version: int | None = None
+    preference_version: int
+    status: DiscoveryRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    sources_attempted: list[str] = Field(default_factory=list)
+    source_warnings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    failed_sources: list[str] = Field(default_factory=list)
+    source_count: int = 0
+    retrieved_count: int = 0
+    normalized_count: int = 0
+    duplicate_count: int = 0
+    eligibility_filtered_count: int = 0
+    scored_count: int = 0
+    returned_count: int = 0
+    record_count: int = 0
+    warning_count: int = 0
+    model_assisted: bool = False
+    model_call_count: int = 0
+    error_messages: list[str] = Field(default_factory=list)
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def _run_timestamps_must_be_timezone_aware(
+        cls, value: datetime | None
+    ) -> datetime | None:
+        if value is not None:
+            _require_timezone_aware(value, "discovery run timestamp")
+        return value
+
+
+def _require_timezone_aware(value: datetime, field_name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be timezone-aware")

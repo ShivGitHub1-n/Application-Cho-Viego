@@ -25,5 +25,13 @@ class Settings(BaseSettings):
     llm_enable_shortening: bool = False
     llm_enable_cover_letter: bool = True
     llm_deterministic_fallback: bool = True
+    job_discovery_enabled: bool = True
+    job_discovery_source_registry_path: Path | None = None
+    job_discovery_greenhouse_api_base_url: str = "https://boards-api.greenhouse.io"
+    job_discovery_lever_global_api_base_url: str = "https://api.lever.co"
+    job_discovery_lever_eu_api_base_url: str = "https://api.eu.lever.co"
+    job_discovery_source_timeout_seconds: float = 15.0
+    job_discovery_source_page_size: int = 100
+    job_discovery_source_max_pages: int = 20
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

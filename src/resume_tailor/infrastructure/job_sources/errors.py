@@ -4,25 +4,13 @@ from typing import Any
 
 import httpx
 
-
-class JobSourceEnvelopeError(Exception):
-    """The provider returned a successful response with an invalid envelope."""
-
-
-class JobSourceTransportError(Exception):
-    """The provider could not be reached or returned an unexpected status."""
-
-
-class JobSourceRateLimitedError(JobSourceTransportError):
-    """The provider rejected the request because of rate limiting."""
-
-
-class JobSourceAuthenticationError(JobSourceTransportError):
-    """The provider rejected the request for authentication or access reasons."""
-
-
-class JobSourceNotFoundError(JobSourceTransportError):
-    """The provider reported that the requested source or posting was absent."""
+from resume_tailor.ports.job_discovery import (
+    JobSourceAuthenticationError,
+    JobSourceEnvelopeError,
+    JobSourceNotFoundError,
+    JobSourceRateLimitedError,
+    JobSourceTransportError,
+)
 
 
 def request_json(
