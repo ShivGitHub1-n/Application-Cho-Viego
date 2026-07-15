@@ -1,0 +1,24 @@
+{
+  "jobs": [
+    {
+      "id": 100,
+      "title": "Perception Engineer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/gh-100",
+      "updated_at": "2026-07-14T10:00:00Z",
+      "location": {"name": "Toronto, ON, Canada"},
+      "content": "Build perception systems with Python. Hybrid role.",
+      "workplace_type": "hybrid",
+      "requisition_id": "REQ-100"
+    },
+    {
+      "id": 200,
+      "title": "Software Engineer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/gh-200",
+      "updated_at": "2026-07-13T10:00:00Z",
+      "location": {"name": "Canada"},
+      "content": "Develop reliable services.",
+      "workplace_type": "remote"
+    }
+  ],
+  "meta": {"total": 2}
+}

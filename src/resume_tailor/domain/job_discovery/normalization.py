@@ -59,8 +59,7 @@ def _canonical_url(value: str, source: SupportedJobSource) -> str:
     parsed = urlsplit(_normalized_space(value))
     host = (parsed.hostname or "").casefold()
     scheme = parsed.scheme.casefold()
-    source_host = urlsplit(str(source.official_base_url)).hostname or ""
-    if scheme == "http" and (host in _SAFE_HTTPS_HOSTS or host == source_host.casefold()):
+    if scheme == "http" and host in _SAFE_HTTPS_HOSTS:
         scheme = "https"
     netloc = host
     if parsed.port is not None and parsed.port not in (80, 443):
@@ -130,9 +129,7 @@ class JobNormalizer:
             role_family=role_classification.primary_family,
             role_family_scores={
                 family: role_classification.family_scores[family]
-                for family in sorted(
-                    role_classification.family_scores, key=lambda item: item.value
-                )
+                for family in sorted(role_classification.family_scores, key=lambda item: item.value)
             },
             requirements=requirement_signals,
             posted_at=record.posted_at,
@@ -140,7 +137,7 @@ class JobNormalizer:
             application_deadline=record.application_deadline,
             completeness=completeness,
             fetched_at=fetched_at,
-        requisition_id=_requisition_id(record),
+            requisition_id=_requisition_id(record),
             normalized_title=normalize_job_term(title),
             normalized_company_name=normalize_job_term(company_name),
             canonical_description_hash=_description_hash(description),

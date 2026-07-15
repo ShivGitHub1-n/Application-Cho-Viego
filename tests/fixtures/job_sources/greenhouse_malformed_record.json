@@ -1,0 +1,17 @@
+{
+  "jobs": [
+    {
+      "id": "ok-1",
+      "title": "Valid Role",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/ok-1",
+      "location": {"name": "Toronto, ON, Canada"},
+      "content": "A valid description."
+    },
+    {
+      "id": "bad-1",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/bad-1",
+      "location": {"name": "Toronto, ON, Canada"},
+      "content": "This record has no title."
+    }
+  ]
+}

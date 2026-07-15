@@ -104,6 +104,17 @@ class WorkArrangementPreference(BaseModel):
     mode: WorkArrangementPreferenceMode
 
 
+class JobDiscoverySettings(BaseModel):
+    enabled: bool = True
+    source_registry_path: str
+    greenhouse_api_base_url: AnyHttpUrl
+    lever_global_api_base_url: AnyHttpUrl
+    lever_eu_api_base_url: AnyHttpUrl
+    source_timeout_seconds: float = 15.0
+    source_page_size: int = 100
+    source_max_pages: int = 20
+
+
 class JobSearchPreferences(BaseModel):
     user_id: str
     profile_id: str
@@ -226,6 +237,27 @@ class SourceJobRecord(BaseModel):
     source_updated_at: datetime | None = None
     application_deadline: datetime | None = None
     source_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceRecordWarningCode(StrEnum):
+    MISSING_EXTERNAL_JOB_ID = "missing_external_job_id"
+    MISSING_TITLE = "missing_title"
+    INVALID_OFFICIAL_URL = "invalid_official_url"
+    INVALID_LOCATION = "invalid_location"
+    INVALID_TIMESTAMP = "invalid_timestamp"
+    INVALID_RECORD_SHAPE = "invalid_record_shape"
+    DUPLICATE_RECORD = "duplicate_record"
+
+
+class SourceRecordWarning(BaseModel):
+    external_job_id: str | None
+    code: SourceRecordWarningCode
+    message: str
+
+
+class JobSourceFetchResult(BaseModel):
+    records: list[SourceJobRecord]
+    warnings: list[SourceRecordWarning]
 
 
 class VerificationResult(BaseModel):

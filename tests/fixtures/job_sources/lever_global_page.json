@@ -1,0 +1,11 @@
+[
+  {
+    "id": "lever-100",
+    "text": "Robotics Software Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/lever-100",
+    "descriptionPlain": "Build autonomy services with Python.",
+    "categories": {"location": "Toronto, ON, Canada", "commitment": "Full-time", "team": "Engineering"},
+    "workplaceType": "remote",
+    "createdAt": "must not be used"
+  }
+]
