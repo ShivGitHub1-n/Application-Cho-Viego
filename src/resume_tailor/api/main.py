@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from resume_tailor.api.job_discovery import router as job_discovery_router
 from resume_tailor.application.plan_validation import PlanIntegrityError
 from resume_tailor.domain.models import (
     JobPosting,
@@ -42,6 +43,7 @@ app = FastAPI(
     description="Evidence-backed, strategy-first resume optimization service.",
 )
 _service = create_tailor_service()
+app.include_router(job_discovery_router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -77,10 +79,19 @@ def build_resume_docx(request: DocumentRequest) -> Response:
 
 
 def _validated_resume(request: DocumentRequest) -> StructuredResume:
-    if request.plan.profile_id != request.profile.id or request.plan.profile_version != request.profile.version:
-        raise HTTPException(status_code=409, detail="The plan does not match the supplied profile version.")
+    if (
+        request.plan.profile_id != request.profile.id
+        or request.plan.profile_version != request.profile.version
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The plan does not match the supplied profile version.",
+        )
     if request.plan.strategy is None:
-        raise HTTPException(status_code=422, detail="The opportunity is outside the MVP's supported role family.")
+        raise HTTPException(
+            status_code=422,
+            detail="The opportunity is outside the MVP's supported role family.",
+        )
     try:
         return _service.build_document(request.plan, request.profile, request.approved_claim_ids)
     except PlanIntegrityError as error:

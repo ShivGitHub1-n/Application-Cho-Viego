@@ -42,6 +42,8 @@ class LeverConnector:
         timeout: float = 15.0,
         page_size: int = 100,
         max_pages: int = 20,
+        global_api_base_url: str = "https://api.lever.co",
+        eu_api_base_url: str = "https://api.eu.lever.co",
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if page_size <= 0 or max_pages <= 0:
@@ -50,6 +52,8 @@ class LeverConnector:
         self._timeout = timeout
         self._page_size = page_size
         self._max_pages = max_pages
+        self._global_api_base_url = global_api_base_url.rstrip("/")
+        self._eu_api_base_url = eu_api_base_url.rstrip("/")
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def fetch(self, source: SupportedJobSource, *, fetched_at: datetime) -> JobSourceFetchResult:
@@ -219,12 +223,11 @@ class LeverConnector:
         if source.lever_api_region is None:
             raise ValueError("Lever source requires an API region")
 
-    @staticmethod
-    def _base_url(source: SupportedJobSource) -> str:
+    def _base_url(self, source: SupportedJobSource) -> str:
         if source.lever_api_region is LeverApiRegion.GLOBAL:
-            return "https://api.lever.co"
+            return self._global_api_base_url
         if source.lever_api_region is LeverApiRegion.EU:
-            return "https://api.eu.lever.co"
+            return self._eu_api_base_url
         raise ValueError("unsupported Lever API region")
 
 

@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Path
+from pydantic import BaseModel
+
+from resume_tailor.api.dependencies import (
+    JobDiscoveryServiceBundle,
+    get_job_discovery_services,
+)
+from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
+from resume_tailor.application.job_discovery.queries import (
+    DiscoveryRunNotFoundError,
+    PreferencesNotFoundError,
+)
+from resume_tailor.domain.job_discovery.models import (
+    DiscoveryRun,
+    JobRecommendation,
+    JobSearchPreferences,
+    JobSearchPreferenceSuggestion,
+    SavedJob,
+)
+from resume_tailor.ports.job_discovery import PreferenceVersionConflictError
+
+
+class SuggestPreferencesRequest(BaseModel):
+    profile_id: str
+    user_id: str = "local-user"
+
+
+class ConfirmPreferencesRequest(JobSearchPreferences):
+    pass
+
+
+class RefreshDiscoveryRequest(BaseModel):
+    profile_id: str
+    user_id: str = "local-user"
+
+
+class RefreshDiscoveryResponse(BaseModel):
+    run: DiscoveryRun
+    recommendations: list[JobRecommendation]
+
+
+class PreferencesSuggestionResponse(BaseModel):
+    suggestion: JobSearchPreferenceSuggestion
+
+
+class ConfirmPreferencesResponse(BaseModel):
+    preferences: JobSearchPreferences
+
+
+class SaveJobRequest(BaseModel):
+    job_id: str
+
+
+class SavedJobResponse(BaseModel):
+    saved_job: SavedJob
+
+
+class SavedJobsResponse(BaseModel):
+    saved_jobs: list[SavedJob]
+
+
+class AvailabilityResponse(BaseModel):
+    saved_job: SavedJob
+
+
+router = APIRouter(prefix="/job-discovery", tags=["job-discovery"])
+
+
+@router.post(
+    "/preferences/suggest",
+    response_model=PreferencesSuggestionResponse,
+)
+def suggest_preferences(
+    request: SuggestPreferencesRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> PreferencesSuggestionResponse:
+    try:
+        try:
+            suggestion = services.suggest_preferences.suggest(
+                request.user_id,
+                request.profile_id,
+                generated_at=datetime.now(UTC),
+            )
+        except ProfileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Profile was not found.") from error
+        return PreferencesSuggestionResponse(suggestion=suggestion)
+    finally:
+        services.close()
+
+
+@router.post(
+    "/preferences/confirm",
+    response_model=ConfirmPreferencesResponse,
+)
+def confirm_preferences(
+    request: ConfirmPreferencesRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> ConfirmPreferencesResponse:
+    if services.confirm_preferences is None:
+        raise HTTPException(status_code=503, detail="Preference confirmation is unavailable.")
+    try:
+        try:
+            preferences = services.confirm_preferences.confirm(request)
+        except ProfileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Profile was not found.") from error
+        except PreferenceVersionConflictError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="That preference version already contains different data.",
+            ) from error
+        return ConfirmPreferencesResponse(preferences=preferences)
+    finally:
+        services.close()
+
+
+@router.post(
+    "/refresh",
+    response_model=RefreshDiscoveryResponse,
+)
+def refresh_discovery(
+    request: RefreshDiscoveryRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> RefreshDiscoveryResponse:
+    if services.current_preferences is None:
+        raise HTTPException(status_code=503, detail="Job-search preferences are unavailable.")
+    try:
+        try:
+            preferences = services.current_preferences.get(request.user_id, request.profile_id)
+            run = services.refresh.refresh(
+                request.user_id,
+                request.profile_id,
+                preferences,
+                started_at=datetime.now(UTC),
+            )
+        except ProfileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Profile was not found.") from error
+        except PreferencesNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Preferences were not found.") from error
+        if services.runs is None:
+            return RefreshDiscoveryResponse(run=run, recommendations=[])
+        details = services.runs.get(run.id)
+        if details is None or isinstance(details, DiscoveryRun):
+            return RefreshDiscoveryResponse(run=run, recommendations=[])
+        return RefreshDiscoveryResponse(
+            run=details.run,
+            recommendations=details.recommendations,
+        )
+    finally:
+        services.close()
+
+
+@router.get(
+    "/runs/{run_id}",
+    response_model=RefreshDiscoveryResponse,
+)
+def get_discovery_run(
+    run_id: str = Path(min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> RefreshDiscoveryResponse:
+    if services.runs is None:
+        raise HTTPException(status_code=503, detail="Discovery run retrieval is unavailable.")
+    try:
+        try:
+            details = services.runs.get(run_id)
+        except DiscoveryRunNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Discovery run was not found.") from error
+        if details is None:
+            raise HTTPException(status_code=404, detail="Discovery run was not found.")
+        if isinstance(details, DiscoveryRun):
+            return RefreshDiscoveryResponse(run=details, recommendations=[])
+        return RefreshDiscoveryResponse(
+            run=details.run,
+            recommendations=details.recommendations,
+        )
+    finally:
+        services.close()
+
+
+__all__ = [
+    "AvailabilityResponse",
+    "ConfirmPreferencesRequest",
+    "ConfirmPreferencesResponse",
+    "JobDiscoveryServiceBundle",
+    "PreferencesSuggestionResponse",
+    "RefreshDiscoveryRequest",
+    "RefreshDiscoveryResponse",
+    "SaveJobRequest",
+    "SavedJobResponse",
+    "SavedJobsResponse",
+    "get_discovery_run",
+    "refresh_discovery",
+    "router",
+    "suggest_preferences",
+]
