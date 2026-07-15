@@ -8,9 +8,24 @@ from resume_tailor.domain.models import ClaimConfidence, ContactInfo
 
 
 class CoverLetterParagraphPurpose(StrEnum):
-    OPENING = "opening"
+    INTRODUCTION = "introduction"
+    OPENING = "introduction"
     EVIDENCE = "evidence"
     CLOSING = "closing"
+
+
+def normalize_paragraph_purpose(value: object) -> CoverLetterParagraphPurpose:
+    """Normalize canonical values and the former opening identifier."""
+
+    if isinstance(value, CoverLetterParagraphPurpose):
+        return value
+    normalized = str(value).strip().casefold()
+    if normalized == "opening":
+        normalized = CoverLetterParagraphPurpose.INTRODUCTION.value
+    try:
+        return CoverLetterParagraphPurpose(normalized)
+    except ValueError as error:
+        raise ValueError(f"Unsupported paragraph purpose: {value}") from error
 
 
 class CoverLetterReviewStatus(StrEnum):
@@ -114,7 +129,7 @@ class CoverLetter(BaseModel):
 
     @model_validator(mode="after")
     def validate_structure(self) -> CoverLetter:
-        if self.paragraphs[0].purpose != CoverLetterParagraphPurpose.OPENING:
+        if self.paragraphs[0].purpose != CoverLetterParagraphPurpose.INTRODUCTION:
             raise ValueError("The first cover-letter paragraph must be an opening.")
         if self.paragraphs[-1].purpose != CoverLetterParagraphPurpose.CLOSING:
             raise ValueError("The final cover-letter paragraph must be a closing.")

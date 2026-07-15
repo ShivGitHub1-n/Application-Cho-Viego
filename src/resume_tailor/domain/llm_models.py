@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose, normalize_paragraph_purpose
 from resume_tailor.domain.models import ClaimConfidence, MasterProfile, RoleFamily
 
 
@@ -308,11 +309,16 @@ class CoverLetterDraftClaim(StrictModel):
 
 
 class CoverLetterDraftParagraph(StrictModel):
-    purpose: str
+    purpose: CoverLetterParagraphPurpose
     text: str = Field(min_length=1, max_length=2400)
     claims: list[CoverLetterDraftClaim] = Field(default_factory=list)
     optional: bool = False
     reduction_priority: int = Field(default=50, ge=0, le=100)
+
+    @field_validator("purpose", mode="before")
+    @classmethod
+    def normalize_legacy_purpose(cls, value: object) -> CoverLetterParagraphPurpose:
+        return normalize_paragraph_purpose(value)
 
 
 class CoverLetterDraftOutput(StrictModel):

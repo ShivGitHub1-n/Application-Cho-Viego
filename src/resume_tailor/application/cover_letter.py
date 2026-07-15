@@ -15,6 +15,7 @@ from resume_tailor.domain.cover_letter import (
     CoverLetterParagraphPurpose,
     CoverLetterRecipient,
     CoverLetterReviewStatus,
+    normalize_paragraph_purpose,
 )
 from resume_tailor.domain.llm_models import (
     CoverLetterDraftRequest,
@@ -289,7 +290,7 @@ class CoverLetterService:
         paragraphs: list[CoverLetterParagraph] = []
         for index, generated in enumerate(result.output.paragraphs):
             try:
-                purpose = CoverLetterParagraphPurpose(generated.purpose.casefold())
+                purpose = normalize_paragraph_purpose(generated.purpose)
             except ValueError as error:
                 raise CoverLetterValidationError(f"Unsupported paragraph purpose: {generated.purpose}") from error
             claims = [
@@ -349,7 +350,7 @@ class CoverLetterService:
 
     @staticmethod
     def _quality_check(paragraphs: list[CoverLetterParagraph]) -> None:
-        if not paragraphs or paragraphs[0].purpose != CoverLetterParagraphPurpose.OPENING:
+        if not paragraphs or paragraphs[0].purpose != CoverLetterParagraphPurpose.INTRODUCTION:
             raise CoverLetterValidationError("A cover letter requires an opening paragraph.")
         if paragraphs[-1].purpose != CoverLetterParagraphPurpose.CLOSING:
             raise CoverLetterValidationError("A cover letter requires a closing paragraph.")

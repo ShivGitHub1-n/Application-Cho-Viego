@@ -5,6 +5,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose
 from resume_tailor.domain.llm_models import LlmOperation
 
 PromptRequest = TypeVar("PromptRequest", bound=BaseModel)
@@ -35,7 +36,10 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (
             "Draft a concise, natural, evidence-grounded cover letter from the supplied selected "
-            "evidence and existing tailoring strategy. Return paragraph claims linked to evidence IDs."
+            "evidence and existing tailoring strategy. Return paragraph claims linked to evidence IDs. "
+            "Each paragraph purpose must be exactly one machine-readable identifier: "
+            + ", ".join(purpose.value for purpose in CoverLetterParagraphPurpose)
+            + ". Put role-specific or company-specific descriptions in paragraph text, never in purpose."
         ),
     }[operation]
     payload = json.dumps(request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
