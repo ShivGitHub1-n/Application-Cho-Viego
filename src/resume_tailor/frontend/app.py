@@ -22,7 +22,14 @@ from resume_tailor.application.profile_editor import (
     remove_skill_category,
     unknown_profile_fields,
 )
-from resume_tailor.application.workflow_state import invalidate_derived_workflow
+from resume_tailor.application.workflow_state import (
+    ACTIVE_POSTING_KEY,
+    POSTING_FINGERPRINT_KEY,
+    get_active_posting,
+    has_cover_letter_prerequisites,
+    invalidate_posting_derived_workflow,
+    invalidate_profile_derived_workflow,
+)
 from resume_tailor.domain.cover_letter import CoverLetterRecipient
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import MasterProfile, StructuredResume, TemplateConstraints
@@ -41,7 +48,11 @@ profile_repository = create_profile_repository()
 
 
 def clear_tailoring_state() -> None:
-    invalidate_derived_workflow(st.session_state)
+    invalidate_profile_derived_workflow(st.session_state)
+
+
+def clear_posting_state() -> None:
+    invalidate_posting_derived_workflow(st.session_state)
 
 
 def clear_cover_letter_state() -> None:
@@ -189,15 +200,20 @@ with save_col:
 with load_col:
     load_profile = st.button("Load saved profile")
 posting_text = st.text_area("Paste job description", height=180, key="job_description_input")
-posting_title = st.text_input("Job title", value="Embedded Firmware Engineer")
+active_posting = get_active_posting(st.session_state)
+posting_title_default = active_posting.title if active_posting is not None else "Embedded Firmware Engineer"
+posting_title = st.text_input("Job title", value=posting_title_default, key="job_title_input")
 
-if st.session_state.get("workflow_posting_fingerprint") and posting_text.strip():
-    try:
-        current_posting = build_job_posting("local-posting", posting_title, posting_text)
-        if current_posting.model_dump_json() != st.session_state["workflow_posting_fingerprint"]:
-            clear_tailoring_state()
-    except InvalidJobDescriptionError:
-        clear_tailoring_state()
+if st.session_state.get(POSTING_FINGERPRINT_KEY):
+    if not posting_text.strip():
+        clear_posting_state()
+    else:
+        try:
+            current_posting = build_job_posting("local-posting", posting_title, posting_text)
+            if current_posting.model_dump_json() != st.session_state[POSTING_FINGERPRINT_KEY]:
+                clear_posting_state()
+        except InvalidJobDescriptionError:
+            clear_posting_state()
 if st.session_state.get("workflow_profile_fingerprint") and profile_json.strip():
     try:
         current_profile = MasterProfile.model_validate(json.loads(profile_json))
@@ -228,7 +244,7 @@ if load_profile:
         if loaded is None:
             st.warning("No saved profile exists for that profile ID.")
         else:
-            clear_tailoring_state()
+            invalidate_profile_derived_workflow(st.session_state)
             st.session_state["profile"] = loaded
             st.session_state["profile_id"] = loaded.id
             st.session_state["profile_load_status"] = "Loaded from persistent storage."
@@ -257,17 +273,17 @@ if st.button("Recommend resume strategy", type="primary"):
         previous_profile = st.session_state.get("profile")
         if previous_profile is not None and profile_fingerprint(previous_profile) != profile_fingerprint(profile):
             clear_tailoring_state()
-        previous_posting = st.session_state.get("posting")
+        previous_posting = st.session_state.get(ACTIVE_POSTING_KEY)
         if previous_posting is not None and previous_posting.model_dump_json() != posting.model_dump_json():
-            clear_tailoring_state()
+            clear_posting_state()
         plan = service.create_plan(profile, posting, TemplateConstraints())
         st.session_state["profile"] = profile
         st.session_state["profile_id"] = profile.id
-        st.session_state["posting"] = posting
+        st.session_state[ACTIVE_POSTING_KEY] = posting
         if previous_profile is None or profile_fingerprint(previous_profile) != profile_fingerprint(profile):
             st.session_state["profile_load_status"] = "Newly entered; not saved."
         st.session_state["workflow_profile_fingerprint"] = profile_fingerprint(profile)
-        st.session_state["workflow_posting_fingerprint"] = posting.model_dump_json()
+        st.session_state[POSTING_FINGERPRINT_KEY] = posting.model_dump_json()
         st.session_state["plan"] = plan
         st.session_state.pop("resume", None)
         clear_cover_letter_state()
@@ -277,7 +293,8 @@ if st.button("Recommend resume strategy", type="primary"):
 
 plan = st.session_state.get("plan")
 profile = st.session_state.get("profile")
-if plan and profile:
+posting = get_active_posting(st.session_state)
+if plan and profile and posting:
     if plan.strategy is None:
         st.warning(plan.report.warnings[0])
     else:
@@ -350,7 +367,7 @@ if plan and profile:
 
 # Cover letters are a separate derived workflow. They reuse the active plan and selected
 # evidence, but never share generated-resume or approval state.
-if profile is None or plan is None or not getattr(plan, "strategy", None):
+if not has_cover_letter_prerequisites(st.session_state):
     st.subheader("Cover letter")
     st.info("Create a valid master profile, pasted job posting, and tailoring plan to enable cover-letter drafting.")
 else:

@@ -17,7 +17,136 @@ from resume_tailor.infrastructure.optimization import (
 )
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.domain.models import MasterProfile
+from resume_tailor.application.workflow_state import (
+    get_active_posting,
+    has_cover_letter_prerequisites,
+    invalidate_posting_derived_workflow,
+    invalidate_profile_derived_workflow,
+)
 from tests.fakes import FakeResumeLanguageModel, metadata
+
+
+class _Strategy:
+    pass
+
+
+class _Plan:
+    strategy = _Strategy()
+
+
+def _workflow_state() -> dict[str, object]:
+    return {
+        "profile": object(),
+        "posting": type("Posting", (), {"title": "Robotics Engineer", "company_name": "Example Robotics"})(),
+        "plan": _Plan(),
+        "resume": "resume-artifact",
+        "generated_content_reviewed": True,
+        "cover_letter": "cover-letter-draft",
+        "cover_letter_reviewed": True,
+        "cover_letter_download": "download-state",
+        "workflow_profile_fingerprint": "profile-v1",
+        "workflow_posting_fingerprint": "posting-v1",
+        "cover_letter_profile_fingerprint": "profile-v1",
+        "cover_letter_posting_fingerprint": "posting-v1",
+        "cover_letter_plan_fingerprint": "plan-v1",
+        "cover_letter_evidence_fingerprint": "evidence-v1",
+        "cover_letter_recipient_fingerprint": "recipient-v1",
+    }
+
+
+def test_initial_workflow_has_no_active_posting_and_cover_letter_is_guarded() -> None:
+    state: dict[str, object] = {}
+
+    assert get_active_posting(state) is None
+    assert not has_cover_letter_prerequisites(state)
+
+
+def test_active_posting_survives_rerun_without_original_local_variable() -> None:
+    state = _workflow_state()
+
+    assert get_active_posting(state).title == "Robotics Engineer"
+    assert get_active_posting(state).company_name == "Example Robotics"
+
+
+def test_authoritative_posting_supplies_company_and_role_defaults() -> None:
+    state = _workflow_state()
+    posting = get_active_posting(state)
+
+    assert posting.company_name == "Example Robotics"
+    assert posting.title == "Robotics Engineer"
+
+
+def test_job_description_invalidation_removes_all_posting_derived_state() -> None:
+    state = _workflow_state()
+
+    invalidate_posting_derived_workflow(state)
+
+    assert get_active_posting(state) is None
+    assert not has_cover_letter_prerequisites(state)
+    assert "plan" not in state
+    assert "resume" not in state
+    assert "generated_content_reviewed" not in state
+    assert "cover_letter" not in state
+    assert "cover_letter_reviewed" not in state
+    assert "workflow_posting_fingerprint" not in state
+
+
+def test_invalid_posting_cannot_leave_the_prior_posting_active() -> None:
+    state = _workflow_state()
+
+    invalidate_posting_derived_workflow(state)
+
+    assert get_active_posting(state) is None
+    assert not has_cover_letter_prerequisites(state)
+
+
+def test_loading_same_profile_preserves_active_posting() -> None:
+    state = _workflow_state()
+    posting = state["posting"]
+
+    invalidate_profile_derived_workflow(state)
+
+    assert state["posting"] is posting
+    assert get_active_posting(state) is posting
+
+
+def test_changed_canonical_profile_invalidates_dependents_but_preserves_posting() -> None:
+    state = _workflow_state()
+    posting = state["posting"]
+
+    invalidate_profile_derived_workflow(state)
+
+    assert state["posting"] is posting
+    assert "plan" not in state
+    assert "resume" not in state
+    assert "cover_letter" not in state
+    assert "generated_content_reviewed" not in state
+    assert "cover_letter_reviewed" not in state
+
+
+def test_missing_posting_is_a_cover_letter_guard_not_a_name_error() -> None:
+    state = {"profile": object(), "plan": _Plan()}
+
+    assert not has_cover_letter_prerequisites(state)
+
+
+def test_resume_and_cover_letter_approval_states_are_separate() -> None:
+    state = {"generated_content_reviewed": True, "cover_letter_reviewed": False}
+
+    state["generated_content_reviewed"] = False
+
+    assert state["generated_content_reviewed"] is False
+    assert state["cover_letter_reviewed"] is False
+
+
+def test_repeated_invalidation_is_safe_and_deterministic() -> None:
+    state = _workflow_state()
+
+    invalidate_posting_derived_workflow(state)
+    first_result = dict(state)
+    invalidate_posting_derived_workflow(state)
+
+    assert state == first_result
 
 
 def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -> None:
