@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from resume_tailor.domain.models import RoleFamily
 
@@ -14,6 +14,63 @@ class WorkArrangement(StrEnum):
     HYBRID = "hybrid"
     REMOTE = "remote"
     UNKNOWN = "unknown"
+
+
+class ConnectorType(StrEnum):
+    GREENHOUSE = "greenhouse"
+    LEVER = "lever"
+
+
+class LeverApiRegion(StrEnum):
+    GLOBAL = "global"
+    EU = "eu"
+
+
+class VerificationStatus(StrEnum):
+    VERIFIED_ACTIVE = "verified_active"
+    VERIFIED_STATUS_UNKNOWN = "verified_status_unknown"
+    UNVERIFIED = "unverified"
+    UNAVAILABLE = "unavailable"
+    EXPIRED = "expired"
+
+
+class VerificationConfidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class MatchLabel(StrEnum):
+    STRONG = "strong"
+    GOOD = "good"
+    STRETCH = "stretch"
+    PROVISIONAL = "provisional"
+
+
+class EligibilityStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    INELIGIBLE = "ineligible"
+    UNKNOWN = "unknown"
+
+
+class EligibilityReasonCode(StrEnum):
+    ROLE_FAMILY_MISMATCH = "role_family_mismatch"
+    LOCATION_MISMATCH = "location_mismatch"
+    WORK_ARRANGEMENT_CONFLICT = "work_arrangement_conflict"
+    AUTHORIZATION_CONFLICT = "authorization_conflict"
+    POSTING_TOO_OLD = "posting_too_old"
+    VERIFICATION_UNAVAILABLE = "verification_unavailable"
+    MISSING_REQUIRED_DATA = "missing_required_data"
+    COMPANY_EXCLUDED = "company_excluded"
+    JOB_LEVEL_MISMATCH = "job_level_mismatch"
+    DEGREE_CONFLICT = "degree_conflict"
+    GRADUATION_CONFLICT = "graduation_conflict"
+    EXPERIENCE_REQUIREMENT_TOO_HIGH = "experience_requirement_too_high"
+
+
+class RecommendationGroup(StrEnum):
+    PRIMARY = "primary"
+    FALLBACK = "fallback"
 
 
 class JobLevel(StrEnum):
@@ -61,6 +118,8 @@ class JobSearchPreferences(BaseModel):
     work_arrangement: WorkArrangement
     work_arrangement_mode: WorkArrangementPreferenceMode = WorkArrangementPreferenceMode.PREFERRED
     preferred_companies: list[str]
+    excluded_companies: list[str] = Field(default_factory=list)
+    work_authorization_constraints: list[str] = Field(default_factory=list)
     max_posting_age_days: int | None = 30
     created_at: datetime
     confirmed_at: datetime | None = None
@@ -128,18 +187,123 @@ class JobRequirement(BaseModel):
 
 
 class JobRequirementSignals(BaseModel):
-    required_terms: list[str] = []
-    preferred_terms: list[str] = []
-    unknown_terms: list[str] = []
-    responsibilities: list[str] = []
+    required_terms: list[str] = Field(default_factory=list)
+    preferred_terms: list[str] = Field(default_factory=list)
+    unknown_terms: list[str] = Field(default_factory=list)
+    responsibilities: list[str] = Field(default_factory=list)
     experience_years: int | None = None
-    degree_requirements: list[str] = []
-    graduation_requirements: list[str] = []
-    certification_requirements: list[str] = []
+    degree_requirements: list[str] = Field(default_factory=list)
+    graduation_requirements: list[str] = Field(default_factory=list)
+    certification_requirements: list[str] = Field(default_factory=list)
     work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
-    authorization_language: list[str] = []
-    role_signals: list[str] = []
+    authorization_language: list[str] = Field(default_factory=list)
+    role_signals: list[str] = Field(default_factory=list)
     job_level: JobLevel = JobLevel.UNKNOWN
     location: NormalizedLocation | None = None
-    requirements: list[JobRequirement] = []
-    material_gaps: list[str] = []
+    requirements: list[JobRequirement] = Field(default_factory=list)
+    material_gaps: list[str] = Field(default_factory=list)
+
+
+class SupportedJobSource(BaseModel):
+    source_id: str
+    connector_type: ConnectorType
+    company_name: str
+    board_token: str
+    enabled: bool
+    official_base_url: AnyHttpUrl
+    lever_api_region: LeverApiRegion | None = None
+
+
+class SourceJobRecord(BaseModel):
+    external_job_id: str
+    title: str
+    company_name: str
+    description: str
+    official_url: AnyHttpUrl
+    location_raw: str | None = None
+    work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
+    posted_at: datetime | None = None
+    source_updated_at: datetime | None = None
+    application_deadline: datetime | None = None
+    source_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class VerificationResult(BaseModel):
+    status: VerificationStatus
+    confidence: VerificationConfidence
+    checked_at: datetime
+    message: str
+
+
+class DiscoveredJob(BaseModel):
+    id: str
+    source: SupportedJobSource
+    external_job_id: str
+    title: str
+    company_name: str
+    description: str
+    official_url: str
+    location: NormalizedLocation
+    work_arrangement: WorkArrangement
+    role_family: RoleFamily | None = None
+    role_family_scores: dict[RoleFamily, float] = Field(default_factory=dict)
+    requirements: JobRequirementSignals = Field(default_factory=JobRequirementSignals)
+    posted_at: datetime | None = None
+    source_updated_at: datetime | None = None
+    application_deadline: datetime | None = None
+    verification_status: VerificationStatus = VerificationStatus.VERIFIED_STATUS_UNKNOWN
+    verification_confidence: VerificationConfidence = VerificationConfidence.MEDIUM
+    completeness: list[str] = Field(default_factory=list)
+    fetched_at: datetime
+    requisition_id: str | None = None
+    normalized_title: str = ""
+    normalized_company_name: str = ""
+    canonical_description_hash: str = ""
+    source_alias_ids: list[str] = Field(default_factory=list)
+
+
+class EligibilityAssessment(BaseModel):
+    status: EligibilityStatus
+    reasons: list[EligibilityReasonCode] = Field(default_factory=list)
+    explanations: list[str] = Field(default_factory=list)
+    location_match: bool | None = None
+    verification_confidence: VerificationConfidence
+    posting_age_days: int | None = None
+
+
+class JobScoreBreakdown(BaseModel):
+    demonstrated_technical_evidence: float
+    required_coverage: float
+    role_alignment: float
+    level_alignment: float
+    education_coursework: float
+    preferred_skill_alignment: float
+    recency_completeness: float
+    total: float
+    label: MatchLabel
+    provisional: bool
+
+
+class DuplicateGroup(BaseModel):
+    canonical: DiscoveredJob
+    aliases: list[DiscoveredJob] = Field(default_factory=list)
+
+
+class DeduplicationResult(BaseModel):
+    jobs: list[DiscoveredJob]
+    groups: list[DuplicateGroup] = Field(default_factory=list)
+    duplicate_count: int = 0
+
+
+class JobRecommendation(BaseModel):
+    id: str
+    run_id: str
+    job_id: str
+    group: RecommendationGroup
+    primary_role_family: RoleFamily | None
+    eligibility: EligibilityAssessment
+    score: JobScoreBreakdown
+    reasons: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    rank: int
+    created_at: datetime
