@@ -184,15 +184,19 @@ class AdaptiveStructuredResumeRenderer:
                 record.school,
                 date,
             )
+            program = record.program
+            if record.gpa:
+                # GPA is education metadata in the reference layout, not an
+                # additional resume bullet. Keep it on the program row so the
+                # education block retains its compact semantic structure.
+                program = f"{program} | GPA: {record.gpa}"
             self._add_metadata_row(
                 document,
                 "education_program_location_row",
-                record.program,
+                program,
                 record.location,
             )
             details: list[str] = []
-            if record.gpa:
-                details.append(f"GPA: {record.gpa}")
             if record.awards:
                 details.append(f"Awards: {', '.join(record.awards)}")
             coursework = record.relevant_coursework or resume.selected_coursework

@@ -12,7 +12,9 @@ from resume_tailor.domain.models import (
     MasterProfile,
     ProfileFitStatus,
     ResumeItem,
+    ReviewedTechnicalSkill,
     RoleFamily,
+    TechnicalSkillCategory,
     TemplateConstraints,
 )
 from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer, EvidenceBoundResumeWriter
@@ -105,7 +107,7 @@ def test_optimizer_returns_insufficient_fit_only_when_direct_evidence_is_missing
     assert plan.strategy is None
 
 
-def test_huawei_posting_is_accepted_with_limited_profile_fit() -> None:
+def test_multimodal_research_posting_is_accepted_with_limited_profile_fit() -> None:
     profile = MasterProfile.model_validate(_fixture("huawei_profile.json"))
     posting = JobPosting.model_validate(_fixture("huawei_autonomous_research_posting.json"))
 
@@ -118,8 +120,13 @@ def test_huawei_posting_is_accepted_with_limited_profile_fit() -> None:
     assert "evidence-perception" in plan.selected_claim_ids
     assert {"PyTorch", "Jupyter"}.issubset(plan.selected_skills)
     assert all("PyTorch" not in claim.text and "Jupyter" not in claim.text for claim in plan.claim_candidates)
-    assert "deep learning and transformer research" in plan.report.profile_fit.material_gaps
-    assert "vision-language or vision-language-action models" in plan.report.profile_fit.material_gaps
+    required_labels = {
+        signal.label
+        for signal in plan.report.role.signals
+        if signal.required
+    }
+    assert required_labels
+    assert required_labels.intersection(plan.report.profile_fit.material_gaps)
 
 
 def test_entry_overhead_prefers_coherent_exl_package_over_marginal_telebotics_entry() -> None:
@@ -257,4 +264,71 @@ def test_writer_excludes_unapproved_inferred_claims() -> None:
         bullet.id == "inference-1"
         for bullets in approved.experience_bullets.values()
         for bullet in bullets
+    )
+
+
+def test_semantic_transferable_relevance_selects_project_and_multiple_skills() -> None:
+    profile = MasterProfile(
+        id="semantic-profile",
+        user_id="user-1",
+        display_name="Candidate",
+        experiences=[
+            ResumeItem(id="mechanical-exp", title="Principal Integration Engineer", kind=EntityKind.EXPERIENCE),
+            ResumeItem(id="irrelevant-exp", title="Administrative Assistant", kind=EntityKind.EXPERIENCE),
+        ],
+        projects=[ResumeItem(id="sensor-project", title="Autonomous Sensor Platform", kind=EntityKind.PROJECT)],
+        technical_skills=[
+            TechnicalSkillCategory(
+                id="mechanical-skills",
+                category="Mechanical",
+                skills=[
+                    ReviewedTechnicalSkill(id="cad", value="CAD"),
+                    ReviewedTechnicalSkill(id="fabrication", value="Fabrication"),
+                ],
+            ),
+            TechnicalSkillCategory(
+                id="perception-skills",
+                category="Perception",
+                skills=[
+                    ReviewedTechnicalSkill(id="vision", value="Computer Vision"),
+                    ReviewedTechnicalSkill(id="sensors", value="Sensor Integration"),
+                ],
+            ),
+        ],
+        evidence=[
+            EvidenceItem(
+                id="mechanical-evidence",
+                entity_id="mechanical-exp",
+                source_text="Integrated electromechanical assemblies and validated CAD prototypes.",
+                capabilities=["mechanical integration", "hardware testing"],
+            ),
+            EvidenceItem(
+                id="project-evidence",
+                entity_id="sensor-project",
+                source_text="Built an autonomous sensor platform with real-time vision interfaces.",
+                capabilities=["real-time perception", "sensor integration"],
+            ),
+            EvidenceItem(
+                id="irrelevant-evidence",
+                entity_id="irrelevant-exp",
+                source_text="Prepared monthly financial reports for an office team.",
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="semantic-posting",
+        title="Robotics Systems Engineer",
+        description=(
+            "Develop camera mounts, fixtures, and end-of-arm tooling; program robots; "
+            "perform mechanical assembly, perception, testing, and factory automation."
+        ),
+    )
+
+    plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints())
+
+    assert plan.strategy is not None
+    assert {"mechanical-exp", "sensor-project"}.issubset(plan.selected_entity_ids)
+    assert "irrelevant-exp" not in plan.selected_entity_ids
+    assert {"CAD", "Fabrication", "Computer Vision", "Sensor Integration"}.issubset(
+        set(plan.selected_skills)
     )

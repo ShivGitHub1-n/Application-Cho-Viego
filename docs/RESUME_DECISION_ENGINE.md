@@ -4,9 +4,13 @@
 
 The engine optimizes the resume as one constrained document, not as independent sections. It selects evidence that gives a recruiter the strongest credible signal for the detected role.
 
+The product value model governing relevance, transferable strength, and
+underfilled-plan decisions is documented in
+[`RESUME_APPLICATION_VALUE_MODEL.md`](RESUME_APPLICATION_VALUE_MODEL.md).
+
 ## Process
 
-1. Classify the posting across supported engineering role families using title, responsibilities, required/preferred skills, and domain terminology.
+1. Classify the posting across supported engineering role families using title, responsibilities, required/preferred skills, domain terminology, and transferable concept signals.
 2. Assess profile fit separately using direct evidence and limited declared-skill support.
 3. Extract weighted role signals: core responsibilities, technologies, outcomes, seniority, domain, and differentiators.
 4. Score evidence packages for relevance, impact, credibility, coverage, entry-opening cost, and space cost.
@@ -21,7 +25,7 @@ The MVP returns one recommended strategy. It retains alternatives only for count
 - Prefer direct, quantified impact over broad but weak coverage.
 - Give depth to the few experiences that best prove role readiness.
 - Remove low-signal items when their space can strengthen higher-value evidence.
-- Treat ATS terms as a constraint on clarity, never a reason to keyword-stuff.
+- Treat ATS terms as a constraint on clarity, never a reason to keyword-stuff or hard-gate semantically related evidence.
 - Use company context only to prioritize existing evidence.
 
 ## Claim support policy

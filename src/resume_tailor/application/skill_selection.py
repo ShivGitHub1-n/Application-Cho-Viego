@@ -56,7 +56,7 @@ class SkillPlanResult:
 class DeterministicSkillSelector:
     """Scores only reviewed categorized skills against opportunity language."""
 
-    _skill_threshold = 35.0
+    _skill_threshold = 24.0
 
     def select(
         self,
@@ -249,6 +249,9 @@ class DeterministicSkillSelector:
         exact = any(_contains_phrase(posting_text, alias) for alias in aliases)
         skill_tokens = set().union(*(_tokens(alias) for alias in aliases))
         overlap = len(skill_tokens & posting_tokens) / max(1, len(skill_tokens))
+        semantic_overlap = len(
+            _semantic_concepts(normalized) & _semantic_concepts(posting_text)
+        )
         signals = sorted(
             signal.id
             for signal in role.signals
@@ -259,7 +262,13 @@ class DeterministicSkillSelector:
                 for keyword in signal.keywords
             )
         )
-        score = min(100.0, (100 if exact else 0) + (overlap * 55) + (min(2, len(signals)) * 18))
+        score = min(
+            100.0,
+            (100 if exact else 0)
+            + (overlap * 55)
+            + (min(2, len(signals)) * 18)
+            + (min(3, semantic_overlap) * 25),
+        )
         score = round(score, 2)
         if exact:
             reason = "Exact or normalized-alias match in the job posting."
@@ -343,3 +352,17 @@ def _alias_variants(value: str) -> set[str]:
         if value in group:
             variants.update(group)
     return variants
+
+
+def _semantic_concepts(value: str) -> set[str]:
+    tokens = set(re.findall(r"[a-z0-9+#.]+", value.casefold()))
+    groups = {
+        "integration": {"integration", "interface", "interfaces", "assembly"},
+        "design": {"design", "cad", "prototype", "fabrication", "fixture", "mount", "tooling", "mechanical", "mechatronics"},
+        "control": {"control", "controller", "automation", "robot", "robotics", "actuator", "embedded", "firmware"},
+        "perception": {"camera", "vision", "perception", "sensor", "sensors", "lidar", "detection"},
+        "verification": {"test", "testing", "validation", "verify", "debug", "debugging"},
+        "software": {"software", "python", "c", "c++", "api", "backend", "pipeline", "data", "algorithm"},
+        "delivery": {"deploy", "deployment", "production", "release", "monitoring"},
+    }
+    return {name for name, members in groups.items() if tokens & members}

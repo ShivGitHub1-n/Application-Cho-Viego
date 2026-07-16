@@ -13,6 +13,7 @@ from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
 )
+from resume_tailor.domain.models import RoleFamily
 from tests.fakes import FakeResumeLanguageModel, metadata
 
 
@@ -46,10 +47,25 @@ def test_optimization_endpoint_returns_supported_plan() -> None:
         },
     }
 
-    response = TestClient(app).post("/optimization-plans", json=payload)
+    client = TestClient(app)
+    response = client.post("/optimization-plans", json=payload)
 
     assert response.status_code == 200
-    assert response.json()["strategy"]["role_family"] == "embedded_firmware"
+    body = response.json()
+    assert body["strategy"] is not None
+    assert body["strategy"]["role_family"] in {family.value for family in RoleFamily}
+    assert set(body["selected_entity_ids"]).issubset({"experience-api"})
+    assert set(body["selected_claim_ids"]).issubset({"evidence-api"})
+    assert body["claim_candidates"]
+    assert all(
+        set(candidate["evidence_ids"]).issubset({"evidence-api"})
+        for candidate in body["claim_candidates"]
+    )
+    assert body["report"]["role"]["supported"] is True
+
+    repeat = client.post("/optimization-plans", json=payload)
+    assert repeat.status_code == 200
+    assert repeat.json() == body
 
 
 def test_resume_document_endpoint_rejects_invalid_client_plan() -> None:

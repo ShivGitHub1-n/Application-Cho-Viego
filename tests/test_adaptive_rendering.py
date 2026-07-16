@@ -504,22 +504,27 @@ def test_reference_numbering_marker_font_is_separate_from_plain_bullet_text(
         assert "\uf0a7" not in document_xml
 
 
-def test_education_details_are_separate_regular_numbered_paragraphs(tmp_path: Path) -> None:
+def test_education_metadata_keeps_gpa_on_program_row(tmp_path: Path) -> None:
     profile = analyze_reference_docx(REFERENCE)
     output = tmp_path / "education-details.docx"
     render_structured_resume(_resume(), profile, output)
     document = Document(output)
+    program_row = next(
+        paragraph
+        for paragraph in document.paragraphs
+        if paragraph.text.startswith("Bachelor of Applied Engineering")
+    )
+    expected_gpa = _resume().education[0].gpa
+    assert expected_gpa is not None
+    assert f"GPA: {expected_gpa}" in program_row.text
+    assert not any(paragraph.text.startswith("GPA:") for paragraph in document.paragraphs)
     details = [
         paragraph
         for paragraph in document.paragraphs
-        if paragraph.text.startswith(("GPA:", "Awards:", "Relevant Coursework:"))
+        if paragraph.text.startswith(("Awards:", "Relevant Coursework:"))
     ]
 
-    assert [paragraph.text.split(":", 1)[0] for paragraph in details] == [
-        "GPA",
-        "Awards",
-        "Relevant Coursework",
-    ]
+    assert [paragraph.text.split(":", 1)[0] for paragraph in details] == ["Awards", "Relevant Coursework"]
     assert all(paragraph._p.pPr.numPr is not None for paragraph in details)
     assert all(len(paragraph.runs) == 1 for paragraph in details)
     assert all(paragraph.runs[0].bold is False for paragraph in details)
@@ -675,7 +680,7 @@ def test_semantic_spacing_is_compact_and_transition_specific(tmp_path: Path) -> 
     education_details = [
         paragraph
         for paragraph in paragraphs
-        if paragraph.text.startswith(("GPA:", "Awards:", "Relevant Coursework:"))
+        if paragraph.text.startswith(("Awards:", "Relevant Coursework:"))
     ]
     skills = [
         paragraph
@@ -714,9 +719,6 @@ def test_semantic_spacing_is_compact_and_transition_specific(tmp_path: Path) -> 
         _transition(profile, "education_program_location_row", "education_detail_bullet")
     )
     assert education_details[1].paragraph_format.space_before.twips == _resolved_before(
-        _transition(profile, "education_detail_bullet", "final_paragraph_in_section")
-    )
-    assert education_details[2].paragraph_format.space_before.twips == _resolved_before(
         _transition(profile, "education_detail_bullet", "final_paragraph_in_section")
     )
     assert technical_skills.paragraph_format.space_before is None

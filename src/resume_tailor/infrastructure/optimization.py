@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from itertools import combinations
 
@@ -72,14 +73,18 @@ class MultiRoleOpportunityAnalyzer:
         RoleSignal(
             id="robotics-mechatronics",
             label="robotics and mechatronics",
-            keywords=["robotics", "mechatronics", "actuator", "kinematics", "manipulator"],
+            keywords=[
+                "robot", "robotics", "mechatronics", "actuator", "kinematics", "manipulator",
+                "end-of-arm tooling", "controls", "perception", "mechanical integration",
+                "electrical integration", "sensor",
+            ],
             weight=0.9,
             family=RoleFamily.ROBOTICS_MECHATRONICS,
         ),
         RoleSignal(
             id="robotics-integration",
             label="robotics systems integration",
-            keywords=["ros 2", "sensor integration", "motor control", "teleoperation"],
+            keywords=["robot integration", "robotic integration", "ros 2", "sensor integration", "motor control", "teleoperation", "controls"],
             weight=0.7,
             family=RoleFamily.ROBOTICS_MECHATRONICS,
         ),
@@ -130,14 +135,14 @@ class MultiRoleOpportunityAnalyzer:
         RoleSignal(
             id="embedded-firmware",
             label="embedded firmware development",
-            keywords=["embedded", "firmware", "microcontroller", "stm32", "rtos", "gpio"],
+            keywords=["embedded", "firmware", "microcontroller", "device driver", "device drivers", "stm32", "rtos", "gpio", "c", "c++"],
             weight=1.0,
             family=RoleFamily.EMBEDDED_FIRMWARE,
         ),
         RoleSignal(
             id="hardware-integration",
             label="hardware integration and interfaces",
-            keywords=["hardware", "sensor", "i2c", "spi", "uart", "canbus", "interface"],
+            keywords=["hardware", "sensor", "sensors", "i2c", "spi", "uart", "canbus", "interface", "interfaces"],
             weight=0.8,
             family=RoleFamily.EMBEDDED_FIRMWARE,
         ),
@@ -168,10 +173,7 @@ class MultiRoleOpportunityAnalyzer:
                 supported=False,
                 reason="The posting does not contain recognized engineering role signals.",
             )
-        family_scores: dict[RoleFamily, float] = {}
-        for signal in signals:
-            title_weight = 2 if self._matches(signal, title) else 1
-            family_scores[signal.family] = family_scores.get(signal.family, 0) + (signal.weight * title_weight)
+        family_scores = self.score_families(posting, signals=signals)
         ordered_families = sorted(family_scores, key=lambda family: (-family_scores[family], family.value))
         primary = ordered_families[0]
         confidence = min(1.0, 0.35 + (0.08 * len(signals)) + (0.08 * len(ordered_families)))
@@ -183,9 +185,54 @@ class MultiRoleOpportunityAnalyzer:
             secondary_role_families=ordered_families[1:],
         )
 
+    def score_families(
+        self,
+        posting: JobPosting,
+        *,
+        signals: list[RoleSignal] | None = None,
+    ) -> dict[RoleFamily, float]:
+        """Return deterministic family scores used by :meth:`analyze`.
+
+        Explicit signal matches carry full weight. Transferable concept
+        matches remain useful for evidence ranking and adjacent-role
+        classification, but carry a smaller weight so broad concepts cannot
+        displace a family supported by its defining terminology.
+        """
+        title = posting.title.casefold()
+        content = f"{posting.title} {posting.description}".casefold()
+        signals = signals or [signal for signal in self._signals if self._matches(signal, content)]
+        family_scores: dict[RoleFamily, float] = {}
+        for signal in signals:
+            strength = self._match_strength(signal, content)
+            title_strength = self._match_strength(signal, title)
+            title_weight = 2 if title_strength >= 1.0 else 1
+            family_scores[signal.family] = family_scores.get(signal.family, 0) + (
+                signal.weight * strength * title_weight
+            )
+        return family_scores
+
     @staticmethod
     def _matches(signal: RoleSignal, text: str) -> bool:
-        return any(keyword in text for keyword in signal.keywords)
+        return MultiRoleOpportunityAnalyzer._match_strength(signal, text) > 0
+
+    @staticmethod
+    def _match_strength(signal: RoleSignal, text: str) -> float:
+        if any(MultiRoleOpportunityAnalyzer._keyword_matches(keyword, text) for keyword in signal.keywords):
+            return 1.0
+        # Required specialist signals remain literal/explicit. Broad concept
+        # overlap may rank transferable evidence, but must not turn an
+        # unproven requirement into satisfied profile fit.
+        if signal.required:
+            return 0.0
+        return 0.35 if (
+            _transferable_concepts(" ".join((signal.label, *signal.keywords)))
+            & _transferable_concepts(text)
+        ) else 0.0
+
+    @staticmethod
+    def _keyword_matches(keyword: str, text: str) -> bool:
+        escaped = re.escape(keyword.casefold().strip())
+        return bool(re.search(rf"(?<![a-z0-9]){escaped}s?(?![a-z0-9])", text.casefold()))
 
 
 class DeterministicResumeOptimizer:
@@ -208,7 +255,12 @@ class DeterministicResumeOptimizer:
             return self._unsupported_plan(profile, posting, constraints, role)
 
         entities = {item.id: item for item in profile.experiences + profile.projects}
-        records = self._candidate_records(profile, role, constraints)
+        records = self._candidate_records(
+            profile,
+            posting,
+            role,
+            constraints,
+        )
         fit = self._assess_profile_fit(profile, records, role)
         if fit.status == ProfileFitStatus.INSUFFICIENT:
             return TailoringPlan(
@@ -301,15 +353,21 @@ class DeterministicResumeOptimizer:
     def _candidate_records(
         self,
         profile: MasterProfile,
+        posting: JobPosting,
         role: RoleClassification,
         constraints: TemplateConstraints,
     ) -> list[CandidateRecord]:
         records: list[CandidateRecord] = []
         evidence_by_entity: dict[str, list[EvidenceItem]] = {}
+        posting_text = self._posting_text(posting)
         for evidence in profile.evidence:
             if not evidence.confirmed:
                 continue
-            signal_ids = self._matching_signal_ids(self._evidence_text(evidence), role)
+            evidence_text = self._evidence_text(evidence)
+            signal_ids = self._matching_signal_ids(evidence_text, role)
+            signal_ids.update(
+                self._semantic_signal_ids(evidence_text, posting_text, role)
+            )
             if not signal_ids:
                 continue
             candidate = ClaimCandidate(
@@ -455,6 +513,7 @@ class DeterministicResumeOptimizer:
     ) -> list[EntryPackage]:
         selected: list[EntryPackage] = []
         remaining = list(packages)
+        target_lines = math.ceil(constraints.max_total_lines * 0.85)
         while remaining:
             eligible = [package for package in remaining if self._fits(package, selected, constraints)]
             if not eligible:
@@ -467,7 +526,12 @@ class DeterministicResumeOptimizer:
                     package.entity_id,
                 ),
             )
-            if self._marginal_utility(best, selected, role) <= 0:
+            utility = self._marginal_utility(best, selected, role)
+            # Once the plan has useful supported content, keep adding the next
+            # ranked evidence while the template is materially underfilled.
+            # This is a content-selection decision, not a spacing adjustment.
+            current_lines = sum(package.line_cost for package in selected)
+            if utility <= 0 and current_lines >= target_lines:
                 break
             selected.append(best)
             remaining = [package for package in remaining if package.entity_id != best.entity_id]
@@ -620,6 +684,41 @@ class DeterministicResumeOptimizer:
             ]
         ).casefold()
 
+    @staticmethod
+    def _posting_text(posting: JobPosting) -> str:
+        return " ".join((posting.title, posting.description)).casefold()
+
+    def _semantic_signal_ids(
+        self,
+        evidence_text: str,
+        posting_text: str,
+        role: RoleClassification,
+    ) -> set[str]:
+        """Return role signals supported by transferable concept overlap.
+
+        The lexical signal matcher remains useful for precise matches, but it
+        is deliberately not the admission gate. Concept families describe
+        transferable work (integration, design, testing, perception, control,
+        data, and delivery) without naming a particular employer or role.
+        """
+        shared = self._semantic_concepts(evidence_text) & self._semantic_concepts(posting_text)
+        if not shared:
+            return set()
+        matched: set[str] = set()
+        for signal in role.signals:
+            if signal.required:
+                continue
+            signal_concepts = self._semantic_concepts(
+                " ".join((signal.label, *signal.keywords))
+            )
+            if shared & signal_concepts:
+                matched.add(signal.id)
+        return matched
+
+    @staticmethod
+    def _semantic_concepts(text: str) -> set[str]:
+        return _transferable_concepts(text)
+
     def _matching_signal_ids(self, text: str, role: RoleClassification) -> set[str]:
         return {signal.id for signal in role.signals if any(keyword in text for keyword in signal.keywords)}
 
@@ -702,6 +801,19 @@ class EvidenceBoundResumeWriter:
             category.skills.append(
                 ReviewedTechnicalSkill(value=skill.value, source_reference="generated-demonstrated-skill")
             )
+        canonical_by_id = {item.id: item for item in profile.experiences + profile.projects}
+        selected_ids = [item.id for item in plan.selected_experiences + plan.selected_projects]
+        unknown_ids = [item_id for item_id in selected_ids if item_id not in canonical_by_id]
+        if unknown_ids:
+            raise UnsupportedOpportunityError(
+                f"The tailoring plan references unknown profile entries: {unknown_ids}"
+            )
+        canonical_experiences = [
+            canonical_by_id[item.id] for item in plan.selected_experiences
+        ]
+        canonical_projects = [
+            canonical_by_id[item.id] for item in plan.selected_projects
+        ]
         return StructuredResume(
             profile_id=profile.id,
             profile_version=profile.version,
@@ -713,8 +825,8 @@ class EvidenceBoundResumeWriter:
             entity_titles={item.id: item.title for item in profile.experiences + profile.projects},
             education=plan.education,
             technical_skills=technical_skills,
-            experiences=plan.selected_experiences,
-            projects=plan.selected_projects,
+            experiences=canonical_experiences,
+            projects=canonical_projects,
             experience_bullets=experience_bullets,
             project_bullets=project_bullets,
             selected_skills=[
@@ -734,3 +846,17 @@ class EvidenceBoundResumeWriter:
         parts = [profile.contact.email, profile.contact.phone, profile.contact.location, *profile.contact.links]
         populated = [part for part in parts if part]
         return " | ".join(populated) or None
+
+
+def _transferable_concepts(text: str) -> set[str]:
+    tokens = set(re.findall(r"[a-z0-9+#.]+", text.casefold()))
+    concepts = {
+        "integration": {"integration", "integrate", "assembly", "assembled", "interface", "interfaces"},
+        "design": {"design", "designed", "cad", "prototype", "prototyping", "fabrication", "fixture", "fixtures", "mount", "mounts", "tooling", "mechanical", "electromechanical", "mechatronics"},
+        "control": {"control", "controls", "controller", "automation", "robot", "robotics", "actuator", "actuators", "embedded", "firmware", "real-time", "realtime"},
+        "perception": {"camera", "cameras", "vision", "perception", "sensor", "sensors", "lidar", "detection", "imaging"},
+        "verification": {"test", "tested", "testing", "validate", "validated", "validation", "verify", "verification", "debug", "debugging", "quality"},
+        "software": {"software", "python", "c", "c++", "api", "backend", "pipeline", "database", "data", "algorithm", "algorithms"},
+        "delivery": {"deploy", "deployed", "deployment", "production", "release", "monitoring", "documentation"},
+    }
+    return {name for name, values in concepts.items() if tokens & values}
