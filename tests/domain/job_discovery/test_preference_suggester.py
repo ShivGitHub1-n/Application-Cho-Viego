@@ -9,6 +9,9 @@ from pathlib import Path
 from resume_tailor.domain.job_discovery.models import JobLevel
 from resume_tailor.domain.job_discovery.preferences import (
     DeterministicJobSearchPreferenceSuggester,
+    _RELATED_TITLE_VARIANTS,
+    _interleaved_family_title_candidates,
+    _target_title_count,
     _unique_sorted,
 )
 from resume_tailor.domain.models import MasterProfile, RoleFamily
@@ -53,7 +56,13 @@ def _profile() -> MasterProfile:
                 "kind": "project",
                 "technologies": ["C++"],
                 "capabilities": ["robotics", "kinematics"],
-            }
+            },
+            {
+                "id": "project-expense",
+                "title": "Crest - AI-Powered Expense Intelligence Platform",
+                "kind": "project",
+                "technologies": ["Python"],
+            },
         ],
         technical_skills=[{"category": "Languages", "values": ["Python", "C++"]}],
         evidence=[
@@ -86,11 +95,11 @@ def test_suggestion_is_reviewable_and_profile_derived():
     assert suggestion.profile_id == "profile-1"
     assert suggestion.generated_at == WHEN
     assert suggestion.role_family_priority[0] is RoleFamily.AUTONOMOUS_SYSTEMS
-    assert suggestion.target_titles == [
-        "Autonomous Driving Engineer",
-        "Robotics Arm",
-        "Software Engineering Intern",
-    ]
+    assert "Autonomous Systems Engineer" in suggestion.target_titles
+    assert "Autonomous Driving Engineer" not in suggestion.target_titles
+    assert "Crest - AI-Powered Expense Intelligence Platform" not in suggestion.target_titles
+    assert len(suggestion.target_titles) < len(suggestion.related_title_variants)
+    assert len(suggestion.target_titles) <= 6
     assert "Autonomous Vehicle Engineer" in suggestion.related_title_variants
     assert "autonomous driving" in suggestion.technical_themes
     assert "robotics" in suggestion.career_interests
@@ -99,6 +108,174 @@ def test_suggestion_is_reviewable_and_profile_derived():
     assert suggestion.locations[0].raw == "Toronto, ON, Canada"
     assert suggestion.locations[0].parseable is False
     assert suggestion.rationale
+
+
+def test_composite_experience_titles_keep_only_occupational_segments():
+    profile = MasterProfile(
+        id="composite",
+        user_id="user-1",
+        display_name="Candidate",
+        experiences=[
+            {
+                "id": "digital",
+                "title": "Digital Engineering Intern | LLMs, GenAI",
+                "kind": "experience",
+                "technologies": ["Python"],
+                "capabilities": ["software engineering"],
+            },
+            {
+                "id": "hardware",
+                "title": "Principal Hardware Engineer | Embedded Systems, Mechatronics",
+                "kind": "experience",
+                "technologies": ["STM32"],
+                "capabilities": ["embedded systems"],
+            },
+            {
+                "id": "rd",
+                "title": "R&D Hardware Engineer | Mechanical Integration, Hardware Design",
+                "kind": "experience",
+                "capabilities": ["robotics", "hardware integration"],
+            },
+            {
+                "id": "software",
+                "title": "Software Engineering Intern | Python, Pandas, Power BI",
+                "kind": "experience",
+                "technologies": ["Pandas"],
+                "capabilities": ["data engineering"],
+            },
+        ],
+    )
+
+    suggestion = DeterministicJobSearchPreferenceSuggester().suggest(
+        profile, generated_at=WHEN
+    )
+
+    assert set(suggestion.target_titles).issubset(suggestion.related_title_variants)
+    assert any(
+        title in suggestion.target_titles
+        for title in ("Software Engineer", "Embedded Systems Engineer", "Robotics Engineer")
+    )
+    assert len(suggestion.target_titles) < len(suggestion.related_title_variants)
+    assert "LLMs, GenAI" not in suggestion.target_titles
+    assert "Python, Pandas, Power BI" not in suggestion.target_titles
+
+
+def test_project_only_profile_gets_bounded_family_title_candidates():
+    profile = MasterProfile(
+        id="project-only",
+        user_id="user-1",
+        display_name="Candidate",
+        projects=[
+            {
+                "id": "robotics-project",
+                "title": "Autonomous Robot Navigation Platform",
+                "kind": "project",
+                "technologies": ["ROS 2"],
+                "capabilities": ["autonomous systems", "robotics"],
+            }
+        ],
+    )
+
+    suggestion = DeterministicJobSearchPreferenceSuggester().suggest(
+        profile, generated_at=WHEN
+    )
+
+    assert suggestion.target_titles
+    assert "Autonomous Systems Engineer" in suggestion.target_titles
+    assert "Robotics Software Engineer" in suggestion.target_titles
+    assert "Autonomous Robot Navigation Platform" not in suggestion.target_titles
+
+
+def test_different_supported_family_evidence_changes_target_shortlist():
+    suggester = DeterministicJobSearchPreferenceSuggester()
+    robotics = MasterProfile(
+        id="robotics",
+        user_id="user-1",
+        display_name="Candidate",
+        projects=[
+            {
+                "id": "robotics-project",
+                "title": "Robot Manipulator Control",
+                "kind": "project",
+                "technologies": ["ROS 2"],
+                "capabilities": ["robotics", "kinematics", "actuator control"],
+            }
+        ],
+    )
+    software = MasterProfile(
+        id="software",
+        user_id="user-1",
+        display_name="Candidate",
+        projects=[
+            {
+                "id": "software-project",
+                "title": "Data Pipeline Service",
+                "kind": "project",
+                "technologies": ["Python", "FastAPI"],
+                "capabilities": ["data engineering", "backend services"],
+            }
+        ],
+    )
+
+    robotics_suggestion = suggester.suggest(robotics, generated_at=WHEN)
+    software_suggestion = suggester.suggest(software, generated_at=WHEN)
+
+    assert robotics_suggestion.role_family_priority != software_suggestion.role_family_priority
+    assert robotics_suggestion.target_titles != software_suggestion.target_titles
+
+
+def test_target_shortlist_is_strictly_smaller_and_interleaves_supported_families():
+    families = [RoleFamily.AUTONOMOUS_SYSTEMS, RoleFamily.ROBOTICS_MECHATRONICS]
+    candidates = _interleaved_family_title_candidates(families)
+
+    assert candidates[0] in _RELATED_TITLE_VARIANTS[families[0]]
+    assert candidates[1] in _RELATED_TITLE_VARIANTS[families[1]]
+    assert candidates[2] in _RELATED_TITLE_VARIANTS[families[0]]
+    assert candidates[3] in _RELATED_TITLE_VARIANTS[families[1]]
+    assert _target_title_count(1) == 1
+    assert _target_title_count(2) == 1
+    assert _target_title_count(6) == 5
+    assert _target_title_count(7) == 6
+    assert _target_title_count(20) == 6
+
+
+def test_clean_experience_titles_do_not_suppress_role_candidates_or_admit_skill_phrases():
+    profile = MasterProfile(
+        id="clean-titles",
+        user_id="user-1",
+        display_name="Candidate",
+        experiences=[
+            {
+                "id": "role",
+                "title": "Mechanical Design Engineer",
+                "kind": "experience",
+                "capabilities": ["robotics", "mechanical integration"],
+            },
+            {
+                "id": "skills",
+                "title": "Python, Pandas, Power BI",
+                "kind": "experience",
+                "technologies": ["Python", "Pandas"],
+            },
+        ],
+    )
+
+    suggestion = DeterministicJobSearchPreferenceSuggester().suggest(
+        profile, generated_at=WHEN
+    )
+
+    assert set(suggestion.target_titles).issubset(suggestion.related_title_variants)
+    assert 0 < len(suggestion.target_titles) <= 6
+    assert len(suggestion.target_titles) < len(suggestion.related_title_variants)
+    assert "Python, Pandas, Power BI" not in suggestion.target_titles
+    assert "Mechanical Design Engineer" not in suggestion.target_titles
+
+    represented_families = sum(
+        any(title in _RELATED_TITLE_VARIANTS[family] for title in suggestion.target_titles)
+        for family in suggestion.role_family_priority
+    )
+    if len(suggestion.role_family_priority) > 1 and len(suggestion.target_titles) > 1:
+        assert represented_families > 1
 
 
 def test_suggestion_is_deterministic_for_same_profile_and_timestamp():

@@ -66,6 +66,40 @@ def _unique_sorted(values: list[str]) -> list[str]:
     )
 
 
+def _unique_in_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        key = value.casefold()
+        if value.strip() and key not in seen:
+            seen.add(key)
+            result.append(value.strip())
+    return result
+
+
+def _target_title_count(candidate_count: int) -> int:
+    if candidate_count <= 1:
+        return candidate_count
+    return min(6, candidate_count - 1)
+
+
+def _interleaved_family_title_candidates(
+    role_family_priority: list[RoleFamily],
+) -> list[str]:
+    """Give each supported family a primary candidate before secondary variants."""
+
+    family_variants = [list(_RELATED_TITLE_VARIANTS[family]) for family in role_family_priority]
+    return _unique_in_order(
+        [
+            variant
+            for index in range(max((len(variants) for variants in family_variants), default=0))
+            for variants in family_variants
+            if index < len(variants)
+            for variant in [variants[index]]
+        ]
+    )
+
+
 def _entry_text(profile: MasterProfile, entity_id: str) -> str:
     evidence = [
         item.source_text
@@ -97,6 +131,16 @@ class DeterministicJobSearchPreferenceSuggester:
             for family, score in result.family_scores.items():
                 family_scores[family] += score
 
+        reviewed_skill_terms = [
+            skill.value
+            for category in profile.technical_skills
+            for skill in category.skills
+        ]
+        if reviewed_skill_terms:
+            skill_result = classify_role_signals("", " ".join(reviewed_skill_terms))
+            for family, score in skill_result.family_scores.items():
+                family_scores[family] += score
+
         if not family_scores:
             family_scores.update(self._fallback_family_scores(entries))
         role_family_priority = sorted(
@@ -104,14 +148,9 @@ class DeterministicJobSearchPreferenceSuggester:
             key=lambda family: (-family_scores[family], family.value),
         )
 
-        target_titles = _unique_sorted([entry.title for entry in entries])
-        related_title_variants = _unique_sorted(
-            [
-                variant
-                for family in role_family_priority
-                for variant in _RELATED_TITLE_VARIANTS[family]
-            ]
-        )
+        family_title_candidates = _interleaved_family_title_candidates(role_family_priority)
+        target_titles = family_title_candidates[: _target_title_count(len(family_title_candidates))]
+        related_title_variants = _unique_sorted(family_title_candidates)
         technical_themes = _unique_sorted(
             [
                 *[
@@ -147,8 +186,8 @@ class DeterministicJobSearchPreferenceSuggester:
                 "reviewed resume entries."
             ),
             (
-                "Target titles are copied from reviewed experience and project titles "
-                "for user confirmation."
+                "Target titles are a bounded shortlist of role-family variants ranked "
+                "by support from the complete reviewed profile."
             ),
             (
                 "Related title variants are bounded deterministic search terms and "
