@@ -22,8 +22,26 @@ class ConfirmJobSearchPreferencesService:
                 f"Profile {preferences.profile_id!r} was not found for user "
                 f"{preferences.user_id!r}."
             )
-        self._preferences.save_confirmed(preferences)
-        return preferences
+        current = self._preferences.get_current(preferences.user_id, preferences.profile_id)
+        if current is not None and _confirmation_payload(
+            current
+        ) == _confirmation_payload(preferences):
+            return current.model_copy(deep=True)
+
+        next_version = 1 if current is None else current.version + 1
+        confirmed = preferences.model_copy(update={"version": next_version})
+        self._preferences.save_confirmed(confirmed)
+        return confirmed
+
+
+def _confirmation_payload(preferences: JobSearchPreferences) -> dict[str, object]:
+    """Return the user-controlled content used to identify a reconfirmation."""
+
+    payload = preferences.model_dump(mode="python")
+    payload.pop("version", None)
+    payload.pop("created_at", None)
+    payload.pop("confirmed_at", None)
+    return payload
 
 
 __all__ = ["ConfirmJobSearchPreferencesService"]

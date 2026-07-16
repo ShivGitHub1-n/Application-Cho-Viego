@@ -16,12 +16,19 @@ from resume_tailor.domain.job_discovery.models import (
     WorkArrangementPreferenceMode,
 )
 from resume_tailor.domain.models import RoleFamily
+from resume_tailor.application.job_discovery.presentation import (
+    normalize_job_description_for_display,
+)
+from resume_tailor.application.job_discovery.queries import PreferencesNotFoundError
+from resume_tailor.ports.job_discovery import PreferenceVersionConflictError
 
 
 class JobDiscoveryDeliveryApi(Protocol):
     def list_reviewed_profiles(self) -> Sequence[Any]: ...
 
     def suggest_preferences(self, profile_id: str) -> JobSearchPreferenceSuggestion: ...
+
+    def get_current_preferences(self, profile_id: str) -> JobSearchPreferences | None: ...
 
     def confirm_preferences(self, preferences: JobSearchPreferences) -> JobSearchPreferences: ...
 
@@ -54,6 +61,17 @@ class ApplicationJobDiscoveryDeliveryApi:
                 "local-user", profile_id, generated_at=datetime.now(UTC)
             ),
         )
+
+    def get_current_preferences(self, profile_id: str) -> JobSearchPreferences | None:
+        if self._services.current_preferences is None:
+            return None
+        try:
+            return cast(
+                JobSearchPreferences,
+                self._services.current_preferences.get("local-user", profile_id),
+            )
+        except PreferencesNotFoundError:
+            return None
 
     def confirm_preferences(self, preferences: JobSearchPreferences) -> JobSearchPreferences:
         if self._services.confirm_preferences is None:
@@ -133,13 +151,40 @@ def render_job_discovery_view(
     )
     streamlit_module.session_state["job_discovery_profile_id"] = selected_profile_id
 
+    confirmed = api.get_current_preferences(selected_profile_id)
+    confirmed_profile_id = _state_profile_id(
+        streamlit_module, "job_discovery_confirmed_preferences"
+    )
+    if confirmed is not None:
+        streamlit_module.session_state["job_discovery_confirmed_preferences"] = confirmed
+    elif confirmed_profile_id is not None and confirmed_profile_id != selected_profile_id:
+        streamlit_module.session_state.pop("job_discovery_confirmed_preferences", None)
+
+    if (
+        _state_profile_id(streamlit_module, "job_discovery_draft_preferences")
+        != selected_profile_id
+    ):
+        streamlit_module.session_state.pop("job_discovery_draft_preferences", None)
+    if _state_profile_id(streamlit_module, "job_discovery_suggestion") != selected_profile_id:
+        streamlit_module.session_state.pop("job_discovery_suggestion", None)
+
     if streamlit_module.button("Suggest preferences"):
         suggestion = api.suggest_preferences(selected_profile_id)
         streamlit_module.session_state["job_discovery_suggestion"] = suggestion
+        streamlit_module.session_state["job_discovery_draft_preferences"] = suggestion
 
     suggestion = streamlit_module.session_state.get("job_discovery_suggestion")
-    if isinstance(suggestion, JobSearchPreferenceSuggestion):
-        _render_preference_editor(api, suggestion, streamlit_module)
+    draft = streamlit_module.session_state.get("job_discovery_draft_preferences")
+    editor_source = (
+        draft
+        if _state_profile_id(streamlit_module, "job_discovery_draft_preferences")
+        == selected_profile_id
+        else suggestion
+    )
+    if editor_source is None:
+        editor_source = confirmed
+    if isinstance(editor_source, (JobSearchPreferences, JobSearchPreferenceSuggestion)):
+        _render_preference_editor(api, editor_source, streamlit_module)
 
     _render_run(api, selected_profile_id, streamlit_module)
     _render_saved_jobs(api, streamlit_module)
@@ -147,7 +192,7 @@ def render_job_discovery_view(
 
 def _render_preference_editor(
     api: JobDiscoveryDeliveryApi,
-    suggestion: JobSearchPreferenceSuggestion,
+    source: JobSearchPreferences | JobSearchPreferenceSuggestion,
     streamlit_module: Any,
 ) -> None:
     streamlit_module.subheader("Review and confirm search preferences")
@@ -155,42 +200,42 @@ def _render_preference_editor(
     selected_role_families = streamlit_module.multiselect(
         "Role families",
         role_family_values,
-        default=[family.value for family in suggestion.role_family_priority],
+        default=[family.value for family in source.role_family_priority],
     )
     target_titles = _split_values(
-        streamlit_module.text_area("Target titles", _join_values(suggestion.target_titles))
+        streamlit_module.text_area("Target titles", _join_values(source.target_titles))
     )
     related_titles = _split_values(
         streamlit_module.text_area(
-            "Related title variants", _join_values(suggestion.related_title_variants)
+            "Related title variants", _join_values(source.related_title_variants)
         )
     )
     technical_themes = _split_values(
-        streamlit_module.text_area("Technical themes", _join_values(suggestion.technical_themes))
+        streamlit_module.text_area("Technical themes", _join_values(source.technical_themes))
     )
     career_interests = _split_values(
-        streamlit_module.text_area("Career interests", _join_values(suggestion.career_interests))
+        streamlit_module.text_area("Career interests", _join_values(source.career_interests))
     )
     job_level_values = [level.value for level in JobLevel]
     selected_levels = streamlit_module.multiselect(
         "Job levels",
         job_level_values,
-        default=[level.value for level in suggestion.job_levels],
+        default=[level.value for level in source.job_levels],
     )
 
     streamlit_module.write("Locations")
     location_count = int(
         streamlit_module.number_input(
             "Number of locations",
-            value=max(1, len(suggestion.locations)),
+            value=max(1, len(source.locations)),
             min_value=1,
         )
     )
     locations: list[NormalizedLocation] = []
     for index in range(location_count):
         location = (
-            suggestion.locations[index]
-            if index < len(suggestion.locations)
+            source.locations[index]
+            if index < len(source.locations)
             else NormalizedLocation()
         )
         city = streamlit_module.text_input(
@@ -215,29 +260,38 @@ def _render_preference_editor(
     arrangement = streamlit_module.selectbox(
         "Work arrangement",
         [value.value for value in WorkArrangement],
-        index=_enum_index(WorkArrangement, suggestion.work_arrangement),
+        index=_enum_index(WorkArrangement, source.work_arrangement),
     )
     arrangement_mode = streamlit_module.selectbox(
         "Work arrangement mode",
         [value.value for value in WorkArrangementPreferenceMode],
-        index=_enum_index(WorkArrangementPreferenceMode, suggestion.work_arrangement_mode),
+        index=_enum_index(WorkArrangementPreferenceMode, source.work_arrangement_mode),
     )
     preferred_companies = _split_values(
         streamlit_module.text_input(
-            "Preferred companies", _join_values(suggestion.preferred_companies)
+            "Preferred companies", _join_values(source.preferred_companies)
         )
     )
     excluded_companies = _split_values(
-        streamlit_module.text_input("Excluded companies", "")
+        streamlit_module.text_input(
+            "Excluded companies", _join_values(getattr(source, "excluded_companies", []))
+        )
     )
     authorization = _split_values(
-        streamlit_module.text_input("Work-authorization constraints", "")
+        streamlit_module.text_input(
+            "Work-authorization constraints",
+            _join_values(getattr(source, "work_authorization_constraints", [])),
+        )
     )
-    max_age = streamlit_module.number_input("Maximum posting age (days)", value=30, min_value=0)
+    max_age = streamlit_module.number_input(
+        "Maximum posting age (days)",
+        value=getattr(source, "max_posting_age_days", 30) or 0,
+        min_value=0,
+    )
 
     preferences = JobSearchPreferences(
         user_id="local-user",
-        profile_id=suggestion.profile_id,
+        profile_id=source.profile_id,
         version=1,
         role_family_priority=[RoleFamily(value) for value in selected_role_families],
         target_titles=target_titles,
@@ -252,18 +306,25 @@ def _render_preference_editor(
         excluded_companies=excluded_companies,
         work_authorization_constraints=authorization,
         max_posting_age_days=int(max_age),
-        created_at=suggestion.generated_at,
+        created_at=getattr(source, "generated_at", None) or getattr(source, "created_at"),
         confirmed_at=None,
     )
     if streamlit_module.button("Confirm preferences"):
-        confirmed = api.confirm_preferences(
-            preferences.model_copy(update={"confirmed_at": suggestion.generated_at})
-        )
-        streamlit_module.session_state["job_discovery_confirmed_preferences"] = confirmed
-        streamlit_module.success("Preferences confirmed. Refresh recommendations when ready.")
+        try:
+            confirmed = api.confirm_preferences(
+                preferences.model_copy(update={"confirmed_at": datetime.now(UTC)})
+            )
+        except PreferenceVersionConflictError:
+            streamlit_module.error(
+                "These preferences conflict with a newer confirmed version. "
+                "Please review the latest values and confirm again."
+            )
+        else:
+            streamlit_module.session_state["job_discovery_confirmed_preferences"] = confirmed
+            streamlit_module.success("Preferences confirmed. Refresh recommendations when ready.")
     streamlit_module.session_state["job_discovery_draft_preferences"] = preferences
-    if suggestion.rationale:
-        streamlit_module.info("Suggestion rationale: " + " ".join(suggestion.rationale))
+    if isinstance(source, JobSearchPreferenceSuggestion) and source.rationale:
+        streamlit_module.info("Suggestion rationale: " + " ".join(source.rationale))
 
 
 def _render_run(api: JobDiscoveryDeliveryApi, profile_id: str, streamlit_module: Any) -> None:
@@ -360,7 +421,8 @@ def _render_saved_jobs(api: JobDiscoveryDeliveryApi, streamlit_module: Any) -> N
         streamlit_module.write(f"{title} · Availability: {availability}")
         if availability == "unavailable":
             streamlit_module.warning("Unavailable saved snapshot retained.")
-        streamlit_module.write(_value(snapshot, "description", "Posting description unavailable."))
+        description = _value(snapshot, "description", "Posting description unavailable.")
+        streamlit_module.write(normalize_job_description_for_display(str(description)))
         official_url = _value(snapshot, "official_url", "")
         if official_url:
             streamlit_module.link_button("Open saved official posting", official_url)
@@ -373,6 +435,12 @@ def _render_saved_jobs(api: JobDiscoveryDeliveryApi, streamlit_module: Any) -> N
 
 def _profile_id(profile: Any) -> str:
     return str(_value(profile, "id", profile))
+
+
+def _state_profile_id(streamlit_module: Any, key: str) -> str | None:
+    value = streamlit_module.session_state.get(key)
+    profile_id = _value(value, "profile_id", None)
+    return str(profile_id) if profile_id is not None else None
 
 
 def _value(value: Any, name: str, default: Any = None) -> Any:

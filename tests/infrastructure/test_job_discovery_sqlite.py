@@ -26,6 +26,9 @@ from resume_tailor.domain.job_discovery.models import (
     WorkArrangement,
 )
 from resume_tailor.domain.models import RoleFamily
+from resume_tailor.application.job_discovery.presentation import (
+    normalize_job_description_for_display,
+)
 from resume_tailor.infrastructure.job_discovery_sqlite import (
     CorruptStoredJobDiscoveryError,
     SQLiteDiscoveredJobRepository,
@@ -299,6 +302,29 @@ def test_saved_job_round_trip_and_snapshot_is_immutable(tmp_path) -> None:
     assert saved is not None
     assert saved.posting_snapshot.description == "Original description."
     assert saved.availability is SavedJobAvailability.UNKNOWN
+
+
+def test_saved_job_description_round_trip_uses_readable_presentation_text(tmp_path) -> None:
+    repository = SQLiteSavedJobRepository(tmp_path / "discovery.sqlite3")
+    saved = SavedJob(
+        id="saved-html",
+        user_id="u1",
+        job_id="job-html",
+        availability=SavedJobAvailability.UNKNOWN,
+        saved_at=WHEN,
+        posting_snapshot=_job(
+            description="<div><p>Build &amp; test <span style='color:red'>robots</span>.</p>"
+            "<ul><li>Use Python</li><li><script>bad()</script>ROS</li></ul></div>"
+        ),
+    )
+    repository.save(saved)
+
+    refreshed = repository.get("u1", "saved-html")
+    assert refreshed is not None
+    rendered = normalize_job_description_for_display(refreshed.posting_snapshot.description)
+    assert "Build & test robots." in rendered
+    assert "Use Python" in rendered and "ROS" in rendered
+    assert "<div>" not in rendered and "style=" not in rendered and "bad()" not in rendered
 
 
 def test_saved_availability_update_preserves_snapshot(tmp_path) -> None:

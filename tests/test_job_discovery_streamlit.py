@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRunStatus,
     JobLevel,
+    JobSearchPreferences,
     JobSearchPreferenceSuggestion,
     MatchLabel,
     NormalizedLocation,
@@ -17,6 +18,7 @@ from resume_tailor.domain.job_discovery.models import (
 )
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.frontend.job_discovery_view import render_job_discovery_view
+from resume_tailor.ports.job_discovery import PreferenceVersionConflictError
 
 WHEN = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
 
@@ -26,6 +28,8 @@ class FakeStreamlit:
         self.clicked = clicked or set()
         self.session_state: dict[str, object] = {}
         self.text: list[str] = []
+        self.input_values: dict[str, object] = {}
+        self.selected_profile = "p1"
 
     def _record(self, value: object) -> None:
         self.text.append(str(value))
@@ -48,14 +52,18 @@ class FakeStreamlit:
 
     def selectbox(self, label, options, index=0, **kwargs):
         self._record(label)
+        if label == "Reviewed profile" and self.selected_profile in options:
+            return self.selected_profile
         return options[index] if options else None
 
     def text_input(self, label, value="", **kwargs):
         self._record(label)
+        self.input_values[label] = value
         return value
 
     def text_area(self, label, value="", **kwargs):
         self._record(label)
+        self.input_values[label] = value
         return value
 
     def multiselect(self, label, options, default=None, **kwargs):
@@ -104,6 +112,7 @@ class FakeApi:
             recommendations=[],
         )
         self.saved_jobs = []
+        self.current_preferences: JobSearchPreferences | None = None
 
     def list_reviewed_profiles(self):
         return [SimpleNamespace(id="p1", display_name="Reviewed Candidate")]
@@ -112,8 +121,17 @@ class FakeApi:
         self.calls.append(("suggest", profile_id))
         return self.suggestion
 
+    def get_current_preferences(self, profile_id):
+        if (
+            self.current_preferences is not None
+            and self.current_preferences.profile_id == profile_id
+        ):
+            return self.current_preferences
+        return None
+
     def confirm_preferences(self, preferences):
         self.calls.append(("confirm", preferences))
+        self.current_preferences = preferences
         return preferences
 
     def refresh(self, profile_id):
@@ -144,6 +162,27 @@ class FakeApi:
         return self.saved_jobs[0]
 
 
+def _confirmed_preferences(api: FakeApi, *, profile_id: str = "p1", titles=None):
+    suggestion = api.suggestion.model_copy(update={"profile_id": profile_id})
+    return JobSearchPreferences(
+        user_id="local-user",
+        profile_id=profile_id,
+        version=2,
+        role_family_priority=suggestion.role_family_priority,
+        target_titles=list(titles or suggestion.target_titles),
+        related_title_variants=suggestion.related_title_variants,
+        technical_themes=suggestion.technical_themes,
+        career_interests=suggestion.career_interests,
+        job_levels=suggestion.job_levels,
+        locations=suggestion.locations,
+        work_arrangement=suggestion.work_arrangement,
+        work_arrangement_mode=suggestion.work_arrangement_mode,
+        preferred_companies=suggestion.preferred_companies,
+        created_at=WHEN,
+        confirmed_at=WHEN,
+    )
+
+
 def test_streamlit_does_not_render_radius_or_distance():
     fake_st = FakeStreamlit()
     fake_api = FakeApi()
@@ -151,6 +190,68 @@ def test_streamlit_does_not_render_radius_or_distance():
     rendered_text = " ".join(fake_st.text)
     assert "radius" not in rendered_text.lower()
     assert "distance" not in rendered_text.lower()
+    assert "Target titles" not in fake_st.text
+
+
+def test_confirmed_preferences_rehydrate_in_a_fresh_streamlit_session():
+    fake_api = FakeApi()
+    fake_api.current_preferences = _confirmed_preferences(
+        fake_api, titles=["Software Engineer"]
+    )
+    fake_st = FakeStreamlit()
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    assert fake_st.input_values["Target titles"] == "Software Engineer"
+    assert not any(name == "suggest" for name, _ in fake_api.calls)
+
+
+def test_rehydrated_preferences_can_be_confirmed_without_a_session_suggestion():
+    fake_api = FakeApi()
+    fake_api.current_preferences = _confirmed_preferences(
+        fake_api, titles=["Restored Engineer"]
+    )
+    fake_st = FakeStreamlit({"Confirm preferences"})
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    confirmed = next(value for name, value in fake_api.calls if name == "confirm")
+    assert confirmed.target_titles == ["Restored Engineer"]
+    assert confirmed.confirmed_at is not None
+    assert confirmed.confirmed_at > WHEN
+
+
+def test_regenerated_suggestion_does_not_overwrite_current_confirmed_preferences():
+    fake_api = FakeApi()
+    fake_api.current_preferences = _confirmed_preferences(
+        fake_api, titles=["Confirmed Engineer"]
+    )
+    fake_api.suggestion = fake_api.suggestion.model_copy(
+        update={"target_titles": ["Regenerated Engineer"]}
+    )
+    fake_st = FakeStreamlit({"Suggest preferences"})
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    assert fake_api.current_preferences.target_titles == ["Confirmed Engineer"]
+    assert fake_st.input_values["Target titles"] == "Regenerated Engineer"
+
+
+def test_profile_switch_loads_profile_specific_confirmed_preferences():
+    fake_api = FakeApi()
+    fake_api.list_reviewed_profiles = lambda: [
+        SimpleNamespace(id="p1", display_name="First"),
+        SimpleNamespace(id="p2", display_name="Second"),
+    ]
+    fake_api.current_preferences = _confirmed_preferences(
+        fake_api, profile_id="p2", titles=["Second Profile Role"]
+    )
+    fake_st = FakeStreamlit()
+    fake_st.selected_profile = "p2"
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    assert fake_st.input_values["Target titles"] == "Second Profile Role"
 
 
 def test_job_discovery_view_is_composed_from_app():
@@ -259,3 +360,15 @@ def test_view_renders_results_and_saved_unavailable_snapshot_without_probability
     assert "hiring probability" not in rendered_text.lower()
     assert ("check", "saved-1") in fake_api.calls
     assert "job_discovery_checked_saved_jobs" in fake_st.session_state
+
+
+def test_view_reports_preference_conflict_as_readable_error():
+    fake_api = FakeApi()
+    fake_api.confirm_preferences = lambda preferences: (_ for _ in ()).throw(
+        PreferenceVersionConflictError("conflict")
+    )
+    fake_st = FakeStreamlit({"Suggest preferences", "Confirm preferences"})
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    assert any("conflict with a newer confirmed version" in text for text in fake_st.text)
