@@ -71,6 +71,19 @@ or distance. SQLite stores preferences, discovered jobs, runs,
 recommendations, and saved-job records through repository ports, using the
 same application database as the existing profile store.
 
+Profile fit is separate from recommendation desirability. Its occupational
+core scores demonstrated technical evidence, required responsibility and
+capability coverage, preferred occupational evidence, and transferable
+responsibility evidence. Education and level support are admitted only in
+proportion to the occupational core, then the raw fit is normalized against
+the documented 90-point maximum. Company and broad user preferences,
+location and work arrangement, authorization, recency, and posting
+completeness remain outside profile fit. Requirement identity is a structured
+semantic tuple of category, normalized term, and importance; exact duplicate
+requirements are scored once. Evidence provenance records component ownership
+and evidence-to-requirement pairs, allowing one evidence item to support
+distinct requirements without duplicate pair credit.
+
 FastAPI exposes typed discovery contracts and delegates to application
 services. Streamlit is a thin delivery layer that presents editable confirmed
 preferences, explicit refresh status, recommendations, and saved-job actions;

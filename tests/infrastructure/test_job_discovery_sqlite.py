@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 
@@ -13,6 +14,7 @@ from resume_tailor.domain.job_discovery.models import (
     EligibilityAssessment,
     EligibilityStatus,
     JobRecommendation,
+    RequirementEvidenceAllocation,
     JobScoreBreakdown,
     JobSearchPreferences,
     MatchLabel,
@@ -262,6 +264,100 @@ def test_recommendation_replacement_isolated_and_deterministically_ordered(tmp_p
 
     assert [item.job_id for item in repository.list_for_run("run-1")] == ["job-1", "job-2"]
     assert [item.run_id for item in repository.list_for_run("run-2")] == ["run-2"]
+
+
+def test_legacy_evidence_allocation_payload_is_read_compatibly() -> None:
+    original = _recommendation("run-legacy")
+    payload = original.model_dump(mode="json")
+    payload["score"]["evidence_allocation"] = {
+        "technology:python|required|direct_technical": ["profile-evidence-1"],
+        "robotics@10:20|required_coverage": ["profile-evidence-2"],
+    }
+
+    loaded = JobRecommendation.model_validate(payload)
+
+    assert isinstance(loaded.score.evidence_allocation, list)
+    assert loaded.score.total == original.score.total
+    assert loaded.score.label is original.score.label
+    assert loaded.reasons == original.reasons
+    assert loaded.gaps == original.gaps
+    assert [item.evidence_ids for item in loaded.score.evidence_allocation] == [
+        ["profile-evidence-2"],
+        ["profile-evidence-1"],
+    ]
+    assert loaded.score.evidence_allocation[0].term == "robotics"
+
+
+def test_current_evidence_allocation_round_trips_as_a_list() -> None:
+    allocation = RequirementEvidenceAllocation(
+        category="technology",
+        term="python",
+        importance="required",
+        component="direct_technical",
+        evidence_ids=["profile-evidence-1"],
+    )
+    original = _recommendation("run-current").model_copy(
+        update={
+            "score": _recommendation("run-current").score.model_copy(
+                update={"evidence_allocation": [allocation]}
+            )
+        }
+    )
+
+    serialized = original.model_dump(mode="json")
+    loaded = JobRecommendation.model_validate(serialized)
+
+    assert serialized["score"]["evidence_allocation"] == [allocation.model_dump(mode="json")]
+    assert loaded.score.evidence_allocation == [allocation]
+
+
+def test_invalid_legacy_evidence_values_are_rejected() -> None:
+    payload = _recommendation("run-invalid").model_dump(mode="json")
+    payload["score"]["evidence_allocation"] = {
+        "technology:python|required|direct_technical": "not-a-list",
+    }
+
+    with pytest.raises(Exception):
+        JobRecommendation.model_validate(payload)
+
+
+def test_reading_legacy_recommendation_does_not_rewrite_database(tmp_path) -> None:
+    repository = SQLiteJobRecommendationRepository(tmp_path / "discovery.sqlite3")
+    repository.replace_for_run("run-legacy", [_recommendation("run-legacy")])
+    database = sqlite3.connect(tmp_path / "discovery.sqlite3")
+    try:
+        raw_before = database.execute(
+            "SELECT payload_json FROM job_recommendations WHERE run_id = ?",
+            ("run-legacy",),
+        ).fetchone()[0]
+        legacy_payload = json.loads(raw_before)
+        legacy_payload["score"]["evidence_allocation"] = {
+            "technology:python|required|direct_technical": ["profile-evidence-1"]
+        }
+        legacy_json = json.dumps(legacy_payload, separators=(",", ":"), sort_keys=True)
+        database.execute(
+            "UPDATE job_recommendations SET payload_json = ? WHERE run_id = ?",
+            (legacy_json, "run-legacy"),
+        )
+        database.commit()
+        raw_legacy = database.execute(
+            "SELECT payload_json FROM job_recommendations WHERE run_id = ?",
+            ("run-legacy",),
+        ).fetchone()[0]
+    finally:
+        database.close()
+
+    repository.list_for_run("run-legacy")
+
+    database = sqlite3.connect(tmp_path / "discovery.sqlite3")
+    try:
+        raw_after = database.execute(
+            "SELECT payload_json FROM job_recommendations WHERE run_id = ?",
+            ("run-legacy",),
+        ).fetchone()[0]
+    finally:
+        database.close()
+    assert raw_after == raw_legacy
 
 
 def test_recommendation_replacement_rolls_back_complete_operation_on_failure(tmp_path) -> None:

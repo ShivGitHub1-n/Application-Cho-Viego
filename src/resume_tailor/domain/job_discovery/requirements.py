@@ -55,6 +55,19 @@ _RESPONSIBILITY_VERBS = (
     "evaluate",
 )
 
+_GENERIC_TERM_PATTERNS = (
+    r"\bbachelor(?:'s)?(?:\s+degree)?\b",
+    r"\bmaster(?:'s)?(?:\s+degree)?\b",
+    r"\bph\.?d\.?\b",
+    r"\bdoctorate\b",
+    r"\bdiploma\b",
+    r"\bwork authorization\b",
+    r"\bauthorized to work\b",
+    r"\bvisa sponsorship\b",
+    r"\bsecurity clearance\b",
+    r"\bcitizenship\b",
+)
+
 
 @dataclass(frozen=True)
 class RequirementCatalogEntry:
@@ -73,6 +86,14 @@ def _entry(
     normalized = normalize_capability_term(canonical)
     all_aliases = tuple(dict.fromkeys((canonical, *aliases)))
     return RequirementCatalogEntry(normalized, all_aliases, category)
+
+
+def _profile_term_category(term: str) -> RequirementCategory:
+    if any(re.search(pattern, term, re.IGNORECASE) for pattern in _GENERIC_TERM_PATTERNS):
+        if re.search(r"bachelor|master|ph\.?d|doctorate|diploma", term, re.IGNORECASE):
+            return RequirementCategory.EDUCATION
+        return RequirementCategory.AUTHORIZATION
+    return RequirementCategory.OTHER
 
 
 _TECHNOLOGY_ENTRIES = (
@@ -273,7 +294,10 @@ class RequirementExtractor:
             for term in profile_index.terms:
                 normalized = normalize_capability_term(term)
                 if normalized and normalized not in entries:
-                    entries[normalized] = _entry(normalized)
+                    entries[normalized] = _entry(
+                        normalized,
+                        category=_profile_term_category(normalized),
+                    )
 
         matches: list[JobRequirement] = []
         for entry in entries.values():

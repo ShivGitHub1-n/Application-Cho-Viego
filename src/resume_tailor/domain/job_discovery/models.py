@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+import re
 from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
@@ -194,6 +195,7 @@ class RequirementCategory(StrEnum):
     WORK_ARRANGEMENT = "work_arrangement"
     RESPONSIBILITY = "responsibility"
     ROLE = "role"
+    OTHER = "other"
 
 
 class RequirementImportance(StrEnum):
@@ -328,6 +330,62 @@ class JobScoreBreakdown(BaseModel):
     total: float
     label: MatchLabel
     provisional: bool
+    transferable_evidence: float = 0.0
+    profile_family_alignment: float = 0.0
+    education_points_available: float = 0.0
+    level_points_available: float = 0.0
+    education_points_admitted: float = 0.0
+    level_points_admitted: float = 0.0
+    generic_points_suppressed: float = 0.0
+    occupational_gating_factor: float = 0.0
+    unmatched_core_occupational_requirements: list[str] = Field(default_factory=list)
+    evidence_allocation: list["RequirementEvidenceAllocation"] = Field(default_factory=list)
+    recommendation_only_factors_excluded: list[str] = Field(default_factory=list)
+
+    @field_validator("evidence_allocation", mode="before")
+    @classmethod
+    def _load_legacy_evidence_allocation(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        converted: list[dict[str, Any]] = []
+        for legacy_key in sorted(value):
+            if not isinstance(legacy_key, str):
+                raise TypeError("Legacy evidence allocation keys must be strings")
+            legacy_value = value[legacy_key]
+            if not isinstance(legacy_value, list) or not all(
+                isinstance(evidence_id, str) for evidence_id in legacy_value
+            ):
+                raise TypeError(
+                    "Legacy evidence allocation values must be lists of strings"
+                )
+
+            if "|" in legacy_key:
+                legacy_identifier, component = legacy_key.rsplit("|", 1)
+                component = component or "legacy"
+            else:
+                legacy_identifier = legacy_key
+                component = "legacy"
+            term_match = re.match(r"^(?P<term>.+)@\d+:\d+$", legacy_identifier)
+            term = term_match.group("term") if term_match else legacy_identifier
+            converted.append(
+                {
+                    "category": RequirementCategory.OTHER,
+                    "term": term,
+                    "importance": RequirementImportance.UNKNOWN,
+                    "component": component,
+                    "evidence_ids": legacy_value,
+                }
+            )
+        return converted
+
+
+class RequirementEvidenceAllocation(BaseModel):
+    category: RequirementCategory
+    term: str
+    importance: RequirementImportance
+    component: str
+    evidence_ids: list[str] = Field(default_factory=list)
 
 
 class DuplicateGroup(BaseModel):
