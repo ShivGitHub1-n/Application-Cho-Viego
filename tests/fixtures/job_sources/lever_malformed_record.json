@@ -1,0 +1,14 @@
+[
+  {
+    "id": "lever-ok",
+    "text": "Valid Role",
+    "hostedUrl": "https://jobs.lever.co/acme/lever-ok",
+    "descriptionPlain": "A valid description.",
+    "categories": {"location": "Toronto, ON, Canada"}
+  },
+  {
+    "id": "lever-bad",
+    "hostedUrl": "https://jobs.lever.co/acme/lever-bad",
+    "descriptionPlain": "This record has no title."
+  }
+]

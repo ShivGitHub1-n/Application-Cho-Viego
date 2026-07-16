@@ -49,3 +49,19 @@ Non-blocking formatting refinement remains deferred under the frozen-layout poli
 ## Remaining product work
 
 The remaining product work includes URL/web research, structured editing, authentication, deployment, application tracking, and recommendations. Cover-letter quality and broader role-family validation remain areas for follow-up review.
+
+## Job discovery semantic-fit follow-up
+
+Broad recommendation ranking remains deterministic and unchanged in the Job
+Discovery stabilization pass. Manual review observed that generic education
+evidence can contribute too strongly to an occupationally mismatched posting;
+the later semantic-fit stage should prevent a Change and Configuration Control
+Manager result from ranking near a Robotics Software Engineer II result solely
+because both mention a bachelor's requirement.
+
+Target-title recommendations currently rely on a limited engineering-oriented
+role-family taxonomy. They are provisional suggestions, not a general
+cross-domain occupation recommendation engine. Stage 1 must replace this with
+a domain-independent, data-driven occupation model covering engineering,
+science, business, and other fields. Target-title intelligence and discovered-
+job occupational relevance should share that same semantic authority.

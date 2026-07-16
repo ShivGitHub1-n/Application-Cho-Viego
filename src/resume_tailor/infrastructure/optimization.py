@@ -5,26 +5,28 @@ from dataclasses import dataclass
 from itertools import combinations
 
 from resume_tailor.application.skill_selection import DeterministicSkillSelector
-
+from resume_tailor.domain.job_discovery.role_signals import (
+    ROLE_SIGNAL_CATALOG,
+    classify_role_signals,
+)
 from resume_tailor.domain.models import (
     ClaimCandidate,
     ClaimComposition,
     ClaimSupport,
     Decision,
-    GeneratedSkill,
     DecisionReport,
     EntityKind,
     EvidenceItem,
+    GeneratedSkill,
     JobPosting,
     MasterProfile,
     ProfileFitAssessment,
     ProfileFitStatus,
     ResumeItem,
     ResumeStrategy,
-    RoleClassification,
-    RoleFamily,
-    RoleSignal,
     ReviewedTechnicalSkill,
+    RoleClassification,
+    RoleSignal,
     StructuredBullet,
     StructuredResume,
     TailoringPlan,
@@ -54,139 +56,24 @@ class EntryPackage:
 
 
 class MultiRoleOpportunityAnalyzer:
-    _signals = (
-        RoleSignal(
-            id="autonomous-driving",
-            label="autonomous driving systems",
-            keywords=["autonomous driving", "drive-by-wire", "carla", "navsim", "autonomous vehicle"],
-            weight=1.0,
-            family=RoleFamily.AUTONOMOUS_SYSTEMS,
-        ),
-        RoleSignal(
-            id="autonomy-integration",
-            label="autonomous system integration",
-            keywords=["teleoperation", "ros 2", "real-time control", "safety override", "vehicle monitoring"],
-            weight=0.8,
-            family=RoleFamily.AUTONOMOUS_SYSTEMS,
-        ),
-        RoleSignal(
-            id="robotics-mechatronics",
-            label="robotics and mechatronics",
-            keywords=["robotics", "mechatronics", "actuator", "kinematics", "manipulator"],
-            weight=0.9,
-            family=RoleFamily.ROBOTICS_MECHATRONICS,
-        ),
-        RoleSignal(
-            id="robotics-integration",
-            label="robotics systems integration",
-            keywords=["ros 2", "sensor integration", "motor control", "teleoperation"],
-            weight=0.7,
-            family=RoleFamily.ROBOTICS_MECHATRONICS,
-        ),
-        RoleSignal(
-            id="computer-vision-perception",
-            label="computer vision and perception",
-            keywords=["computer vision", "perception", "scene understanding", "lidar", "camera", "yolov8", "opencv"],
-            weight=1.0,
-            family=RoleFamily.COMPUTER_VISION_PERCEPTION,
-        ),
-        RoleSignal(
-            id="vision-language-research",
-            label="vision-language or vision-language-action models",
-            keywords=["vision-language", "vision language", "vla", "vlm", "multimodal reasoning"],
-            weight=1.1,
-            required=True,
-            family=RoleFamily.AI_ML_MULTIMODAL,
-        ),
-        RoleSignal(
-            id="deep-learning-research",
-            label="deep learning and transformer research",
-            keywords=["deep learning", "transformer", "pytorch", "foundation model", "model behaviors"],
-            weight=1.1,
-            required=True,
-            family=RoleFamily.AI_ML_MULTIMODAL,
-        ),
-        RoleSignal(
-            id="research-evaluation",
-            label="research evaluation and benchmarking",
-            keywords=["benchmark", "simulation", "driving datasets", "research projects", "publication", "jupyter"],
-            weight=0.9,
-            family=RoleFamily.AI_ML_MULTIMODAL,
-        ),
-        RoleSignal(
-            id="applied-ai-systems",
-            label="applied AI systems",
-            keywords=["llm", "rag", "multi-agent", "generative ai", "langgraph"],
-            weight=0.9,
-            family=RoleFamily.AI_ML_MULTIMODAL,
-        ),
-        RoleSignal(
-            id="ai-evaluation-governance",
-            label="AI evaluation and governance",
-            keywords=["ai governance", "compliance auditing", "adversarial testing", "model evaluation"],
-            weight=0.8,
-            family=RoleFamily.AI_ML_MULTIMODAL,
-        ),
-        RoleSignal(
-            id="embedded-firmware",
-            label="embedded firmware development",
-            keywords=["embedded", "firmware", "microcontroller", "stm32", "rtos", "gpio"],
-            weight=1.0,
-            family=RoleFamily.EMBEDDED_FIRMWARE,
-        ),
-        RoleSignal(
-            id="hardware-integration",
-            label="hardware integration and interfaces",
-            keywords=["hardware", "sensor", "i2c", "spi", "uart", "canbus", "interface"],
-            weight=0.8,
-            family=RoleFamily.EMBEDDED_FIRMWARE,
-        ),
-        RoleSignal(
-            id="software-data-engineering",
-            label="software and data engineering",
-            keywords=["python", "etl", "pandas", "numpy", "api", "schema", "automation", "analytics"],
-            weight=0.9,
-            family=RoleFamily.SOFTWARE_DATA_ENGINEERING,
-        ),
-        RoleSignal(
-            id="software-platforms",
-            label="software platforms and services",
-            keywords=["fastapi", "database", "docker", "backend", "data pipeline"],
-            weight=0.7,
-            family=RoleFamily.SOFTWARE_DATA_ENGINEERING,
-        ),
-    )
+    _signals = tuple(definition.as_role_signal() for definition in ROLE_SIGNAL_CATALOG)
 
     def analyze(self, posting: JobPosting) -> RoleClassification:
-        title = posting.title.casefold()
-        content = f"{posting.title} {posting.description}".casefold()
-        signals = [signal for signal in self._signals if self._matches(signal, content)]
-        if not signals:
+        result = classify_role_signals(posting.title, posting.description)
+        if not result.supported or result.primary_family is None:
             return RoleClassification(
                 role_family="unsupported",
                 confidence=0.0,
                 supported=False,
-                reason="The posting does not contain recognized engineering role signals.",
+                reason=result.reason,
             )
-        family_scores: dict[RoleFamily, float] = {}
-        for signal in signals:
-            title_weight = 2 if self._matches(signal, title) else 1
-            family_scores[signal.family] = family_scores.get(signal.family, 0) + (signal.weight * title_weight)
-        ordered_families = sorted(family_scores, key=lambda family: (-family_scores[family], family.value))
-        primary = ordered_families[0]
-        confidence = min(1.0, 0.35 + (0.08 * len(signals)) + (0.08 * len(ordered_families)))
         return RoleClassification(
-            role_family=primary.value,
-            confidence=confidence,
+            role_family=result.primary_family.value,
+            confidence=result.confidence,
             supported=True,
-            signals=signals,
-            secondary_role_families=ordered_families[1:],
+            signals=result.signals,
+            secondary_role_families=result.secondary_role_families,
         )
-
-    @staticmethod
-    def _matches(signal: RoleSignal, text: str) -> bool:
-        return any(keyword in text for keyword in signal.keywords)
-
 
 class DeterministicResumeOptimizer:
     def __init__(

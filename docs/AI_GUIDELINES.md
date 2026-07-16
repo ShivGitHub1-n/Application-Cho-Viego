@@ -24,6 +24,19 @@ Provider failures, malformed output, safety blocks, and exhausted validation ret
 
 Composition recommendations may narrow or reorder candidates already produced by the deterministic optimizer. Evidence-linked bullet rewriting may combine or split same-entry evidence, materially change wording, and use accurate job terminology within the validated line and bullet budgets. Demonstrated skills may be proposed only for existing selected categories and must link to confirmed evidence. The application replays all recommendations through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged.
 
+## Job discovery authority
+
+Gemini does not control job discovery, eligibility, scoring, verification,
+normalization, deduplication, persistence, or saved posting snapshots. Those
+responsibilities remain in deterministic domain policies, application
+services, repository ports, and source adapters. No Gemini job-fit calls exist
+in this MVP.
+
+Deterministic evidence authority remains mandatory: profile-fit reasons and
+material gaps must be grounded in reviewed profile evidence and typed source
+records. Model-assisted finalist explanations are deferred and must not be
+implied by deterministic discovery output.
+
 ## Inference guidelines
 
 There are three claim levels: `explicitly_supported`, `strongly_implied`, and `unsupported`. Unsupported claims are never returned. Safe inference translates existing evidence into common recruiter terminology when the relationship is strong and non-material. Mark it `strong_inference_pending_review` in the decision report and require approval before export. Strongly implied rewritten bullets and demonstrated skills are surfaced in the review stage. When ambiguity changes a factual claim, omit it and identify the uncovered role requirement. User edits create new claim candidates that must be revalidated.

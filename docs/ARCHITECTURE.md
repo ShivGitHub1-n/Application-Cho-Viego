@@ -48,6 +48,44 @@ The MVP persists the reviewed `MasterProfile` through the `MasterProfileReposito
 
 Gemini composition is advisory and evidence-grounded. The application may narrow or reorder optimizer-selected candidates, and a separate rewrite operation may create new candidate wording by combining or splitting same-entry evidence. Both paths are replayed through typed deterministic evidence, support, entry, grouping, bullet-count, section-budget, total-line, and entry-overhead checks. Strongly implied wording and demonstrated skills remain review-pending until approval. Reconciled plans retain their evidence links so the plan-integrity gate can reconstruct and verify them before writing.
 
+## Job discovery MVP
+
+Job discovery follows the same boundaries. Provider-neutral domain models and
+ports own normalized postings, search preferences, eligibility, deterministic
+deduplication, scoring, discovery runs, and saved jobs. Application services
+orchestrate suggestion, confirmation, refresh, saving, and availability checks;
+they do not import FastAPI, Streamlit, provider SDKs, or SQLite details.
+
+Infrastructure contains the Greenhouse and Lever adapters and a curated source
+registry. The registry is empty by default and only explicitly configured,
+enabled Greenhouse or Lever sources are eligible for automatic discovery.
+Unsupported sources are not scraped. Connector failures remain structured
+warnings or explicit source errors; a transport failure is not treated as
+confirmed unavailability.
+
+The deterministic pipeline normalizes provider records, deduplicates them,
+applies eligibility rules, and calculates profile-fit scores and labels before
+persisting results. Location handling uses only the approved city, region,
+country, and work-arrangement fields; it does not geocode or calculate radius
+or distance. SQLite stores preferences, discovered jobs, runs,
+recommendations, and saved-job records through repository ports, using the
+same application database as the existing profile store.
+
+FastAPI exposes typed discovery contracts and delegates to application
+services. Streamlit is a thin delivery layer that presents editable confirmed
+preferences, explicit refresh status, recommendations, and saved-job actions;
+it does not contain eligibility, scoring, persistence, or connector logic.
+Saved jobs contain an immutable normalized posting snapshot. Availability checks
+update only availability metadata and their check timestamp, retaining the
+snapshot and unavailable saved rows. The UI reports the empty registry exactly
+as `No approved job sources are configured` and does not present it as a
+successful empty search.
+
+Connector behavior is tested primarily with offline Greenhouse and Lever
+fixtures. Live source smoke testing is opt-in, uses the
+`job_source_integration` pytest marker, requires explicit approved source
+configuration, and is never part of ordinary offline test execution.
+
 ## Evolution
 
 Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter, and authentication dependency without moving domain or application code. FastAPI is the stable product API; Streamlit is a replaceable client.

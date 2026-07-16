@@ -18,8 +18,35 @@ Resume Tailor helps job seekers create one-page, role-specific resumes that rema
 
 ## Later-stage scope
 
-Authentication, multi-user deployment, application tracking, and recommendations are later-stage capabilities. The first evidence-grounded cover-letter workflow is part of the MVP.
+Authentication, multi-user deployment, and application tracking are later-stage capabilities. The first evidence-grounded cover-letter workflow is part of the MVP; Job Discovery MVP behavior is described below.
 
 Known cover-letter composition and export-quality issues are tracked in
 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) and remain deferred unless they block
 normal cover-letter generation.
+
+## Job discovery MVP
+
+Job discovery uses confirmed search preferences separate from the reviewed
+profile. The product may propose deterministic preference suggestions, but the
+user can review and edit every field before confirming them. Discovery begins
+only after the user explicitly selects `Refresh recommendations`.
+
+Automatic recommendations come only from explicitly approved Greenhouse or
+Lever sources. The production registry is empty by default; when it is empty,
+the product displays `No approved job sources are configured` and does not
+perform live discovery.
+
+Recommendation results remain provisional. The system displays transparent
+profile-fit reasoning and does not claim certainty when postings contain missing
+or unknown eligibility information.
+
+Users can save a job as an immutable timestamped posting snapshot and manually
+check availability later. An unavailable or expired posting remains visible
+with its saved snapshot; availability metadata does not rewrite or delete the
+snapshot. Unknown availability remains explicit.
+
+The MVP excludes background scheduling, automatic application submission,
+application-status tracking, authentication, LinkedIn or Indeed scraping,
+arbitrary career-page scraping, additional ATS providers, paid search
+providers, geocoding or radius calculations, Gemini job-fit analysis, and
+resume or cover-letter generation changes.
