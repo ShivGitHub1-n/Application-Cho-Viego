@@ -1,5 +1,7 @@
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar, runtime_checkable
+
+from pydantic import BaseModel
 
 from resume_tailor.domain.models import (
     JobPosting,
@@ -25,6 +27,17 @@ from resume_tailor.domain.llm_models import (
     SkillCompositionRequest,
     SkillCompositionResult,
 )
+
+CacheModelT = TypeVar("CacheModelT", bound=BaseModel)
+
+
+@runtime_checkable
+class RoleClassificationCache(Protocol):
+    def key_for(self, operation: str, model: str, payload: BaseModel) -> str: ...
+
+    def get(self, key: str, result_type: type[CacheModelT]) -> CacheModelT | None: ...
+
+    def set(self, key: str, value: BaseModel) -> None: ...
 
 
 class MasterProfileRepository(Protocol):
