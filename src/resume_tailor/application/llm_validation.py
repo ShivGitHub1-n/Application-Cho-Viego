@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import re
+from enum import StrEnum
+from math import isfinite
+
+from pydantic import BaseModel
 
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
@@ -9,8 +13,114 @@ from resume_tailor.domain.llm_models import (
     BulletShorteningOutput,
     CompositionRecommendationOutput,
     ProposedDemonstratedSkill,
+    RoleClassificationOutput,
+    RoleClassificationRequest,
 )
-from resume_tailor.domain.models import ClaimConfidence, EvidenceItem
+from resume_tailor.domain.models import ClaimConfidence, EvidenceItem, RoleFamily
+
+MAX_ROLE_SEMANTIC_ITEMS_PER_FIELD = 20
+MAX_ROLE_SEMANTIC_ITEM_LENGTH = 500
+MAX_ROLE_EVIDENCE_QUOTES = 20
+
+
+class RoleClassificationStatus(StrEnum):
+    VALID = "valid"
+    LOW_CONFIDENCE = "low_confidence"
+    INVALID = "invalid"
+
+
+class RoleClassificationReasonCode(StrEnum):
+    MISSING_PRIMARY_FAMILY = "missing_primary_family"
+    NON_ENGINEERING_WITH_PRIMARY_FAMILY = "non_engineering_with_primary_family"
+    NON_ENGINEERING_WITH_SECONDARY_FAMILIES = "non_engineering_with_secondary_families"
+    DUPLICATE_SECONDARY_FAMILY = "duplicate_secondary_family"
+    PRIMARY_REPEATED_AS_SECONDARY = "primary_repeated_as_secondary"
+    UNGROUNDED_EVIDENCE_QUOTE = "ungrounded_evidence_quote"
+    DUPLICATE_EVIDENCE_QUOTE = "duplicate_evidence_quote"
+    SEMANTIC_ITEM_LIMIT_EXCEEDED = "semantic_item_limit_exceeded"
+    SEMANTIC_ITEM_LENGTH_EXCEEDED = "semantic_item_length_exceeded"
+    EVIDENCE_QUOTE_LIMIT_EXCEEDED = "evidence_quote_limit_exceeded"
+    LOW_CONFIDENCE = "low_confidence"
+
+
+class RoleClassificationValidationResult(BaseModel):
+    status: RoleClassificationStatus
+    reason_codes: list[RoleClassificationReasonCode]
+    output: RoleClassificationOutput | None = None
+
+
+def validate_role_classification(
+    request: RoleClassificationRequest,
+    output: RoleClassificationOutput,
+    *,
+    minimum_confidence: float,
+) -> RoleClassificationValidationResult:
+    """Validate typed role classification without creating downstream evidence or policy.
+
+    ``owned_responsibilities``, ``contextual_mentions``, ``managed_subjects``, and
+    ``tools_and_skills`` are advisory metadata only. They do not independently
+    create resume claims, role families, deterministic signals, or optimization
+    evidence. Future orchestration may treat only validated exact evidence quotes
+    as authoritative evidence.
+    """
+    if (
+        isinstance(minimum_confidence, bool)
+        or not isinstance(minimum_confidence, (int, float))
+        or not isfinite(minimum_confidence)
+        or not 0 <= minimum_confidence <= 1
+    ):
+        raise ValueError("minimum_confidence must be a finite number between 0 and 1 inclusive")
+
+    found: set[RoleClassificationReasonCode] = set()
+    if output.is_engineering_role and output.primary_family is None:
+        found.add(RoleClassificationReasonCode.MISSING_PRIMARY_FAMILY)
+    if not output.is_engineering_role and output.primary_family is not None:
+        found.add(RoleClassificationReasonCode.NON_ENGINEERING_WITH_PRIMARY_FAMILY)
+    if not output.is_engineering_role and output.secondary_families:
+        found.add(RoleClassificationReasonCode.NON_ENGINEERING_WITH_SECONDARY_FAMILIES)
+
+    secondary_families = output.secondary_families
+    if len(set(secondary_families)) != len(secondary_families):
+        found.add(RoleClassificationReasonCode.DUPLICATE_SECONDARY_FAMILY)
+    if output.primary_family is not None and output.primary_family in secondary_families:
+        found.add(RoleClassificationReasonCode.PRIMARY_REPEATED_AS_SECONDARY)
+    source_texts = (request.title, request.description)
+    stripped_quotes = [evidence.quote.strip() for evidence in output.evidence_quotes]
+    if len(output.evidence_quotes) > MAX_ROLE_EVIDENCE_QUOTES:
+        found.add(RoleClassificationReasonCode.EVIDENCE_QUOTE_LIMIT_EXCEEDED)
+    if len(set(stripped_quotes)) != len(stripped_quotes):
+        found.add(RoleClassificationReasonCode.DUPLICATE_EVIDENCE_QUOTE)
+    if any(not any(quote in source for source in source_texts) for quote in stripped_quotes):
+        found.add(RoleClassificationReasonCode.UNGROUNDED_EVIDENCE_QUOTE)
+
+    semantic_fields = (
+        output.owned_responsibilities,
+        output.contextual_mentions,
+        output.managed_subjects,
+        output.tools_and_skills,
+    )
+    if any(len(items) > MAX_ROLE_SEMANTIC_ITEMS_PER_FIELD for items in semantic_fields):
+        found.add(RoleClassificationReasonCode.SEMANTIC_ITEM_LIMIT_EXCEEDED)
+    if any(len(item) > MAX_ROLE_SEMANTIC_ITEM_LENGTH for items in semantic_fields for item in items):
+        found.add(RoleClassificationReasonCode.SEMANTIC_ITEM_LENGTH_EXCEEDED)
+
+    ordered_reasons = [code for code in RoleClassificationReasonCode if code in found]
+    if ordered_reasons:
+        return RoleClassificationValidationResult(
+            status=RoleClassificationStatus.INVALID,
+            reason_codes=ordered_reasons,
+        )
+    if output.confidence < minimum_confidence:
+        return RoleClassificationValidationResult(
+            status=RoleClassificationStatus.LOW_CONFIDENCE,
+            reason_codes=[RoleClassificationReasonCode.LOW_CONFIDENCE],
+            output=output,
+        )
+    return RoleClassificationValidationResult(
+        status=RoleClassificationStatus.VALID,
+        reason_codes=[],
+        output=output,
+    )
 
 
 class GroundingValidationError(ValueError):

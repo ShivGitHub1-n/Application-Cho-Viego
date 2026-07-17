@@ -6,6 +6,7 @@ from resume_tailor.domain.llm_models import (
     LlmOperation,
     RoleClassificationOutput,
     RoleClassificationRequest,
+    RoleClassificationResult,
     RoleEvidenceQuote,
 )
 from resume_tailor.domain.models import RoleFamily
@@ -53,6 +54,7 @@ def test_role_classification_prompt_restricts_families_and_quotes() -> None:
     assert "existing RoleFamily enum values" in prompt
     assert "Do not invent" in prompt
     assert "Copy every evidence quote exactly" in prompt
+    assert "exactly from the supplied title or description" in prompt
     assert '"title":"Embedded Systems Engineer"' in prompt
 
 
@@ -64,6 +66,8 @@ def test_role_classification_schema_is_provider_safe() -> None:
     assert "additionalProperties" not in rendered
     assert schema["properties"]["primary_family"]["anyOf"]
     assert "responsibility" in str(schema["properties"]["evidence_quotes"])
+    for family in RoleFamily:
+        assert family.value in str(schema)
 
 
 def test_gemini_adapter_classifies_role_through_mocked_boundary() -> None:
@@ -101,6 +105,9 @@ def test_gemini_adapter_classifies_role_through_mocked_boundary() -> None:
 
     result = adapter.classify_role(_request())
 
+    assert isinstance(result, RoleClassificationResult)
+    assert result.metadata.operation is LlmOperation.CLASSIFY_ROLE
+    assert isinstance(result.output, RoleClassificationOutput)
     assert result.output.primary_family is RoleFamily.EMBEDDED_FIRMWARE
     config = captured["config"]
     assert isinstance(config, dict)
