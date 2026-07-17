@@ -31,6 +31,9 @@ from resume_tailor.domain.llm_models import (
     ProfileExtractionOutput,
     ProfileExtractionRequest,
     ProfileExtractionResult,
+    RoleClassificationOutput,
+    RoleClassificationRequest,
+    RoleClassificationResult,
     SkillCompositionOutput,
     SkillCompositionRequest,
     SkillCompositionResult,
@@ -81,6 +84,14 @@ class GeminiResumeLanguageModel:
             request,
             OpportunityAnalysisOutput,
             OpportunityAnalysisResult,
+        )
+
+    def classify_role(self, request: RoleClassificationRequest) -> RoleClassificationResult:
+        return self._generate(
+            LlmOperation.CLASSIFY_ROLE,
+            request,
+            RoleClassificationOutput,
+            RoleClassificationResult,
         )
 
     def extract_profile(self, request: ProfileExtractionRequest) -> ProfileExtractionResult:

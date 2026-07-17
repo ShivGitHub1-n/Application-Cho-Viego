@@ -25,6 +25,12 @@ def system_prompt() -> str:
 def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
     task = {
         LlmOperation.PROFILE_EXTRACTION: "Convert the supplied resume text into a reviewable draft of the existing MasterProfile schema. Populate linked bullet-level evidence for every experience and project bullet; do not return entries without evidence unless no bullet content exists.",
+        LlmOperation.CLASSIFY_ROLE: (
+            "Classify the posting using only the existing RoleFamily enum values. Do not invent, "
+            "rename, or extend role families. Distinguish responsibilities the role owns from "
+            "contextual mentions, managed subjects, and tools or skills. Copy every evidence quote "
+            "exactly from the supplied title or description, with no paraphrasing or invented text."
+        ),
         LlmOperation.ANALYZE_OPPORTUNITY: "Analyze the opportunity and profile coverage summary.",
         LlmOperation.RECOMMEND_COMPOSITION: "Recommend evidence selection using only supplied IDs.",
         LlmOperation.RECOMMEND_SKILL_COMPOSITION: (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -14,6 +15,7 @@ class StrictModel(BaseModel):
 
 class LlmOperation(StrEnum):
     PROFILE_EXTRACTION = "profile_extraction"
+    CLASSIFY_ROLE = "classify_role"
     ANALYZE_OPPORTUNITY = "analyze_opportunity"
     RECOMMEND_COMPOSITION = "recommend_composition"
     RECOMMEND_SKILL_COMPOSITION = "recommend_skill_composition"
@@ -72,6 +74,37 @@ class OpportunityAnalysisRequest(StrictModel):
     supported_role_families: list[RoleFamily]
     evidence_coverage: list[EvidenceCoverageSummary] = Field(default_factory=list)
     correction_notes: list[str] = Field(default_factory=list)
+
+
+class RoleClassificationRequest(StrictModel):
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
+class RoleEvidenceQuote(StrictModel):
+    quote: str = Field(min_length=1, max_length=500)
+    category: Literal[
+        "responsibility",
+        "contextual_mention",
+        "managed_subject",
+        "tool_or_skill",
+    ]
+
+
+class RoleClassificationOutput(StrictModel):
+    is_engineering_role: bool
+    primary_family: RoleFamily | None = None
+    secondary_families: list[RoleFamily] = Field(default_factory=list)
+    owned_responsibilities: list[str] = Field(default_factory=list)
+    contextual_mentions: list[str] = Field(default_factory=list)
+    managed_subjects: list[str] = Field(default_factory=list)
+    tools_and_skills: list[str] = Field(default_factory=list)
+    evidence_quotes: list[RoleEvidenceQuote] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+
+
+class RoleClassificationResult(ModelResult):
+    output: RoleClassificationOutput
 
 
 class ProfileExtractionRequest(StrictModel):
