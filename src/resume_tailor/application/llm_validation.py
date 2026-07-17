@@ -49,6 +49,16 @@ class RoleClassificationValidationResult(BaseModel):
     output: RoleClassificationOutput | None = None
 
 
+def validate_minimum_confidence(minimum_confidence: float) -> None:
+    if (
+        isinstance(minimum_confidence, bool)
+        or not isinstance(minimum_confidence, (int, float))
+        or not isfinite(minimum_confidence)
+        or not 0 <= minimum_confidence <= 1
+    ):
+        raise ValueError("minimum_confidence must be a finite number between 0 and 1 inclusive")
+
+
 def validate_role_classification(
     request: RoleClassificationRequest,
     output: RoleClassificationOutput,
@@ -63,13 +73,7 @@ def validate_role_classification(
     evidence. Future orchestration may treat only validated exact evidence quotes
     as authoritative evidence.
     """
-    if (
-        isinstance(minimum_confidence, bool)
-        or not isinstance(minimum_confidence, (int, float))
-        or not isfinite(minimum_confidence)
-        or not 0 <= minimum_confidence <= 1
-    ):
-        raise ValueError("minimum_confidence must be a finite number between 0 and 1 inclusive")
+    validate_minimum_confidence(minimum_confidence)
 
     found: set[RoleClassificationReasonCode] = set()
     if output.is_engineering_role and output.primary_family is None:

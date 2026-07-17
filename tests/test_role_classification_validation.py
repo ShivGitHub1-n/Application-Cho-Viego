@@ -10,6 +10,7 @@ from resume_tailor.application.llm_validation import (
     MAX_ROLE_SEMANTIC_ITEMS_PER_FIELD,
     RoleClassificationReasonCode,
     RoleClassificationStatus,
+    validate_minimum_confidence,
     validate_role_classification,
 )
 from resume_tailor.domain.llm_models import RoleClassificationOutput, RoleClassificationRequest, RoleEvidenceQuote
@@ -159,6 +160,12 @@ def test_invalid_output_remains_invalid_when_confidence_is_low() -> None:
 def test_minimum_confidence_must_be_between_zero_and_one(threshold: float) -> None:
     with pytest.raises(ValueError, match="between 0 and 1"):
         validate_role_classification(_request(), _output(), minimum_confidence=threshold)
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), float("-inf")])
+def test_shared_minimum_confidence_validator_rejects_non_finite_values(threshold: float) -> None:
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        validate_minimum_confidence(threshold)
 
 
 @pytest.mark.parametrize(
