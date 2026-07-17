@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from hashlib import sha256
-import re
 from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -33,6 +33,48 @@ class RoleFamily(StrEnum):
     AI_ML_MULTIMODAL = "ai_ml_multimodal"
     EMBEDDED_FIRMWARE = "embedded_firmware"
     SOFTWARE_DATA_ENGINEERING = "software_data_engineering"
+
+
+class RoleClassificationSource(StrEnum):
+    GEMINI = "gemini"
+    DETERMINISTIC = "deterministic"
+
+
+class RoleClassificationValidationStatus(StrEnum):
+    VALID = "valid"
+    LOW_CONFIDENCE = "low_confidence"
+    INVALID = "invalid"
+
+
+class RoleClassificationFallbackReason(StrEnum):
+    DISABLED = "disabled"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    PROVIDER_ERROR = "provider_error"
+    INVALID_OUTPUT = "invalid_output"
+    LOW_CONFIDENCE = "low_confidence"
+    CACHE_READ_ERROR = "cache_read_error"
+    SEMANTIC_FAMILY_UNSUPPORTED = "semantic_family_unsupported"
+
+
+class RoleClassificationCacheBehavior(StrEnum):
+    NOT_USED = "not_used"
+    MISS = "miss"
+    HIT = "hit"
+    STORED = "stored"
+    READ_ERROR = "read_error"
+    WRITE_ERROR = "write_error"
+
+
+class RoleClassificationDiagnostic(BaseModel):
+    semantic_enabled: bool
+    selected_source: RoleClassificationSource
+    resolved_primary_family: RoleFamily | None = None
+    deterministic_primary_family: RoleFamily | None = None
+    semantic_primary_family: RoleFamily | None = None
+    validation_status: RoleClassificationValidationStatus | None = None
+    fallback_reason: RoleClassificationFallbackReason | None = None
+    confidence: Annotated[float | None, Field(ge=0, le=1)] = None
+    cache_behavior: RoleClassificationCacheBehavior = RoleClassificationCacheBehavior.NOT_USED
 
 
 class ProfileFitStatus(StrEnum):
@@ -246,7 +288,10 @@ class MasterProfile(BaseModel):
                             retained_category_id=retained_category_by_value.get(
                                 duplicate_key, category_id
                             ),
-                            reason="Exact case-insensitive duplicate retained at its first reviewed occurrence.",
+                            reason=(
+                                "Exact case-insensitive duplicate retained at its first "
+                                "reviewed occurrence."
+                            ),
                         )
                     )
                     continue
@@ -351,6 +396,7 @@ class RoleClassification(BaseModel):
     signals: list[RoleSignal] = Field(default_factory=list)
     secondary_role_families: list[RoleFamily] = Field(default_factory=list)
     reason: str | None = None
+    diagnostic: RoleClassificationDiagnostic | None = None
 
 
 class ProfileFitAssessment(BaseModel):

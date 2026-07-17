@@ -3,6 +3,24 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.llm_models import (
+    BulletRewriteRequest,
+    BulletRewriteResult,
+    BulletShorteningRequest,
+    BulletShorteningResult,
+    CompositionRecommendationRequest,
+    CompositionRecommendationResult,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
+    OpportunityAnalysisRequest,
+    OpportunityAnalysisResult,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
+    RoleClassificationRequest,
+    RoleClassificationResult,
+    SkillCompositionRequest,
+    SkillCompositionResult,
+)
 from resume_tailor.domain.models import (
     JobPosting,
     MasterProfile,
@@ -11,24 +29,12 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
-from resume_tailor.domain.llm_models import (
-    BulletRewriteRequest,
-    BulletRewriteResult,
-    BulletShorteningRequest,
-    BulletShorteningResult,
-    CoverLetterDraftRequest,
-    CoverLetterDraftResult,
-    CompositionRecommendationRequest,
-    CompositionRecommendationResult,
-    OpportunityAnalysisRequest,
-    OpportunityAnalysisResult,
-    ProfileExtractionRequest,
-    ProfileExtractionResult,
-    SkillCompositionRequest,
-    SkillCompositionResult,
-)
 
 CacheModelT = TypeVar("CacheModelT", bound=BaseModel)
+
+
+class RoleClassificationCacheError(RuntimeError):
+    """Expected operational failure while reading or writing role-classification cache data."""
 
 
 @runtime_checkable
@@ -71,7 +77,12 @@ class ResumeWriter(Protocol):
 class ResumeLanguageModel(Protocol):
     def extract_profile(self, request: ProfileExtractionRequest) -> ProfileExtractionResult: ...
 
-    def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult: ...
+    def classify_role(self, request: RoleClassificationRequest) -> RoleClassificationResult: ...
+
+    def analyze_opportunity(
+        self,
+        request: OpportunityAnalysisRequest,
+    ) -> OpportunityAnalysisResult: ...
 
     def recommend_composition(
         self, request: CompositionRecommendationRequest

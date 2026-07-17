@@ -24,13 +24,22 @@ Provider failures, malformed output, safety blocks, and exhausted validation ret
 
 Composition recommendations may narrow or reorder candidates already produced by the deterministic optimizer. Evidence-linked bullet rewriting may combine or split same-entry evidence, materially change wording, and use accurate job terminology within the validated line and bullet budgets. Demonstrated skills may be proposed only for existing selected categories and must link to confirmed evidence. The application replays all recommendations through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged.
 
+Validated Gemini role classification is opt-in and limited to resume tailoring.
+Its primary family may resolve among families already supported by deterministic
+posting signals. Semantic responsibilities, managed subjects, tools, skills,
+contextual mentions, evidence quotes, and secondary families remain diagnostic
+or advisory only. They never create candidate claims, profile facts, skills,
+evidence IDs, signal IDs, or optimization authority. A provider, validation,
+confidence, model, or cache-read failure preserves deterministic resolution.
+
 ## Job discovery authority
 
 Gemini does not control job discovery, eligibility, scoring, verification,
 normalization, deduplication, persistence, or saved posting snapshots. Those
 responsibilities remain in deterministic domain policies, application
 services, repository ports, and source adapters. No Gemini job-fit calls exist
-in this MVP.
+in this MVP, and the hybrid role classifier is not part of Job Discovery
+dependency construction.
 
 Deterministic evidence authority remains mandatory: profile-fit reasons and
 material gaps must be grounded in reviewed profile evidence and typed source

@@ -32,7 +32,8 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 - The Career Evidence layer owns facts, provenance, demonstrated capabilities, declared skills, preferences, and profile versions.
 - The Opportunity Optimization layer owns posting analysis, strategy, content selection, claim proposals, and decision explanations. These are modules, not separately deployed MVP services.
 - `ResumeOptimizer` creates a `TailoringPlan` from profile, posting, and template constraints. Its algorithm is replaceable.
-- `ResumeLanguageModel` exposes only opportunity analysis, composition recommendation, bullet rewriting, and shortening. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
+- The optimizer's `OpportunityAnalyzer` dependency is the single role-classification boundary for resume tailoring. When explicitly enabled, the hybrid analyzer may resolve a validated Gemini primary family over deterministic posting signals; default and fallback behavior remains the deterministic analyzer.
+- `ResumeLanguageModel` exposes typed profile extraction, role classification, opportunity analysis, composition recommendation, bullet rewriting, shortening, and cover-letter drafting. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
 - `ResumeRenderer` maps structured resume content to a versioned template; it owns all styling.
 - `CompanyResearcher` returns sourced company facts, never candidate claims.
 
@@ -47,6 +48,15 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
 Gemini composition is advisory and evidence-grounded. The application may narrow or reorder optimizer-selected candidates, and a separate rewrite operation may create new candidate wording by combining or splitting same-entry evidence. Both paths are replayed through typed deterministic evidence, support, entry, grouping, bullet-count, section-budget, total-line, and entry-overhead checks. Strongly implied wording and demonstrated skills remain review-pending until approval. Reconciled plans retain their evidence links so the plan-integrity gate can reconstruct and verify them before writing.
+
+Gemini role classification is a separate opt-in tailoring concern. Production
+wiring injects the configured adapter, model/cache identity, in-memory cache,
+and confidence threshold into the hybrid opportunity analyzer. Only a validated
+primary family already supported by deterministic posting signals can change
+the resolved family. Deterministic signals remain the sole optimization signal
+and evidence authority. Typed, sanitized diagnostics travel with the role
+decision for delivery surfaces; raw prompts, payloads, credentials, exceptions,
+and semantic advisory fields do not.
 
 ## Job discovery MVP
 

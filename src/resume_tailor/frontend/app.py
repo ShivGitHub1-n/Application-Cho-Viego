@@ -41,6 +41,9 @@ from resume_tailor.frontend.job_discovery_view import (
     ApplicationJobDiscoveryDeliveryApi,
     render_job_discovery_view,
 )
+from resume_tailor.frontend.role_classification_view import (
+    build_role_classification_diagnostic_view,
+)
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.dependencies import (
     create_job_discovery_services,
@@ -62,7 +65,9 @@ st.set_page_config(page_title="Resume Tailor", page_icon="📄", layout="wide")
 st.title("Resume Tailor")
 st.caption("One evidence-backed recommendation for engineering opportunities.")
 
-service = create_tailor_service()
+if "_tailor_service" not in st.session_state:
+    st.session_state["_tailor_service"] = create_tailor_service()
+service = st.session_state["_tailor_service"]
 profile_repository = create_profile_repository()
 
 
@@ -314,6 +319,26 @@ plan = st.session_state.get("plan")
 profile = st.session_state.get("profile")
 posting = get_active_posting(st.session_state)
 if plan and profile and posting:
+    classification_view = build_role_classification_diagnostic_view(plan.report.role)
+    if classification_view.semantic_enabled:
+        with st.container(border=True):
+            st.markdown("**Role classification**")
+            st.write(
+                f"Resolved role family: {classification_view.resolved_role_family}"
+            )
+            st.caption(f"Selected source: {classification_view.selected_source}")
+            if classification_view.fallback_reason:
+                st.caption(f"Fallback: {classification_view.fallback_reason}")
+            if classification_view.confidence is not None:
+                st.caption(
+                    f"Validated Gemini confidence: "
+                    f"{classification_view.confidence:.0%}"
+                )
+            if classification_view.cached_reuse is not None:
+                st.caption(
+                    "Cached result reused: "
+                    + ("Yes" if classification_view.cached_reuse else "No")
+                )
     if plan.strategy is None:
         st.warning(plan.report.warnings[0])
     else:

@@ -16,6 +16,11 @@ from resume_tailor.application.job_discovery.saved import (
     SaveJobService,
 )
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.role_classification import (
+    HybridRoleClassifier,
+    HybridRoleOpportunityAnalyzer,
+    RoleClassificationCacheIdentity,
+)
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.job_discovery.models import ConnectorType, SupportedJobSource
 from resume_tailor.domain.job_discovery.preferences import DeterministicJobSearchPreferenceSuggester
@@ -34,12 +39,13 @@ from resume_tailor.infrastructure.job_discovery_sqlite import (
 from resume_tailor.infrastructure.job_sources.greenhouse import GreenhouseConnector
 from resume_tailor.infrastructure.job_sources.lever import LeverConnector
 from resume_tailor.infrastructure.job_sources.registry import load_source_registry
+from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
 )
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
-from resume_tailor.ports.interfaces import ResumeLanguageModel
+from resume_tailor.ports.interfaces import ResumeLanguageModel, RoleClassificationCache
 
 
 class _ConfiguredSourceRepository:
@@ -54,9 +60,42 @@ class _ConfiguredSourceRepository:
         return [source.model_copy(deep=True) for source in self._sources]
 
 
-def create_tailor_service(settings: Settings | None = None) -> TailorResumeService:
+def create_tailor_service(
+    settings: Settings | None = None,
+    *,
+    role_classification_cache: RoleClassificationCache | None = None,
+) -> TailorResumeService:
     resolved_settings = settings or Settings()
     language_model = _create_language_model(resolved_settings)
+    optimizer = DeterministicResumeOptimizer()
+    if resolved_settings.llm_enable_role_classification:
+        resolved_role_cache: RoleClassificationCache | None = None
+        cache_identity: RoleClassificationCacheIdentity | None = None
+        if resolved_settings.gemini_model:
+            resolved_role_cache = (
+                role_classification_cache
+                if role_classification_cache is not None
+                else InMemoryLlmCache(resolved_settings.llm_cache_ttl_seconds)
+            )
+            cache_identity = RoleClassificationCacheIdentity(
+                provider=resolved_settings.llm_provider,
+                model=resolved_settings.gemini_model,
+            )
+        role_classifier = HybridRoleClassifier(
+            language_model,
+            enabled=True,
+            cache=resolved_role_cache,
+            cache_identity=cache_identity,
+            safe_cache_failures=True,
+        )
+        optimizer = DeterministicResumeOptimizer(
+            opportunity_analyzer=HybridRoleOpportunityAnalyzer(
+                role_classifier,
+                minimum_confidence=(
+                    resolved_settings.llm_role_classification_minimum_confidence
+                ),
+            )
+        )
     hybrid_services = HybridLlmServices(
         language_model=language_model,
         retry_count=resolved_settings.llm_retry_count,
@@ -70,7 +109,7 @@ def create_tailor_service(settings: Settings | None = None) -> TailorResumeServi
         renderer=CoverLetterRenderer(),
     )
     return TailorResumeService(
-        DeterministicResumeOptimizer(),
+        optimizer,
         EvidenceBoundResumeWriter(),
         hybrid_services=hybrid_services,
         cover_letter_service=cover_letter_service,
@@ -164,6 +203,7 @@ def _create_language_model(settings: Settings) -> ResumeLanguageModel | None:
             settings.llm_enable_bullet_rewrite,
             settings.llm_enable_shortening,
             settings.llm_enable_cover_letter,
+            settings.llm_enable_role_classification,
         ]
     )
     if not enabled:

@@ -26,12 +26,16 @@ from resume_tailor.domain.models import (
     ResumeStrategy,
     ReviewedTechnicalSkill,
     RoleClassification,
+    RoleClassificationDiagnostic,
+    RoleClassificationFallbackReason,
+    RoleClassificationSource,
     RoleSignal,
     StructuredBullet,
     StructuredResume,
     TailoringPlan,
     TemplateConstraints,
 )
+from resume_tailor.ports.interfaces import OpportunityAnalyzer
 
 
 class UnsupportedOpportunityError(ValueError):
@@ -66,6 +70,11 @@ class MultiRoleOpportunityAnalyzer:
                 confidence=0.0,
                 supported=False,
                 reason=result.reason,
+                diagnostic=RoleClassificationDiagnostic(
+                    semantic_enabled=False,
+                    selected_source=RoleClassificationSource.DETERMINISTIC,
+                    fallback_reason=RoleClassificationFallbackReason.DISABLED,
+                ),
             )
         return RoleClassification(
             role_family=result.primary_family.value,
@@ -73,12 +82,19 @@ class MultiRoleOpportunityAnalyzer:
             supported=True,
             signals=result.signals,
             secondary_role_families=result.secondary_role_families,
+            diagnostic=RoleClassificationDiagnostic(
+                semantic_enabled=False,
+                selected_source=RoleClassificationSource.DETERMINISTIC,
+                resolved_primary_family=result.primary_family,
+                deterministic_primary_family=result.primary_family,
+                fallback_reason=RoleClassificationFallbackReason.DISABLED,
+            ),
         )
 
 class DeterministicResumeOptimizer:
     def __init__(
         self,
-        opportunity_analyzer: MultiRoleOpportunityAnalyzer | None = None,
+        opportunity_analyzer: OpportunityAnalyzer | None = None,
         skill_selector: DeterministicSkillSelector | None = None,
     ) -> None:
         self._opportunity_analyzer = opportunity_analyzer or MultiRoleOpportunityAnalyzer()

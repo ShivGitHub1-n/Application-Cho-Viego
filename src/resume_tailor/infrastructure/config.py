@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,13 @@ class Settings(BaseSettings):
     llm_retry_count: int = 2
     llm_max_calls_per_generation: int = 12
     llm_cache_ttl_seconds: int = 900
+    llm_enable_role_classification: bool = False
+    llm_role_classification_minimum_confidence: float = Field(
+        default=0.7,
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
+    )
     llm_enable_opportunity_analysis: bool = True
     llm_enable_composition: bool = True
     llm_enable_bullet_rewrite: bool = True
