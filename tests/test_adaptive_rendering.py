@@ -18,7 +18,6 @@ from resume_tailor.domain.models import (
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.reference_docx import analyze_reference_docx
 
-
 REFERENCE = Path("manual-test/reference-resume.docx")
 
 
@@ -148,10 +147,7 @@ def _resolved_before(transition) -> int | None:
 
 
 def _resolved_after(transition) -> int | None:
-    observed = (
-        transition.resolved_source_space_after_twips
-        or transition.source_space_after_twips
-    )
+    observed = transition.resolved_source_space_after_twips or transition.source_space_after_twips
     return observed.value if isinstance(observed.value, int) else None
 
 
@@ -264,8 +260,16 @@ def test_page_header_contact_and_section_formatting_come_from_profile(tmp_path: 
     for label in ("Education", "Technical Skills", "Technical Experience", "Projects"):
         heading = _paragraph(document, label)
         assert heading.style.name == "Normal"
-        assert heading._p.pPr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pBdr") is not None
-        assert heading.runs[0].font.color.rgb is None or str(heading.runs[0].font.color.rgb) != "2F5496"
+        assert (
+            heading._p.pPr.find(
+                "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pBdr"
+            )
+            is not None
+        )
+        assert (
+            heading.runs[0].font.color.rgb is None
+            or str(heading.runs[0].font.color.rgb) != "2F5496"
+        )
 
 
 def test_generated_geometry_and_tabs_stay_inside_profile_usable_area(tmp_path: Path) -> None:
@@ -313,13 +317,21 @@ def test_long_metadata_uses_line_fallback_without_truncation_or_dangling_spaces(
     tmp_path: Path,
 ) -> None:
     profile = analyze_reference_docx(REFERENCE)
+    long_title = (
+        "A Very Long Verified Systems Integration Engineering Role Title That Must Remain Intact"
+    )
+    long_organization = (
+        "A Very Long Verified Research Organization Name With Multiple Operational Divisions"
+    )
     resume = _resume().model_copy(
         update={
             "experiences": [
-                _resume().experiences[0].model_copy(
+                _resume()
+                .experiences[0]
+                .model_copy(
                     update={
-                        "title": "A Very Long Verified Systems Integration Engineering Role Title That Must Remain Intact",
-                        "organization": "A Very Long Verified Research Organization Name With Multiple Operational Divisions",
+                        "title": long_title,
+                        "organization": long_organization,
                         "location": "A Very Long Verified City, Region, Country Location",
                         "start_date": "January 2024",
                         "end_date": "December 2026",
@@ -332,8 +344,8 @@ def test_long_metadata_uses_line_fallback_without_truncation_or_dangling_spaces(
     render_structured_resume(resume, profile, output)
     document = Document(output)
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
-    assert "A Very Long Verified Systems Integration Engineering Role Title That Must Remain Intact" in text
-    assert "A Very Long Verified Research Organization Name With Multiple Operational Divisions" in text
+    assert long_title in text
+    assert long_organization in text
     assert "A Very Long Verified City, Region, Country Location" in text
     assert "January 2024" in text and "December 2026" in text
     assert all("    " not in paragraph.text for paragraph in document.paragraphs)
@@ -459,8 +471,13 @@ def test_bullets_use_profile_marker_indentation_and_role_spacing(tmp_path: Path)
         if "Integrated verified embedded controls" in paragraph.text
     )
     bullet_role = profile.semantic_roles["experience_bullet"]
-    assert experience_bullet.paragraph_format.left_indent.twips == bullet_role.bullet.left_indent_twips
-    assert experience_bullet.paragraph_format.first_line_indent.twips == -bullet_role.bullet.hanging_indent_twips
+    assert (
+        experience_bullet.paragraph_format.left_indent.twips == bullet_role.bullet.left_indent_twips
+    )
+    assert (
+        experience_bullet.paragraph_format.first_line_indent.twips
+        == -bullet_role.bullet.hanging_indent_twips
+    )
     assert experience_bullet._p.pPr.numPr is not None
     assert len(experience_bullet.runs) == 1
     assert experience_bullet.runs[0].bold is False
@@ -504,7 +521,9 @@ def test_reference_numbering_marker_font_is_separate_from_plain_bullet_text(
         assert "\uf0a7" not in document_xml
 
 
-def test_education_details_are_separate_regular_numbered_paragraphs(tmp_path: Path) -> None:
+def test_awards_and_gpa_share_a_compact_row_and_coursework_stays_dedicated(
+    tmp_path: Path,
+) -> None:
     profile = analyze_reference_docx(REFERENCE)
     output = tmp_path / "education-details.docx"
     render_structured_resume(_resume(), profile, output)
@@ -512,14 +531,14 @@ def test_education_details_are_separate_regular_numbered_paragraphs(tmp_path: Pa
     details = [
         paragraph
         for paragraph in document.paragraphs
-        if paragraph.text.startswith(("GPA:", "Awards:", "Relevant Coursework:"))
+        if paragraph.text.startswith(("Awards:", "Relevant Courses:"))
     ]
 
     assert [paragraph.text.split(":", 1)[0] for paragraph in details] == [
-        "GPA",
         "Awards",
-        "Relevant Coursework",
+        "Relevant Courses",
     ]
+    assert "GPA: 3.8/4.0" in details[0].text
     assert all(paragraph._p.pPr.numPr is not None for paragraph in details)
     assert all(len(paragraph.runs) == 1 for paragraph in details)
     assert all(paragraph.runs[0].bold is False for paragraph in details)
@@ -530,8 +549,7 @@ def test_education_details_are_separate_regular_numbered_paragraphs(tmp_path: Pa
         for paragraph in details
     )
     assert all(
-        paragraph.paragraph_format.first_line_indent.twips
-        == -expected.hanging_indent_twips
+        paragraph.paragraph_format.first_line_indent.twips == -expected.hanging_indent_twips
         for paragraph in details
     )
 
@@ -568,7 +586,8 @@ def test_metadata_rows_share_profile_derived_canonical_tab_column(tmp_path: Path
             "education_institution_date_row",
             "education_program_location_row",
             "employer_location_row",
-        } & set(group.role_groups)
+        }
+        & set(group.role_groups)
     )
     primary = max(
         group.representative_position_twips
@@ -576,7 +595,8 @@ def test_metadata_rows_share_profile_derived_canonical_tab_column(tmp_path: Path
         if {
             "experience_title_date_row",
             "interior_entry_transition",
-        } & set(group.role_groups)
+        }
+        & set(group.role_groups)
     )
     actual = {
         next(
@@ -607,8 +627,12 @@ def test_semantic_transition_spacing_and_no_blank_paragraphs(tmp_path: Path) -> 
     output = tmp_path / "semantic-spacing.docx"
     render_structured_resume(_resume(), profile, output)
     document = Document(output)
-    title = next(p for p in document.paragraphs if p.text.startswith("Systems Integration Engineer"))
-    employer = next(p for p in document.paragraphs if p.text.startswith("Example Research Cooperative"))
+    title = next(
+        p for p in document.paragraphs if p.text.startswith("Systems Integration Engineer")
+    )
+    employer = next(
+        p for p in document.paragraphs if p.text.startswith("Example Research Cooperative")
+    )
     bullet = next(p for p in document.paragraphs if p.text.startswith("Integrated verified"))
     title_to_employer = max(
         (
@@ -628,17 +652,21 @@ def test_semantic_transition_spacing_and_no_blank_paragraphs(tmp_path: Path) -> 
         ),
         key=lambda item: item.occurrence_count,
     )
-    assert employer.paragraph_format.space_before.twips == title_to_employer.destination_space_before_twips.value
-    assert bullet.paragraph_format.space_before.twips == employer_to_bullet.destination_space_before_twips.value
+    assert (
+        employer.paragraph_format.space_before.twips
+        == title_to_employer.destination_space_before_twips.value
+    )
+    assert (
+        bullet.paragraph_format.space_before.twips
+        == employer_to_bullet.destination_space_before_twips.value
+    )
     assert title.paragraph_format.space_before != employer.paragraph_format.space_before
     assert all(paragraph.text for paragraph in document.paragraphs)
 
 
 def test_reference_derived_transition_resolution_covers_section_and_detail_rhythm() -> None:
     profile = analyze_reference_docx(REFERENCE)
-    section_to_education = _transition(
-        profile, "section_heading", "education_institution_date_row"
-    )
+    section_to_education = _transition(profile, "section_heading", "education_institution_date_row")
     section_to_skills = _transition(profile, "section_heading", "skill_category_row")
     final_education_to_skills = _transition(
         profile,
@@ -652,10 +680,19 @@ def test_reference_derived_transition_resolution_covers_section_and_detail_rhyth
         "section_heading",
         "experience_title_date_row",
     )
-    assert _resolved_before(section_to_education) == section_to_education.destination_space_before_twips.value
-    assert _resolved_before(section_to_skills) == section_to_skills.destination_space_before_twips.value
+    assert (
+        _resolved_before(section_to_education)
+        == section_to_education.destination_space_before_twips.value
+    )
+    assert (
+        _resolved_before(section_to_skills)
+        == section_to_skills.destination_space_before_twips.value
+    )
     assert _resolved_before(final_education_to_skills) is None
-    assert _resolved_before(skill_to_experience) == skill_to_experience.destination_space_before_twips.value
+    assert (
+        _resolved_before(skill_to_experience)
+        == skill_to_experience.destination_space_before_twips.value
+    )
     assert section_to_education.empty_paragraph_count == 1
     assert section_to_education.drawing_separator_present is True
 
@@ -667,15 +704,10 @@ def test_semantic_spacing_is_compact_and_transition_specific(tmp_path: Path) -> 
     document = Document(output)
     paragraphs = document.paragraphs
 
-    education_program = next(
-        paragraph
-        for paragraph in paragraphs
-        if paragraph.text.startswith("Bachelor of Applied Engineering")
-    )
     education_details = [
         paragraph
         for paragraph in paragraphs
-        if paragraph.text.startswith(("GPA:", "Awards:", "Relevant Coursework:"))
+        if paragraph.text.startswith(("Awards:", "Relevant Courses:"))
     ]
     skills = [
         paragraph
@@ -693,9 +725,7 @@ def test_semantic_spacing_is_compact_and_transition_specific(tmp_path: Path) -> 
         if paragraph.text.startswith("Example Research Cooperative")
     )
     first_bullet = next(
-        paragraph
-        for paragraph in paragraphs
-        if paragraph.text.startswith("Integrated verified")
+        paragraph for paragraph in paragraphs if paragraph.text.startswith("Integrated verified")
     )
     second_title = next(
         paragraph
@@ -716,10 +746,10 @@ def test_semantic_spacing_is_compact_and_transition_specific(tmp_path: Path) -> 
     assert education_details[1].paragraph_format.space_before.twips == _resolved_before(
         _transition(profile, "education_detail_bullet", "final_paragraph_in_section")
     )
-    assert education_details[2].paragraph_format.space_before.twips == _resolved_before(
-        _transition(profile, "education_detail_bullet", "final_paragraph_in_section")
+    assert (
+        technical_skills.paragraph_format.space_before.twips
+        == profile.semantic_roles["section_heading"].paragraph.space_before_twips.value
     )
-    assert technical_skills.paragraph_format.space_before is None
     assert technical_experience.paragraph_format.space_before.twips == _resolved_before(
         _transition(profile, "skill_category_row", "section_heading", "experience_title_date_row")
     )
@@ -767,7 +797,12 @@ def test_spacing_render_is_deterministic_without_content_or_reference_mutation(
         for paragraph in document.paragraphs:
             before = paragraph.paragraph_format.space_before
             after = paragraph.paragraph_format.space_after
-            spacing.append((before.twips if before is not None else None, after.twips if after is not None else None))
+            spacing.append(
+                (
+                    before.twips if before is not None else None,
+                    after.twips if after is not None else None,
+                )
+            )
         return [paragraph.text for paragraph in document.paragraphs], spacing
 
     assert snapshot(first) == snapshot(second)

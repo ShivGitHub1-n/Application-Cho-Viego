@@ -26,6 +26,12 @@ class EntityKind(StrEnum):
     PROJECT = "project"
 
 
+class GraduationStatus(StrEnum):
+    EXPECTED = "expected"
+    COMPLETED = "completed"
+    UNKNOWN = "unknown"
+
+
 class RoleFamily(StrEnum):
     AUTONOMOUS_SYSTEMS = "autonomous_systems"
     ROBOTICS_MECHATRONICS = "robotics_mechatronics"
@@ -132,6 +138,7 @@ class EducationRecord(BaseModel):
     start_date: str | None = None
     expected_graduation_date: str | None = None
     graduation_date: str | None = None
+    graduation_status: GraduationStatus = GraduationStatus.UNKNOWN
     location: str | None = None
     gpa: str | None = None
     awards: list[str] = Field(default_factory=list)
@@ -243,14 +250,19 @@ class MasterProfile(BaseModel):
     )
     skill_normalization_decisions: list[SkillNormalizationDecision] = Field(default_factory=list)
 
+    @field_validator("id", "user_id", "display_name")
+    @classmethod
+    def require_profile_identity(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Profile ID, user ID, and candidate name must not be empty")
+        return cleaned
+
     @field_validator("technical_skills", mode="before")
     @classmethod
     def accept_category_mapping(cls, value: object) -> object:
         if isinstance(value, dict):
-            return [
-                {"category": label, "values": skills}
-                for label, skills in value.items()
-            ]
+            return [{"category": label, "values": skills} for label, skills in value.items()]
         return value
 
     @model_validator(mode="after")
@@ -325,16 +337,12 @@ class MasterProfile(BaseModel):
     @model_validator(mode="after")
     def normalize_coursework_authority(self) -> MasterProfile:
         canonical = [
-            course
-            for education in self.education
-            for course in education.relevant_coursework
+            course for education in self.education for course in education.relevant_coursework
         ]
         canonical = list(dict.fromkeys(canonical))
         if canonical:
             if self.coursework and self.coursework != canonical:
-                raise ValueError(
-                    "Top-level coursework must match education relevant_coursework"
-                )
+                raise ValueError("Top-level coursework must match education relevant_coursework")
             self.coursework = canonical
         elif self.coursework and len(self.education) == 1:
             self.education[0].relevant_coursework = list(self.coursework)
@@ -344,9 +352,7 @@ class MasterProfile(BaseModel):
     def derive_legacy_declared_skills(self) -> MasterProfile:
         if self.technical_skills:
             self.declared_skills = [
-                skill.value
-                for category in self.technical_skills
-                for skill in category.skills
+                skill.value for category in self.technical_skills for skill in category.skills
             ]
         return self
 
@@ -538,9 +544,7 @@ class StructuredResume(BaseModel):
     def derive_legacy_selected_skills(self) -> StructuredResume:
         if self.technical_skills:
             self.selected_skills = [
-                skill.value
-                for category in self.technical_skills
-                for skill in category.skills
+                skill.value for category in self.technical_skills for skill in category.skills
             ]
         return self
 

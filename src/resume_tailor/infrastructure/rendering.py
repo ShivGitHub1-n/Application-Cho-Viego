@@ -1,24 +1,37 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol
 from uuid import uuid4
 
 from docx import Document
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.pdfgen.canvas import Canvas
+from docx.text.paragraph import Paragraph
+from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
+from reportlab.pdfbase.pdfmetrics import stringWidth  # type: ignore[import-untyped]
+from reportlab.pdfgen.canvas import Canvas  # type: ignore[import-untyped]
 
-from resume_tailor.domain.layout import LayoutProfile
-from resume_tailor.domain.models import StructuredBullet, StructuredResume
+from resume_tailor.domain.layout import (
+    LayoutProfile,
+    PageUtilizationDiagnostic,
+    PageUtilizationStatus,
+)
+from resume_tailor.domain.models import (
+    EducationRecord,
+    EntityKind,
+    GraduationStatus,
+    ResumeItem,
+    StructuredBullet,
+    StructuredResume,
+)
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
-from resume_tailor.infrastructure.reference_docx import analyze_reference_docx
+from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
+from resume_tailor.infrastructure.template_v1 import load_template_v1_layout_profile
 
 
 class PageOverflowError(ValueError):
@@ -98,9 +111,10 @@ class MicrosoftWordDocxPageCountProvider:
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None:
             raise PageCountVerificationError(
-                "Microsoft Word page-count verification is unavailable because PowerShell is not available."
+                "Microsoft Word page-count verification is unavailable because "
+                "PowerShell is not available."
             )
-        script = r'''
+        script = r"""
 $Path = $env:RESUME_DOCX_PATH
 $beforeWordIds = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $word = $null
@@ -115,7 +129,10 @@ finally {
     if ($null -ne $document) { $document.Close($false) }
     if ($null -ne $word) { $word.Quit() }
     if ($null -eq $word) {
-        $afterWordIds = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        $afterWordIds = @(
+            Get-Process WINWORD -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.Id }
+        )
         foreach ($id in $afterWordIds) {
             if ($beforeWordIds -notcontains $id) {
                 Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
@@ -123,7 +140,7 @@ finally {
         }
     }
 }
-'''
+"""
         environment = os.environ.copy()
         environment["RESUME_DOCX_PATH"] = str(docx_path)
         try:
@@ -176,7 +193,9 @@ class ExactDocxPageCountProvider:
                 return provider.measure(docx_path)
             except PageCountVerificationError as error:
                 failures.append(str(error))
-        raise PageCountVerificationError("Exact DOCX page-count verification failed: " + " ".join(failures))
+        raise PageCountVerificationError(
+            "Exact DOCX page-count verification failed: " + " ".join(failures)
+        )
 
 
 def _validated_docx_path(path: Path, provider: str) -> Path:
@@ -205,6 +224,7 @@ class ManagedRenderResult:
     measurement_confidence: str
     exact_page_count_verified: bool
     overflow_reduction_count: int
+    page_utilization: PageUtilizationDiagnostic
 
 
 class ManagedResumeRenderer:
@@ -214,6 +234,7 @@ class ManagedResumeRenderer:
     _body_font = "Helvetica"
     _body_size = 9
     _max_overflow_reductions = 32
+    _severe_underfill_threshold = 0.50
 
     def __init__(
         self,
@@ -221,18 +242,18 @@ class ManagedResumeRenderer:
         reference_path: Path | None = None,
         page_count_provider: DocxPageCountProvider | None = None,
     ) -> None:
-        resolved_reference = reference_path or (
-            Path(__file__).resolve().parents[3] / "manual-test" / "reference-resume.docx"
-        )
-        self._layout_profile = (
-            layout_profile
-            if layout_profile is not None
-            else analyze_reference_docx(resolved_reference)
-        )
+        if reference_path is not None and layout_profile is None:
+            raise ValueError(
+                "Template V1 uses its reviewed static layout contract; "
+                "pass an explicit layout_profile for renderer experiments."
+            )
+        self._uses_static_template_v1 = layout_profile is None
+        self._layout_profile = layout_profile or load_template_v1_layout_profile()
         self._page_count_provider = page_count_provider or ExactDocxPageCountProvider()
         self._last_measurement: PageCountMeasurement | None = None
         self._initial_measurement: PageCountMeasurement | None = None
         self._last_overflow_reduction_count = 0
+        self._last_page_utilization: PageUtilizationDiagnostic | None = None
 
     @property
     def layout_profile(self) -> LayoutProfile:
@@ -249,6 +270,10 @@ class ManagedResumeRenderer:
     @property
     def last_overflow_reduction_count(self) -> int:
         return self._last_overflow_reduction_count
+
+    @property
+    def last_page_utilization(self) -> PageUtilizationDiagnostic | None:
+        return self._last_page_utilization
 
     @property
     def underfill_expansion_enabled(self) -> bool:
@@ -270,6 +295,9 @@ class ManagedResumeRenderer:
         measurement = self._last_measurement
         if measurement is None:
             raise PageCountVerificationError("The final DOCX has no page-count measurement.")
+        utilization = self._last_page_utilization
+        if utilization is None:
+            raise PageCountVerificationError("The final DOCX has no page-utilization diagnostic.")
         return ManagedRenderResult(
             docx_path=docx_path,
             pdf_path=pdf_path,
@@ -278,6 +306,7 @@ class ManagedResumeRenderer:
             measurement_confidence=measurement.confidence,
             exact_page_count_verified=measurement.exact,
             overflow_reduction_count=self._last_overflow_reduction_count,
+            page_utilization=utilization,
         )
 
     def _render_docx(self, resume: StructuredResume, path: Path) -> None:
@@ -295,8 +324,12 @@ class ManagedResumeRenderer:
         self._last_measurement = None
         self._initial_measurement = None
         self._last_overflow_reduction_count = 0
+        self._last_page_utilization = None
         for _ in range(self._max_overflow_reductions + 1):
-            render_structured_resume(candidate, self._layout_profile, path)
+            if self._uses_static_template_v1:
+                render_template_v1_resume(candidate, path)
+            else:
+                render_structured_resume(candidate, self._layout_profile, path)
             if not path.is_file() or path.stat().st_size <= 0:
                 raise PageCountVerificationError(
                     "DOCX rendering completed without a non-empty candidate file "
@@ -317,10 +350,18 @@ class ManagedResumeRenderer:
                     "the one-page invariant cannot be verified."
                 )
             if measurement.page_count == 1:
+                self._last_page_utilization = diagnose_docx_page_utilization(
+                    path,
+                    self._layout_profile,
+                    measurement,
+                    severe_underfill_threshold=self._severe_underfill_threshold,
+                )
                 return candidate
             if measurement.page_count < 1:
                 path.unlink(missing_ok=True)
-                raise PageCountVerificationError("The DOCX page-count provider returned an invalid count.")
+                raise PageCountVerificationError(
+                    "The DOCX page-count provider returned an invalid count."
+                )
             reduced = _reduce_optional_content(candidate)
             if reduced is None:
                 path.unlink(missing_ok=True)
@@ -330,102 +371,305 @@ class ManagedResumeRenderer:
             candidate = reduced
             self._last_overflow_reduction_count += 1
         path.unlink(missing_ok=True)
-        raise PageOverflowError("The rendered DOCX did not reach one page within the bounded reduction loop.")
-
-    def _add_education(self, document: Document, resume: StructuredResume) -> None:
-        if not resume.education:
-            return
-        document.add_heading("Education", level=1)
-        for record in resume.education:
-            details = " — ".join(part for part in [record.school, record.program, record.graduation_date] if part)
-            if record.gpa:
-                details = f"{details}; GPA {record.gpa}"
-            document.add_paragraph(details)
+        raise PageOverflowError(
+            "The rendered DOCX did not reach one page within the bounded reduction loop."
+        )
 
     def _render_pdf(self, resume: StructuredResume, path: Path) -> None:
         canvas = Canvas(str(path), pagesize=letter)
-        y = self._page_height - self._margin
-        y = self._draw_line(canvas, resume.display_name, y, "Helvetica-Bold", 16)
+        left = self._layout_profile.page.left_margin_twips / 20
+        right = self._page_width - (self._layout_profile.page.right_margin_twips / 20)
+        self._pdf_bottom_margin = self._layout_profile.page.bottom_margin_twips / 20
+        y = self._page_height - (self._layout_profile.page.top_margin_twips / 20)
+        canvas.setFont("Times-Bold", 16)
+        canvas.drawCentredString((left + right) / 2, y, resume.display_name)
+        y -= 17
         if resume.contact_line:
-            y = self._draw_line(canvas, resume.contact_line, y, "Helvetica", 9)
-        y -= 6
+            canvas.setFont("Times-Roman", 9)
+            canvas.drawCentredString((left + right) / 2, y, resume.contact_line)
+            y -= 12
         if resume.education:
-            y = self._draw_line(canvas, "Education", y, "Helvetica-Bold", 10)
+            y = self._pdf_heading(canvas, "Education", y, left, right)
             for record in resume.education:
-                details = " — ".join(part for part in [record.school, record.program, record.graduation_date] if part)
-                if record.gpa:
-                    details = f"{details}; GPA {record.gpa}"
-                y = self._draw_wrapped_text(canvas, details, y)
-            y -= 3
-        y = self._draw_bullet_section(canvas, "Experience", resume.experience_bullets, resume.entity_titles, y)
-        y = self._draw_bullet_section(canvas, "Projects", resume.project_bullets, resume.entity_titles, y)
-        if resume.selected_skills:
-            y = self._draw_line(canvas, "Skills", y, "Helvetica-Bold", 10)
-            y = self._draw_wrapped_text(canvas, ", ".join(resume.selected_skills), y)
-        if resume.selected_coursework:
-            y = self._draw_line(canvas, "Coursework", y, "Helvetica-Bold", 10)
-            y = self._draw_wrapped_text(canvas, ", ".join(resume.selected_coursework), y)
-        if y < self._margin:
-            raise PageOverflowError("The managed template overflowed one page; revise the content plan.")
+                y = self._pdf_metadata(
+                    canvas,
+                    record.school,
+                    _pdf_date_range(record.start_date, _pdf_education_end(record)),
+                    y,
+                    left,
+                    right,
+                    "Times-Bold",
+                )
+                y = self._pdf_metadata(
+                    canvas,
+                    _pdf_education_program(record),
+                    record.location,
+                    y,
+                    left,
+                    right,
+                    "Times-Italic",
+                )
+                awards = f"Awards: {', '.join(record.awards)}" if record.awards else ""
+                gpa = f"GPA: {record.gpa}" if record.gpa else ""
+                if awards or gpa:
+                    y = self._pdf_bullet(
+                        canvas,
+                        ", ".join(value for value in (awards, gpa) if value),
+                        y,
+                        left,
+                        right,
+                    )
+                coursework = record.relevant_coursework or resume.selected_coursework
+                if coursework:
+                    y = self._pdf_bullet(
+                        canvas,
+                        f"Relevant Courses: {', '.join(coursework)}",
+                        y,
+                        left,
+                        right,
+                    )
+        if resume.technical_skills or resume.selected_skills:
+            y = self._pdf_heading(canvas, "Technical Skills", y, left, right)
+            if resume.technical_skills:
+                rows = [
+                    f"{category.category}: "
+                    + ", ".join(category.values or [skill.value for skill in category.skills])
+                    for category in resume.technical_skills
+                ]
+            else:
+                rows = [f"Skills: {', '.join(resume.selected_skills)}"]
+            for row in rows:
+                y = self._draw_wrapped_text_at(canvas, row, y, left, right - left)
+        if resume.experiences or resume.experience_bullets:
+            y = self._pdf_heading(canvas, "Technical Experience", y, left, right)
+            y = self._pdf_entries(
+                canvas,
+                resume.experiences,
+                resume.experience_bullets,
+                resume.entity_titles,
+                EntityKind.EXPERIENCE,
+                y,
+                left,
+                right,
+            )
+        if resume.projects or resume.project_bullets:
+            y = self._pdf_heading(canvas, "Projects", y, left, right)
+            y = self._pdf_entries(
+                canvas,
+                resume.projects,
+                resume.project_bullets,
+                resume.entity_titles,
+                EntityKind.PROJECT,
+                y,
+                left,
+                right,
+            )
+        if y < self._pdf_bottom_margin:
+            raise PageOverflowError(
+                "The managed template overflowed one page; revise the content plan."
+            )
         canvas.save()
 
-    def _draw_bullet_section(
+    def _pdf_entries(
         self,
         canvas: Canvas,
-        heading: str,
+        records: list[ResumeItem],
         bullets: dict[str, list[StructuredBullet]],
         titles: dict[str, str],
+        kind: EntityKind,
         y: float,
+        left: float,
+        right: float,
     ) -> float:
-        if not bullets:
+        known_ids = {item.id for item in records}
+        ordered = [
+            *records,
+            *[
+                ResumeItem(
+                    id=entity_id,
+                    title=titles.get(entity_id, entity_id),
+                    kind=kind,
+                )
+                for entity_id in bullets
+                if entity_id not in known_ids
+            ],
+        ]
+        for index, item in enumerate(ordered):
+            if index:
+                y -= 2
+            title = item.title
+            if (
+                item.award_or_placement
+                and item.award_or_placement.casefold() not in title.casefold()
+            ):
+                title += f" ({item.award_or_placement})"
+            technology = item.technology_label or ", ".join(item.technologies)
+            if technology and technology.casefold() not in title.casefold():
+                title += f" | {technology}"
+            y = self._pdf_metadata(
+                canvas,
+                title,
+                _pdf_date_range(item.start_date, item.end_date),
+                y,
+                left,
+                right,
+                "Times-Bold",
+            )
+            if item.organization or item.location:
+                y = self._pdf_metadata(
+                    canvas,
+                    item.organization,
+                    item.location,
+                    y,
+                    left,
+                    right,
+                    "Times-Italic",
+                )
+            for bullet in bullets.get(item.id, []):
+                y = self._pdf_bullet(canvas, bullet.text, y, left, right)
+        return y
+
+    def _pdf_heading(
+        self,
+        canvas: Canvas,
+        text: str,
+        y: float,
+        left: float,
+        right: float,
+    ) -> float:
+        self._ensure_pdf_space(y)
+        y -= 3
+        canvas.setFont("Times-Bold", 10)
+        canvas.drawString(left, y, text)
+        canvas.setLineWidth(0.6)
+        canvas.line(left, y - 2, right, y - 2)
+        return y - 12
+
+    def _pdf_metadata(
+        self,
+        canvas: Canvas,
+        left_text: str | None,
+        right_text: str | None,
+        y: float,
+        left: float,
+        right: float,
+        font: str,
+    ) -> float:
+        if not left_text and not right_text:
             return y
-        y = self._draw_line(canvas, heading, y, "Helvetica-Bold", 10)
-        for entity_id, entity_bullets in bullets.items():
-            y = self._draw_line(canvas, titles.get(entity_id, entity_id), y, "Helvetica-Bold", 9)
-            for bullet in entity_bullets:
-                y = self._draw_wrapped_text(canvas, f"• {bullet.text}", y)
-        return y - 3
+        left_value = left_text or ""
+        right_value = right_text or ""
+        canvas.setFont(font, 10)
+        collision = bool(
+            left_value
+            and right_value
+            and stringWidth(left_value, font, 10) + stringWidth(right_value, font, 10) + 12
+            > right - left
+        )
+        self._ensure_pdf_space(y)
+        if left_value:
+            canvas.drawString(left, y, left_value)
+        if right_value and not collision:
+            canvas.drawRightString(right, y, right_value)
+        y -= 11
+        if right_value and collision:
+            self._ensure_pdf_space(y)
+            canvas.drawRightString(right, y, right_value)
+            y -= 11
+        return y
 
-    def _draw_line(self, canvas: Canvas, text: str, y: float, font: str, size: int) -> float:
-        self._ensure_space(y)
-        canvas.setFont(font, size)
-        canvas.drawString(self._margin, y, text)
-        return y - self._line_height
+    def _pdf_bullet(
+        self,
+        canvas: Canvas,
+        text: str,
+        y: float,
+        left: float,
+        right: float,
+    ) -> float:
+        self._ensure_pdf_space(y)
+        canvas.setFont("Times-Roman", 9)
+        canvas.drawString(left + 4, y, "•")
+        return self._draw_wrapped_text_at(
+            canvas,
+            text,
+            y,
+            left + 14,
+            right - left - 14,
+        )
 
-    def _draw_wrapped_text(self, canvas: Canvas, text: str, y: float) -> float:
-        canvas.setFont(self._body_font, self._body_size)
-        width = self._page_width - (2 * self._margin)
+    def _draw_wrapped_text_at(
+        self,
+        canvas: Canvas,
+        text: str,
+        y: float,
+        x: float,
+        width: float,
+    ) -> float:
+        canvas.setFont("Times-Roman", 9)
         line = ""
         lines: list[str] = []
         for word in text.split():
             trial = f"{line} {word}".strip()
-            if stringWidth(trial, self._body_font, self._body_size) <= width:
+            if stringWidth(trial, "Times-Roman", 9) <= width:
                 line = trial
             else:
-                lines.append(line)
+                if line:
+                    lines.append(line)
                 line = word
         if line:
             lines.append(line)
-        for line in lines:
-            self._ensure_space(y)
-            canvas.drawString(self._margin, y, line)
-            y -= self._line_height
+        for wrapped_line in lines:
+            self._ensure_pdf_space(y)
+            canvas.drawString(x, y, wrapped_line)
+            y -= 10
         return y
 
-    def _ensure_space(self, y: float) -> None:
-        if y < self._margin:
-            raise PageOverflowError("The managed template overflowed one page; revise the content plan.")
+    def _ensure_pdf_space(self, y: float) -> None:
+        if y < getattr(self, "_pdf_bottom_margin", self._margin):
+            raise PageOverflowError(
+                "The managed template overflowed one page; revise the content plan."
+            )
+
+
+def _pdf_date_range(start: str | None, end: str | None) -> str | None:
+    return " – ".join(value for value in (start, end) if value) or None
+
+
+def _pdf_education_end(record: EducationRecord) -> str | None:
+    expected = record.expected_graduation_date
+    completed = record.graduation_date
+    status = record.graduation_status
+    if (
+        expected
+        and status is GraduationStatus.EXPECTED
+        and not expected.casefold().startswith(("expected ", "anticipated "))
+    ):
+        return f"Expected {expected}"
+    return expected or completed
+
+
+def _pdf_education_program(record: EducationRecord) -> str:
+    values = [
+        getattr(record, "program", ""),
+        getattr(record, "minor_or_specialization", None),
+        getattr(record, "co_op_designation", None),
+    ]
+    output: list[str] = []
+    for value in values:
+        if value and value.casefold() not in " ".join(output).casefold():
+            output.append(value)
+    return ", ".join(output)
 
 
 def _count_pdf_pages(pdf_path: Path) -> int:
     try:
-        from pypdf import PdfReader
+        from pypdf import PdfReader  # type: ignore[import-not-found]
 
         return len(PdfReader(str(pdf_path)).pages)
     except ImportError:
         pass
     try:
-        from PyPDF2 import PdfReader
+        from PyPDF2 import PdfReader  # type: ignore[import-not-found]
 
         return len(PdfReader(str(pdf_path)).pages)
     except ImportError:
@@ -435,6 +679,114 @@ def _count_pdf_pages(pdf_path: Path) -> int:
     if not pages:
         raise PageCountVerificationError("Unable to count pages in the rendered PDF page tree.")
     return len(pages)
+
+
+def diagnose_docx_page_utilization(
+    docx_path: Path,
+    layout_profile: LayoutProfile,
+    measurement: PageCountMeasurement,
+    *,
+    severe_underfill_threshold: float = 0.50,
+) -> PageUtilizationDiagnostic:
+    """Estimate occupied vertical space while keeping exact page count authoritative."""
+
+    document = Document(str(docx_path))
+    occupied = 0
+    blank_paragraphs = 0
+    for paragraph in document.paragraphs:
+        if not paragraph.text.strip():
+            blank_paragraphs += 1
+            continue
+        occupied += _estimated_paragraph_height_twips(
+            paragraph,
+            layout_profile.page.usable_width_twips,
+        )
+    usable_height = layout_profile.page.usable_height_twips
+    ratio = occupied / usable_height
+    if not measurement.exact:
+        status = PageUtilizationStatus.UNVERIFIED
+        message = "Page utilization is unverified because the page count is not exact."
+    elif measurement.page_count > 1:
+        status = PageUtilizationStatus.OVERFLOW
+        message = "The resume overflows the one-page Template V1 contract."
+    elif measurement.page_count == 1 and ratio < severe_underfill_threshold:
+        status = PageUtilizationStatus.SEVERE_UNDERFILL
+        message = (
+            "The resume is one page but severely underfilled; selected content was not "
+            "expanded automatically."
+        )
+    elif measurement.page_count == 1:
+        status = PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+        message = "The resume is an acceptably utilized one-page composition."
+    else:
+        status = PageUtilizationStatus.UNVERIFIED
+        message = "The page-count provider returned no usable page."
+    return PageUtilizationDiagnostic(
+        status=status,
+        page_count=measurement.page_count,
+        exact_page_count=measurement.exact,
+        estimated_occupied_height_twips=occupied,
+        usable_height_twips=usable_height,
+        estimated_utilization_ratio=ratio,
+        severe_underfill_threshold=severe_underfill_threshold,
+        uncontrolled_blank_paragraph_count=blank_paragraphs,
+        message=message,
+    )
+
+
+def _estimated_paragraph_height_twips(
+    paragraph: Paragraph,
+    usable_width_twips: int,
+) -> int:
+    formatting = paragraph.paragraph_format
+    left_indent = formatting.left_indent.twips if formatting.left_indent else 0
+    right_indent = formatting.right_indent.twips if formatting.right_indent else 0
+    available_width = max(720, usable_width_twips - left_indent - right_indent)
+    run_sizes = [run.font.size.pt for run in paragraph.runs if run.font.size is not None]
+    font_size_twips = int(max(run_sizes, default=10.0) * 20)
+    visual_lines = sum(
+        _estimated_wrapped_line_count(segment, available_width, font_size_twips)
+        for segment in paragraph.text.splitlines() or [paragraph.text]
+    )
+    explicit_line_spacing = formatting.line_spacing
+    if hasattr(explicit_line_spacing, "twips"):
+        line_height = max(font_size_twips, int(explicit_line_spacing.twips))
+    else:
+        line_height = int(font_size_twips * 1.08)
+    before = formatting.space_before.twips if formatting.space_before else 0
+    after = formatting.space_after.twips if formatting.space_after else 0
+    return before + after + max(1, visual_lines) * line_height
+
+
+def _estimated_wrapped_line_count(
+    text: str,
+    available_width_twips: int,
+    font_size_twips: int,
+) -> int:
+    if not text:
+        return 1
+    width = 0.0
+    lines = 1
+    for character in text:
+        if character == "\t":
+            continue
+        if character.isspace():
+            factor = 0.25
+        elif character in "MW@%&":
+            factor = 0.85
+        elif character in "ilI.,:;'|!":
+            factor = 0.28
+        elif character.isupper():
+            factor = 0.62
+        else:
+            factor = 0.5
+        character_width = font_size_twips * factor
+        if width and width + character_width > available_width_twips:
+            lines += 1
+            width = character_width
+        else:
+            width += character_width
+    return lines
 
 
 def _reduce_optional_content(resume: StructuredResume) -> StructuredResume | None:
@@ -447,7 +799,7 @@ def _reduce_optional_content(resume: StructuredResume) -> StructuredResume | Non
                 if updated:
                     bullets[entity_id] = updated
                 else:
-                    del bullets[entity_id]
+                    bullets[entity_id] = []
                 return resume.model_copy(update={field_name: bullets})
 
     if resume.technical_skills:

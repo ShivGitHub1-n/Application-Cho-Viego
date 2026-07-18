@@ -10,5 +10,6 @@ generated/
 .ruff_cache/
 .mypy_cache/
 *.docx
+!/src/resume_tailor/templates/template_v1.docx
 *.pdf
 

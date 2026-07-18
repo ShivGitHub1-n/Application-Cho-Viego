@@ -6,11 +6,7 @@ from pydantic import ValidationError
 
 from resume_tailor.domain.models import (
     EducationRecord,
-    EntityKind,
-    EvidenceItem,
     MasterProfile,
-    ResumeItem,
-    TechnicalSkillCategory,
 )
 from resume_tailor.domain.profile_completeness import (
     validate_master_profile_completeness,
@@ -24,9 +20,7 @@ def _profile(**updates: object) -> MasterProfile:
         "display_name": "Example Person",
         "contact": {"email": "private@example.test", "phone": "555-0100"},
         "education": [{"school": "Example Institute", "program": "Engineering"}],
-        "experiences": [
-            {"id": "entry-one", "title": "Engineer", "kind": "experience"}
-        ],
+        "experiences": [{"id": "entry-one", "title": "Engineer", "kind": "experience"}],
         "evidence": [
             {
                 "id": "evidence-one",
@@ -90,11 +84,7 @@ def test_invalid_skill_categories_or_evidence_relationships_are_rejected() -> No
     with pytest.raises(ValidationError, match="no unique skills|empty skill"):
         _profile(technical_skills=[{"category": "Tools", "values": [" "]}])
     with pytest.raises(ValidationError, match="unknown entities"):
-        _profile(
-            evidence=[
-                {"id": "orphan", "entity_id": "missing", "source_text": "Fact"}
-            ]
-        )
+        _profile(evidence=[{"id": "orphan", "entity_id": "missing", "source_text": "Fact"}])
 
 
 @pytest.mark.parametrize("duplicate_kind", ["entry", "evidence"])
@@ -157,7 +147,9 @@ def test_fixture_profile_is_canonical_complete_and_evidence_valid() -> None:
     education = profile.education[0]
     assert education.start_date and education.expected_graduation_date
     assert education.location and education.awards and education.relevant_coursework
-    assert all(item.organization and item.start_date and item.end_date for item in profile.experiences)
+    assert all(
+        item.organization and item.start_date and item.end_date for item in profile.experiences
+    )
     assert sum(bool(item.location) for item in profile.experiences) == 3
     assert all(item.technology_label for item in profile.projects)
     assert profile.projects[1].award_or_placement == "3rd Place, Example Hacks"

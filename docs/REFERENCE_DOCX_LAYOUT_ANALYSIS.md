@@ -24,7 +24,7 @@ The analyzer reads paragraph position, formatting signatures, capitalization sha
 
 The first nonempty structural title block is separated into name and contact roles. Bordered or compact uppercase transition paragraphs identify section headings. Sections are then characterized by recurring shapes: category-label run patterns, paired right-tab metadata rows, single metadata rows, and numbered or marked paragraphs. Neighbor relationships distinguish primary title/date rows from tighter employer/location rows, entry transitions, section transitions, and final paragraphs.
 
-The output may preserve discovered section order as ordinal role sequences, but does not encode section labels, counts, employers, institutions, projects, skill-category limits, or bullet-count limits.
+The output may preserve discovered section order as ordinal role sequences, but does not encode section labels, counts, employers, institutions, projects, skill-category limits, or bullet-count limits. Template V1 runtime rendering no longer consumes this analysis as its formatting authority; the profile is retained for diagnostics and explicit renderer experiments.
 
 ## Properties inspected
 
@@ -69,6 +69,9 @@ The zeroes above illustrate the schema only; real values always come from the an
 - Theme-font resolution is recorded through observed style properties but theme substitution can vary by Word installation.
 - Floating shapes, text boxes, tracked changes, and field-result layout are not yet semantic-role inputs.
 - Visual rendering is a verification aid; DOCX structure remains authoritative.
-- A later renderer should accept a validated `LayoutProfile`, map structured resume elements to semantic roles, and apply the observed values deterministically. It should not re-infer roles or silently fall back to hardcoded layout values.
+- The profile-driven experimental renderer accepts a validated `LayoutProfile`
+  and applies observed values deterministically. Production Template V1 instead
+  opens its packaged static DOCX and clones the reviewed prototypes, so it does
+  not re-infer roles or reconstruct formatting at runtime.
 
 `BulletLayout` also records whether the observed marker is Word numbering or a literal run, plus marker-only typography and provenance. This is necessary for private-use Symbol or Wingdings glyphs: applying their code point with the body font produces a missing-glyph square.

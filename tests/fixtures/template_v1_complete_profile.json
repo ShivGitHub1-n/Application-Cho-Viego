@@ -1,0 +1,201 @@
+{
+  "id": "shiv-arora-master-v1",
+  "user_id": "local-user",
+  "version": 1,
+  "display_name": "Shiv Arora",
+  "contact": {
+    "email": "shiv2006arora@gmail.com",
+    "phone": "647-997-0896",
+    "links": [
+      "linkedin.com/in/shiv-arora-/"
+    ]
+  },
+  "education": [
+    {
+      "school": "University of Toronto",
+      "program": "Bachelor of Applied Science in Mechanical Engineering",
+      "minor_or_specialization": "Minor in Robotics & Mechatronics",
+      "co_op_designation": "PEY",
+      "start_date": "Sept. 2024",
+      "expected_graduation_date": "Apr. 2029",
+      "graduation_status": "expected",
+      "location": "Toronto, Ontario, Canada",
+      "gpa": "3.70/4.00",
+      "awards": [
+        "University of Toronto Engineering International Scholar",
+        "CSWA",
+        "Dean's List"
+      ],
+      "relevant_coursework": [
+        "Mechanical Engineering Design",
+        "Fundamentals of Computer Programming",
+        "Electrical Fundamentals"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "id": "stush-software-intern",
+      "title": "Software Engineering Intern",
+      "kind": "experience",
+      "organization": "Stush Foods",
+      "start_date": "Sep. 2025",
+      "end_date": "Nov. 2025",
+      "location": "Toronto, Ontario, Canada",
+      "technology_label": "Python, Pandas, Power BI"
+    },
+    {
+      "id": "telebotics-robotics-engineer",
+      "title": "Robotics Systems Engineer",
+      "kind": "experience",
+      "organization": "Telebotics",
+      "start_date": "Feb. 2025",
+      "end_date": "Sep. 2025",
+      "location": "York, Ontario, Canada",
+      "technology_label": "ROS2, OpenCV, YOLOv8"
+    }
+  ],
+  "projects": [
+    {
+      "id": "crest-expense-platform",
+      "title": "Crest - AI-Powered Expense Intelligence Platform",
+      "kind": "project",
+      "award_or_placement": "3rd Place, MPC Hacks",
+      "technology_label": "FastAPI, Gemini, MongoDB",
+      "technologies": [
+        "FastAPI",
+        "Gemini",
+        "MongoDB"
+      ]
+    }
+  ],
+  "technical_skills": [
+    {
+      "category": "Programming & Scripting",
+      "values": [
+        "Python",
+        "C++",
+        "JavaScript",
+        "MatLab",
+        "C",
+        "SQL",
+        "Bash"
+      ]
+    },
+    {
+      "category": "Embedded Systems & Microcontrollers",
+      "values": [
+        "STM32",
+        "NVIDIA Jetson Orin"
+      ]
+    },
+    {
+      "category": "Robotics & Perception",
+      "values": [
+        "ROS2",
+        "OpenCV",
+        "YOLOv8",
+        "Sensor Fusion",
+        "Teleoperation Systems"
+      ]
+    },
+    {
+      "category": "Data & AI",
+      "values": [
+        "Gemini API",
+        "Pandas",
+        "NumPy",
+        "TensorFlow",
+        "PyTorch",
+        "Data Engineering",
+        "ETL Pipelines"
+      ]
+    }
+  ],
+  "coursework": [
+    "Mechanical Engineering Design",
+    "Fundamentals of Computer Programming",
+    "Electrical Fundamentals"
+  ],
+  "evidence": [
+    {
+      "id": "stush-etl",
+      "entity_id": "stush-software-intern",
+      "source_text": "Developed a Python-based ETL platform that automatically extracted, validated, and normalized sales data from 3 major distributor systems into a unified report, processing thousands of transaction records across multiple reporting formats.",
+      "technologies": [
+        "Python",
+        "ETL"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "stush-validation",
+      "entity_id": "stush-software-intern",
+      "source_text": "Engineered data transformation and validation pipelines using Pandas and NumPy to standardize SKU, promotion, and sales data, reducing manual reporting effort by approximately 40–50% and improving data consistency across business units.",
+      "technologies": [
+        "Pandas",
+        "NumPy"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "stush-reporting",
+      "entity_id": "stush-software-intern",
+      "source_text": "Automated monthly sales reporting and Power BI dashboard refresh workflows, enabling dynamic KPI tracking, promotional analysis, and historical trend reporting through a centralized analytics dataset.",
+      "technologies": [
+        "Power BI"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "telebotics-teleoperation",
+      "entity_id": "telebotics-robotics-engineer",
+      "source_text": "Led the development of a level 1 autonomous teleoperation last-mile delivery solution for low-speed vehicles (LSVs) using ROS 2, enabling real-time remote control, safety override, and operator-to-vehicle round-trip latency <200 ms over 5G modem.",
+      "technologies": [
+        "ROS 2"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "telebotics-sensors",
+      "entity_id": "telebotics-robotics-engineer",
+      "source_text": "Integrated NVIDIA Jetson Orin, STM32 microcontrollers, and multi-sensor systems including LiDAR, RTK GPS, IMU, ultrasonic sensors, and cameras supporting autonomous navigation achieving emergency stop in <150 ms, 360° environmental perception",
+      "technologies": [
+        "NVIDIA Jetson Orin",
+        "STM32"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "telebotics-perception",
+      "entity_id": "telebotics-robotics-engineer",
+      "source_text": "Collaborated on integrating a real-time perception pipeline using YOLOv8 and OpenCV to detect traffic lights, pedestrians, and vehicles with >90% accuracy at 30 FPS for supporting live object detection, lane tracking, and command processing.",
+      "technologies": [
+        "YOLOv8",
+        "OpenCV"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "crest-transactions",
+      "entity_id": "crest-expense-platform",
+      "source_text": "Built an AI-powered financial management platform that analyzed 4,000+ transactions using natural language queries, enabling users to explore spending patterns, budgets, and expense data through an interactive dashboard.",
+      "technologies": [
+        "Gemini"
+      ],
+      "confirmed": true
+    },
+    {
+      "id": "crest-reporting",
+      "entity_id": "crest-expense-platform",
+      "source_text": "Implemented AI-driven expense reporting and recommendation features using FastAPI, MongoDB Atlas, and Gemini, Vultr generating contextual insights and approval suggestions for business users within a full-stack web application.",
+      "technologies": [
+        "FastAPI",
+        "MongoDB Atlas",
+        "Gemini",
+        "Vultr"
+      ],
+      "confirmed": true
+    }
+  ]
+}

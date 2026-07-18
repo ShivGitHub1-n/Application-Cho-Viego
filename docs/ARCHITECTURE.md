@@ -35,6 +35,10 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 - The optimizer's `OpportunityAnalyzer` dependency is the single role-classification boundary for resume tailoring. When explicitly enabled, the hybrid analyzer may resolve a validated Gemini primary family over deterministic posting signals; default and fallback behavior remains the deterministic analyzer.
 - `ResumeLanguageModel` exposes typed profile extraction, role classification, opportunity analysis, composition recommendation, bullet rewriting, shortening, and cover-letter drafting. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
 - `ResumeRenderer` maps structured resume content to a versioned template; it owns all styling.
+  Template V1 opens the packaged, content-neutral `template_v1.docx` and
+  populates or clones its semantic OOXML prototypes. The accompanying JSON
+  layout profile is diagnostic only and is not a formatting source for the
+  default renderer.
 - `CompanyResearcher` returns sourced company facts, never candidate claims.
 
 ## Data flow
@@ -43,7 +47,9 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 2. Normalize a job posting into title, responsibilities, requirements, and optional company context.
 3. Build one recommended strategy and decision plan before requesting prose.
 4. Validate every proposed claim against evidence and policy; strong inferences require user approval.
-5. Render only validated structured content. An exact DOCX page-count provider determines the strict one-page invariant; PDF rendering remains a separate delivery concern.
+5. Render only validated structured content by populating the packaged static
+   DOCX template. An exact DOCX page-count provider determines the strict
+   one-page invariant; PDF rendering remains a separate delivery concern.
 
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
@@ -104,6 +110,20 @@ snapshot and unavailable saved rows. The UI reports the empty registry exactly
 as `No approved job sources are configured` and does not present it as a
 successful empty search.
 
+The Streamlit shell exposes one selected workflow at a time: Home / Workspace,
+Profile, Tailor Resume, Cover Letter, Job Search, and Settings / Diagnostics.
+Session state carries reviewed profile and generated-workflow objects across
+navigation. Structured profile controls are primary; raw JSON and long
+diagnostics are collapsed delivery affordances. Job Discovery dependencies are
+constructed only when Job Search is selected and a reviewed profile is loaded.
+
+User-owned SQLite state is rooted in the centrally configured application data
+directory documented in [APPLICATION_DATA.md](APPLICATION_DATA.md). Profile and
+Job Discovery repositories share that database path. Infrastructure dependency
+construction may perform an allowlisted compatibility import from one known
+repository-local database; domain/application code remains unaware of paths or
+SQLite.
+
 Connector behavior is tested primarily with offline Greenhouse and Lever
 fixtures. Live source smoke testing is opt-in, uses the
 `job_source_integration` pytest marker, requires explicit approved source
@@ -116,7 +136,7 @@ Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter
 ## Architectural risks and assumptions
 
 - PDF-to-structured-resume extraction is unreliable; parsed data must be user-reviewable before use.
-- One-page fit needs template-specific measurement; initial estimates are advisory until the renderer can measure actual output.
+- Exact page count needs a configured DOCX provider. Template V1 utilization estimates are diagnostic and never substitute for exact verification.
 - AI inference needs conservative policy and evidence citations to remain trustworthy.
 - Company research must respect source terms, permissions, rate limits, and clear provenance.
 - DOCX-to-PDF conversion varies by platform; production export needs a chosen conversion service or runtime.

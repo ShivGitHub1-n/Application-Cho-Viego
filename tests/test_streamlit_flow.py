@@ -6,23 +6,23 @@ from streamlit.testing.v1 import AppTest
 import resume_tailor.infrastructure.dependencies as dependencies
 from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.services import TailorResumeService
-from resume_tailor.domain.llm_models import (
-    CompositionRecommendationOutput,
-    CompositionRecommendationResult,
-    LlmOperation,
-)
-from resume_tailor.infrastructure.optimization import (
-    DeterministicResumeOptimizer,
-    EvidenceBoundResumeWriter,
-)
-from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
-from resume_tailor.domain.models import MasterProfile
 from resume_tailor.application.workflow_state import (
     get_active_posting,
     has_cover_letter_prerequisites,
     invalidate_posting_derived_workflow,
     invalidate_profile_derived_workflow,
 )
+from resume_tailor.domain.llm_models import (
+    CompositionRecommendationOutput,
+    CompositionRecommendationResult,
+    LlmOperation,
+)
+from resume_tailor.domain.models import MasterProfile
+from resume_tailor.infrastructure.optimization import (
+    DeterministicResumeOptimizer,
+    EvidenceBoundResumeWriter,
+)
+from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from tests.fakes import FakeResumeLanguageModel, metadata
 
 
@@ -37,7 +37,9 @@ class _Plan:
 def _workflow_state() -> dict[str, object]:
     return {
         "profile": object(),
-        "posting": type("Posting", (), {"title": "Robotics Engineer", "company_name": "Example Robotics"})(),
+        "posting": type(
+            "Posting", (), {"title": "Robotics Engineer", "company_name": "Example Robotics"}
+        )(),
         "plan": _Plan(),
         "resume": "resume-artifact",
         "generated_content_reviewed": True,
@@ -199,32 +201,43 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
     }
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.text_area[0].input(json.dumps(profile))
-    app.text_area[1].input("Develop STM32 firmware and validate SPI hardware interfaces.")
-    app.text_input[0].input("streamlit-profile")
-    app.text_input[1].input("Embedded Firmware Intern")
+    app.radio(key="navigation_selection").set_value("Profile").run()
+    app.text_input(key="profile_id_input").input("streamlit-profile").run()
+    app.text_area(key="profile_editor_raw_json").input(json.dumps(profile))
+    next(
+        button for button in app.button if button.label == "Validate and save raw JSON"
+    ).click().run()
+    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.text_area(key="job_description_input").input(
+        "Develop STM32 firmware and validate SPI hardware interfaces."
+    )
+    app.text_input(key="job_title_input").input("Embedded Firmware Intern")
     app.session_state["resume"] = "stale-generated-resume"
     app.session_state["generated_content_reviewed"] = True
-    app.button[3].click().run()
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
 
     assert app.session_state["plan"].selected_claim_ids == ["streamlit-evidence-2"]
     assert "resume" not in app.session_state
     assert app.session_state["generated_content_reviewed"] is False
 
-    app.button[4].click().run()
+    next(button for button in app.button if button.label == "Build reviewed resume").click().run()
 
     assert app.session_state["resume"].experience_bullets["streamlit-entry"][0].text == (
         "Validated SPI hardware sensor interfaces."
     )
     assert app.session_state["generated_content_reviewed"] is False
-    assert any(
-        "Generated resume review" in element.value
-        for element in app.subheader
+    assert any("Generated resume review" in element.value for element in app.subheader)
+    assert (
+        next(button for button in app.button if button.label == "Export reviewed resume").disabled
+        is True
     )
-    assert app.button[5].disabled is True
 
 
-def test_streamlit_uses_persisted_profile_with_pasted_job_description(monkeypatch, tmp_path) -> None:
+def test_streamlit_uses_persisted_profile_with_pasted_job_description(
+    monkeypatch, tmp_path
+) -> None:
     database = tmp_path / "profiles.sqlite3"
     repository = SQLiteMasterProfileRepository(database)
     profile = MasterProfile(
@@ -232,12 +245,12 @@ def test_streamlit_uses_persisted_profile_with_pasted_job_description(monkeypatc
         user_id="local-user",
         display_name="Persisted Candidate",
         experiences=[{"id": "entry-1", "title": "Engineer", "kind": "experience"}],
-        evidence=[
-            {"id": "evidence-1", "entity_id": "entry-1", "source_text": "Built firmware."}
-        ],
+        evidence=[{"id": "evidence-1", "entity_id": "entry-1", "source_text": "Built firmware."}],
     )
     repository.save(profile)
-    monkeypatch.setattr(dependencies, "create_profile_repository", lambda: SQLiteMasterProfileRepository(database))
+    monkeypatch.setattr(
+        dependencies, "create_profile_repository", lambda: SQLiteMasterProfileRepository(database)
+    )
     monkeypatch.setattr(
         dependencies,
         "create_tailor_service",
@@ -246,9 +259,12 @@ def test_streamlit_uses_persisted_profile_with_pasted_job_description(monkeypatc
 
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.text_area[1].input("Build firmware.\r\n\r\n- Test systems  ")
-    app.text_input[1].input("Firmware Engineer")
-    app.button[3].click().run()
+    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.text_area(key="job_description_input").input("Build firmware.\r\n\r\n- Test systems  ")
+    app.text_input(key="job_title_input").input("Firmware Engineer")
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
 
     assert app.session_state["profile"].id == "local-profile"
     assert app.session_state["posting"].description == "Build firmware.\n\n- Test systems"

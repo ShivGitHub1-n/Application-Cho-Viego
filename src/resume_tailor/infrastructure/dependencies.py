@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle
@@ -25,6 +27,11 @@ from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.job_discovery.models import ConnectorType, SupportedJobSource
 from resume_tailor.domain.job_discovery.preferences import DeterministicJobSearchPreferenceSuggester
 from resume_tailor.domain.llm_models import LanguageModelError
+from resume_tailor.infrastructure.application_data import (
+    application_database_path,
+    migrate_legacy_application_database,
+    repository_local_legacy_database,
+)
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
@@ -91,9 +98,7 @@ def create_tailor_service(
         optimizer = DeterministicResumeOptimizer(
             opportunity_analyzer=HybridRoleOpportunityAnalyzer(
                 role_classifier,
-                minimum_confidence=(
-                    resolved_settings.llm_role_classification_minimum_confidence
-                ),
+                minimum_confidence=(resolved_settings.llm_role_classification_minimum_confidence),
             )
         )
     hybrid_services = HybridLlmServices(
@@ -116,18 +121,36 @@ def create_tailor_service(
     )
 
 
-def create_profile_repository(settings: Settings | None = None) -> SQLiteMasterProfileRepository:
+def create_profile_repository(
+    settings: Settings | None = None,
+    *,
+    legacy_repository_root: Path | None = None,
+) -> SQLiteMasterProfileRepository:
     resolved_settings = settings or Settings()
-    return SQLiteMasterProfileRepository(
-        resolved_settings.app_data_directory / resolved_settings.profile_store_filename
+    database = application_database_path(
+        resolved_settings.app_data_directory,
+        resolved_settings.profile_store_filename,
     )
+    repository = SQLiteMasterProfileRepository(database)
+    legacy_database = _legacy_database(
+        resolved_settings,
+        explicit_root=legacy_repository_root,
+        use_current_repository=settings is None,
+    )
+    repository.set_migration_report(migrate_legacy_application_database(legacy_database, database))
+    return repository
 
 
 def create_job_discovery_services(
     settings: Settings | None = None,
+    *,
+    legacy_repository_root: Path | None = None,
 ) -> JobDiscoveryServiceBundle:
     resolved_settings = settings or Settings()
-    database = resolved_settings.app_data_directory / resolved_settings.profile_store_filename
+    database = application_database_path(
+        resolved_settings.app_data_directory,
+        resolved_settings.profile_store_filename,
+    )
     profiles = SQLiteMasterProfileRepository(database)
     preference_repository = SQLiteJobSearchPreferencesRepository(database)
     job_repository = SQLiteDiscoveredJobRepository(database)
@@ -135,6 +158,16 @@ def create_job_discovery_services(
     run_repository = SQLiteDiscoveryRunRepository(database)
     saved_job_repository = SQLiteSavedJobRepository(database)
     source_repository = SQLiteSupportedJobSourceRepository(database)
+    profiles.set_migration_report(
+        migrate_legacy_application_database(
+            _legacy_database(
+                resolved_settings,
+                explicit_root=legacy_repository_root,
+                use_current_repository=settings is None,
+            ),
+            database,
+        )
+    )
 
     registry_configuration = resolved_settings.job_discovery_source_registry_path
     configured_sources = (
@@ -168,9 +201,7 @@ def create_job_discovery_services(
         refresh=RefreshJobDiscoveryService(
             profiles=profiles,
             preferences=preference_repository,
-            sources=(
-                configured_source_repository
-            ),
+            sources=(configured_source_repository),
             connectors={
                 ConnectorType.GREENHOUSE: greenhouse,
                 ConnectorType.LEVER: lever,
@@ -214,3 +245,19 @@ def _create_language_model(settings: Settings) -> ResumeLanguageModel | None:
         if settings.llm_deterministic_fallback:
             return None
         raise
+
+
+def _legacy_database(
+    settings: Settings,
+    *,
+    explicit_root: Path | None,
+    use_current_repository: bool,
+) -> Path | None:
+    root = explicit_root
+    if root is None and use_current_repository:
+        current = Path.cwd()
+        if (current / ".git").exists():
+            root = current
+    if root is None:
+        return None
+    return repository_local_legacy_database(root, settings.profile_store_filename)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
+import re
 from copy import deepcopy
 from hashlib import sha256
-import re
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -19,7 +20,6 @@ from resume_tailor.domain.models import (
     SkillNormalizationDecision,
     TechnicalSkillCategory,
 )
-
 
 EditorState = dict[str, Any]
 EntryKind = Literal["experiences", "projects"]
@@ -184,6 +184,35 @@ def profile_to_editor_state(profile: MasterProfile) -> EditorState:
     )
 
 
+def empty_profile_editor_state(
+    profile_id: str,
+    *,
+    user_id: str = "local-user",
+) -> EditorState:
+    """Return blank structured controls; labels and examples stay in the UI layer."""
+
+    return {
+        "id": profile_id.strip(),
+        "user_id": user_id.strip(),
+        "version": 1,
+        "display_name": "",
+        "contact": {
+            "email": "",
+            "phone": "",
+            "location": "",
+            "links": [],
+        },
+        "education": [],
+        "experiences": [],
+        "projects": [],
+        "technical_skills": [],
+        "declared_skills": [],
+        "coursework": [],
+        "evidence": [],
+        "skill_normalization_decisions": [],
+    }
+
+
 def _education(state: EditorState) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for record in state.get("education", []):
@@ -198,6 +227,7 @@ def _education(state: EditorState) -> list[dict[str, Any]]:
                 "start_date": _clean_optional(record.get("start_date")),
                 "expected_graduation_date": _clean_optional(record.get("expected_graduation_date")),
                 "graduation_date": _clean_optional(record.get("graduation_date")),
+                "graduation_status": record.get("graduation_status", "unknown"),
                 "location": _clean_optional(record.get("location")),
                 "gpa": _clean_optional(record.get("gpa")),
                 "awards": _clean_list(record.get("awards", [])),
@@ -207,7 +237,9 @@ def _education(state: EditorState) -> list[dict[str, Any]]:
     return records
 
 
-def _entries(state: EditorState, key: EntryKind, used_ids: set[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _entries(
+    state: EditorState, key: EntryKind, used_ids: set[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     entries: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
     kind = EntityKind.EXPERIENCE if key == "experiences" else EntityKind.PROJECT
@@ -220,7 +252,7 @@ def _entries(state: EditorState, key: EntryKind, used_ids: set[str]) -> tuple[li
         if not entry_id.strip() or not str(raw.get("title", "")).strip():
             raise ValueError(f"{kind.title()} entries require a name or title.")
         legacy_bullets = [str(value) for value in raw.get("legacy_bullets", [])]
-        entry = {
+        entry: dict[str, Any] = {
             "id": entry_id,
             "title": str(raw.get("title", "")).strip(),
             "kind": kind,
@@ -238,28 +270,46 @@ def _entries(state: EditorState, key: EntryKind, used_ids: set[str]) -> tuple[li
             "bullet_points": [str(value) for value in raw.get("legacy_bullet_points", [])],
         }
         for raw_bullet in raw.get("bullets", []):
-            text = str(raw_bullet.get("text", "") if isinstance(raw_bullet, dict) else raw_bullet).strip()
+            text = str(
+                raw_bullet.get("text", "") if isinstance(raw_bullet, dict) else raw_bullet
+            ).strip()
             if not text:
                 raise ValueError(f"Entry {entry_id} contains a blank bullet.")
             if isinstance(raw_bullet, dict) and not raw_bullet.get("is_evidence", True):
                 legacy_field = raw_bullet.get("legacy_field", "bullets")
-                target = entry["bullet_points"] if legacy_field == "bullet_points" else entry["bullets"]
+                target = (
+                    entry["bullet_points"] if legacy_field == "bullet_points" else entry["bullets"]
+                )
                 if text not in target:
                     target.append(text)
                 continue
-            bullet_id = str(raw_bullet.get("id", "")).strip() if isinstance(raw_bullet, dict) else ""
-            bullet_id = bullet_id or _new_id(f"evidence-{entry_id}", text, {item["id"] for item in evidence})
+            bullet_id = (
+                str(raw_bullet.get("id", "")).strip() if isinstance(raw_bullet, dict) else ""
+            )
+            bullet_id = bullet_id or _new_id(
+                f"evidence-{entry_id}", text, {item["id"] for item in evidence}
+            )
             if any(item["id"] == bullet_id for item in evidence):
                 raise ValueError(f"Duplicate evidence ID: {bullet_id}")
             bullet = {
                 "id": bullet_id,
                 "entity_id": entry_id,
                 "source_text": text,
-                "source_reference": _clean_optional(raw_bullet.get("source_reference")) if isinstance(raw_bullet, dict) else None,
-                "capabilities": _clean_list(raw_bullet.get("capabilities", [])) if isinstance(raw_bullet, dict) else [],
-                "technologies": _clean_list(raw_bullet.get("technologies", [])) if isinstance(raw_bullet, dict) else [],
-                "outcomes": _clean_list(raw_bullet.get("outcomes", [])) if isinstance(raw_bullet, dict) else [],
-                "confirmed": bool(raw_bullet.get("confirmed", True)) if isinstance(raw_bullet, dict) else True,
+                "source_reference": _clean_optional(raw_bullet.get("source_reference"))
+                if isinstance(raw_bullet, dict)
+                else None,
+                "capabilities": _clean_list(raw_bullet.get("capabilities", []))
+                if isinstance(raw_bullet, dict)
+                else [],
+                "technologies": _clean_list(raw_bullet.get("technologies", []))
+                if isinstance(raw_bullet, dict)
+                else [],
+                "outcomes": _clean_list(raw_bullet.get("outcomes", []))
+                if isinstance(raw_bullet, dict)
+                else [],
+                "confirmed": bool(raw_bullet.get("confirmed", True))
+                if isinstance(raw_bullet, dict)
+                else True,
                 "is_evidence": True,
             }
             evidence.append(bullet)
@@ -285,7 +335,9 @@ def editor_state_to_profile(state: EditorState) -> MasterProfile:
             serialized_evidence.append(edited_by_id.pop(evidence_id))
     serialized_evidence.extend(edited_by_id.values())
     categories: list[dict[str, Any]] = []
-    used_category_ids = {str(item.get("id")) for item in state.get("technical_skills", []) if item.get("id")}
+    used_category_ids = {
+        str(item.get("id")) for item in state.get("technical_skills", []) if item.get("id")
+    }
     seen_skill_values: dict[str, tuple[int, dict[str, Any]]] = {}
     for raw in state.get("technical_skills", []):
         category_id = str(raw.get("id", "")).strip() or _new_id(
@@ -339,9 +391,6 @@ def editor_state_to_profile(state: EditorState) -> MasterProfile:
     display_name = str(state.get("display_name", "")).strip()
     if not display_name:
         raise ValueError("Candidate name is required.")
-    location = _clean_optional(state.get("contact", {}).get("location"))
-    if location and location.casefold() == "canada":
-        location = None
     payload = {
         "id": str(state.get("id", "")).strip(),
         "user_id": str(state.get("user_id", "")).strip(),
@@ -350,7 +399,7 @@ def editor_state_to_profile(state: EditorState) -> MasterProfile:
         "contact": {
             "email": _clean_optional(state.get("contact", {}).get("email")),
             "phone": _clean_optional(state.get("contact", {}).get("phone")),
-            "location": location,
+            "location": _clean_optional(state.get("contact", {}).get("location")),
             "links": links,
         },
         "education": _education(state),
@@ -371,10 +420,20 @@ def profile_change_fingerprint(profile: MasterProfile) -> str:
 
 def add_entry(state: EditorState, kind: EntryKind) -> EditorState:
     updated = deepcopy(state)
-    used = {str(item.get("id")) for item in [*updated.get("experiences", []), *updated.get("projects", [])]}
-    title = "New experience" if kind == "experiences" else "New project"
+    used = {
+        str(item.get("id"))
+        for item in [*updated.get("experiences", []), *updated.get("projects", [])]
+    }
+    title = ""
     entry_id = _new_id("experience" if kind == "experiences" else "project", title, used)
-    updated.setdefault(kind, []).append({"id": entry_id, "title": title, "kind": "experience" if kind == "experiences" else "project", "bullets": []})
+    updated.setdefault(kind, []).append(
+        {
+            "id": entry_id,
+            "title": title,
+            "kind": "experience" if kind == "experiences" else "project",
+            "bullets": [],
+        }
+    )
     return updated
 
 
@@ -395,7 +454,12 @@ def move_item(state: EditorState, key: str, index: int, direction: int) -> Edito
 
 def add_bullet(state: EditorState, kind: EntryKind, entry_id: str) -> EditorState:
     updated = deepcopy(state)
-    used = {str(bullet.get("id")) for entry in [*updated.get("experiences", []), *updated.get("projects", [])] for bullet in entry.get("bullets", []) if isinstance(bullet, dict)}
+    used = {
+        str(bullet.get("id"))
+        for entry in [*updated.get("experiences", []), *updated.get("projects", [])]
+        for bullet in entry.get("bullets", [])
+        if isinstance(bullet, dict)
+    }
     for entry in updated.get(kind, []):
         if entry.get("id") == entry_id:
             bullet_id = _new_id(f"evidence-{entry_id}", "new bullet", used)
@@ -406,17 +470,23 @@ def add_bullet(state: EditorState, kind: EntryKind, entry_id: str) -> EditorStat
     return updated
 
 
-def remove_bullet(state: EditorState, kind: EntryKind, entry_id: str, bullet_id: str) -> EditorState:
+def remove_bullet(
+    state: EditorState, kind: EntryKind, entry_id: str, bullet_id: str
+) -> EditorState:
     updated = deepcopy(state)
     for entry in updated.get(kind, []):
         if entry.get("id") == entry_id:
-            entry["bullets"] = [bullet for bullet in entry.get("bullets", []) if bullet.get("id") != bullet_id]
+            entry["bullets"] = [
+                bullet for bullet in entry.get("bullets", []) if bullet.get("id") != bullet_id
+            ]
     return updated
 
 
 def add_education(state: EditorState) -> EditorState:
     updated = deepcopy(state)
-    updated.setdefault("education", []).append({"school": "", "program": "", "awards": [], "relevant_coursework": []})
+    updated.setdefault("education", []).append(
+        {"school": "", "program": "", "awards": [], "relevant_coursework": []}
+    )
     return updated
 
 
@@ -430,13 +500,17 @@ def remove_education(state: EditorState, index: int) -> EditorState:
 def add_skill_category(state: EditorState) -> EditorState:
     updated = deepcopy(state)
     used = {str(item.get("id")) for item in updated.get("technical_skills", [])}
-    updated.setdefault("technical_skills", []).append({"id": _new_id("category", "new category", used), "category": "", "skills": []})
+    updated.setdefault("technical_skills", []).append(
+        {"id": _new_id("category", "new category", used), "category": "", "skills": []}
+    )
     return updated
 
 
 def remove_skill_category(state: EditorState, category_id: str) -> EditorState:
     updated = deepcopy(state)
-    updated["technical_skills"] = [item for item in updated.get("technical_skills", []) if item.get("id") != category_id]
+    updated["technical_skills"] = [
+        item for item in updated.get("technical_skills", []) if item.get("id") != category_id
+    ]
     return updated
 
 
@@ -479,3 +553,45 @@ def unknown_profile_fields(payload: dict[str, Any]) -> list[str]:
 
     visit(payload, MasterProfile, "")
     return sorted(unknown)
+
+
+class ProfileEditorInputError(ValueError):
+    """Sanitized error safe to show on a normal profile screen."""
+
+
+def parse_profile_json(
+    raw: str,
+    *,
+    expected_profile_id: str | None = None,
+) -> MasterProfile:
+    if not raw.strip():
+        raise ProfileEditorInputError(
+            "Enter profile information in the structured editor before saving."
+        )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ProfileEditorInputError(
+            "Profile JSON is malformed near "
+            f"line {error.lineno}, column {error.colno}. "
+            "Check commas, quotation marks, and brackets."
+        ) from None
+    if not isinstance(payload, dict):
+        raise ProfileEditorInputError("Profile JSON must contain one object.")
+    unknown = unknown_profile_fields(payload)
+    if unknown:
+        raise ProfileEditorInputError(
+            "Unsupported profile fields cannot be safely round-tripped: " + ", ".join(unknown)
+        )
+    try:
+        profile = MasterProfile.model_validate(payload)
+    except ValidationError as error:
+        first = error.errors(include_url=False, include_context=False)[0]
+        location = ".".join(str(part) for part in first.get("loc", ())) or "profile"
+        message = str(first.get("msg", "Invalid value"))
+        raise ProfileEditorInputError(
+            f"Profile field {location!r} is invalid: {message}."
+        ) from None
+    if expected_profile_id is not None and profile.id != expected_profile_id.strip():
+        raise ProfileEditorInputError("The profile ID in JSON must match the selected profile ID.")
+    return profile

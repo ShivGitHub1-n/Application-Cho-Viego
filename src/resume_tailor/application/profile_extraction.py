@@ -5,6 +5,7 @@ from hashlib import sha256
 
 from resume_tailor.domain.models import (
     EvidenceItem,
+    GraduationStatus,
     MasterProfile,
     ResumeItem,
     TechnicalSkillCategory,
@@ -16,8 +17,16 @@ class ProfileExtractionIncompleteError(ValueError):
 
 
 _NON_EVIDENCE_LABELS = {
-    "experience", "experiences", "employment", "projects", "project",
-    "education", "skills", "technical skills", "contact", "references",
+    "experience",
+    "experiences",
+    "employment",
+    "projects",
+    "project",
+    "education",
+    "skills",
+    "technical skills",
+    "contact",
+    "references",
 }
 
 
@@ -93,20 +102,77 @@ def audit_extracted_profile(profile: MasterProfile, source_text: str) -> list[st
         ("display name", profile.display_name),
         *[("employer", item.organization) for item in [*profile.experiences, *profile.projects]],
         *[("title", item.title) for item in [*profile.experiences, *profile.projects]],
-        *[("date", value) for item in [*profile.experiences, *profile.projects] for value in (item.start_date, item.end_date)],
+        *[
+            ("date", value)
+            for item in [*profile.experiences, *profile.projects]
+            for value in (item.start_date, item.end_date)
+        ],
         *[("location", item.location) for item in [*profile.experiences, *profile.projects]],
-        *[("education", value) for item in profile.education for value in (item.school, item.program, item.location)],
+        *[
+            ("education", value)
+            for item in profile.education
+            for value in (
+                item.school,
+                item.program,
+                item.start_date,
+                item.expected_graduation_date,
+                item.graduation_date,
+                item.location,
+                item.gpa,
+                *item.relevant_coursework,
+            )
+        ],
         *[("award", value) for item in profile.education for value in item.awards],
-        *[("technology", skill.value) for category in profile.technical_skills for skill in category.skills],
-        *[("technology", value) for item in [*profile.experiences, *profile.projects] for value in item.technologies],
+        *[
+            ("technology", skill.value)
+            for category in profile.technical_skills
+            for skill in category.skills
+        ],
+        *[
+            ("technology", value)
+            for item in [*profile.experiences, *profile.projects]
+            for value in item.technologies
+        ],
     ]
     for label, value in concrete_fields:
         if value and not _fact_supported(value, source):
             flags.append(f"Unsupported extracted {label}: {value}")
+    for index, education in enumerate(profile.education):
+        if (
+            education.graduation_status is GraduationStatus.EXPECTED
+            and "expected" not in source
+            and "anticipated" not in source
+        ):
+            flags.append(f"Unsupported extracted expected-graduation status: education[{index}]")
     extracted_values = [
         profile.display_name,
-        *[value for item in [*profile.experiences, *profile.projects] for value in (item.title, item.organization, item.start_date, item.end_date, item.location, *item.technologies)],
-        *[value for item in profile.education for value in (item.school, item.program, item.location, *item.awards)],
+        *[
+            value
+            for item in [*profile.experiences, *profile.projects]
+            for value in (
+                item.title,
+                item.organization,
+                item.start_date,
+                item.end_date,
+                item.location,
+                *item.technologies,
+            )
+        ],
+        *[
+            value
+            for item in profile.education
+            for value in (
+                item.school,
+                item.program,
+                item.start_date,
+                item.expected_graduation_date,
+                item.graduation_date,
+                item.location,
+                item.gpa,
+                *item.awards,
+                *item.relevant_coursework,
+            )
+        ],
         *[evidence.source_text for evidence in profile.evidence],
     ]
     extracted_text = " ".join(value for value in extracted_values if value)
@@ -118,7 +184,12 @@ def audit_extracted_profile(profile: MasterProfile, source_text: str) -> list[st
 
 _SKILL_HEADINGS = {"skills", "technical skills", "technical expertise", "technologies"}
 _SECTION_HEADINGS = _SKILL_HEADINGS | {
-    "experience", "experience", "projects", "education", "awards", "certifications", "summary"
+    "experience",
+    "projects",
+    "education",
+    "awards",
+    "certifications",
+    "summary",
 }
 
 
@@ -162,7 +233,11 @@ def _normalize_for_matching(value: str) -> str:
 
 
 def _entry_bullet_texts(entry: ResumeItem) -> list[str]:
-    values = [*entry.bullets, *entry.bullet_points, *([entry.description] if entry.description else [])]
+    values = [
+        *entry.bullets,
+        *entry.bullet_points,
+        *([entry.description] if entry.description else []),
+    ]
     return [line for value in values for line in value.splitlines() if line.strip()]
 
 

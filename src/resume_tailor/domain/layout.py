@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -184,3 +185,22 @@ class LayoutProfile(BaseModel):
 
     def to_json(self, *, indent: int = 2) -> str:
         return self.model_dump_json(indent=indent)
+
+
+class PageUtilizationStatus(StrEnum):
+    OVERFLOW = "overflow"
+    ACCEPTABLE_ONE_PAGE = "acceptable_one_page"
+    SEVERE_UNDERFILL = "severe_underfill"
+    UNVERIFIED = "unverified"
+
+
+class PageUtilizationDiagnostic(BaseModel):
+    status: PageUtilizationStatus
+    page_count: int | None = Field(default=None, ge=0)
+    exact_page_count: bool
+    estimated_occupied_height_twips: int = Field(ge=0)
+    usable_height_twips: int = Field(gt=0)
+    estimated_utilization_ratio: float = Field(ge=0)
+    severe_underfill_threshold: float = Field(gt=0, lt=1)
+    uncontrolled_blank_paragraph_count: int = Field(default=0, ge=0)
+    message: str

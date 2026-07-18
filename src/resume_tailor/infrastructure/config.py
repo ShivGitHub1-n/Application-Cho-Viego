@@ -1,13 +1,23 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from resume_tailor.infrastructure.application_data import (
+    default_application_data_directory,
+)
 
 
 class Settings(BaseSettings):
     app_env: str = "development"
-    app_data_directory: Path = Path("data")
+    app_data_directory: Path = Field(
+        default_factory=default_application_data_directory,
+        validation_alias=AliasChoices(
+            "APPLICATION_VIEGO_DATA_DIR",
+            "APP_DATA_DIRECTORY",
+        ),
+    )
     profile_store_filename: str = "resume_tailor.sqlite3"
     llm_provider: Literal["gemini"] = "gemini"
     gemini_api_key: str | None = None
@@ -42,4 +52,8 @@ class Settings(BaseSettings):
     job_discovery_source_page_size: int = 100
     job_discovery_source_max_pages: int = 20
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        populate_by_name=True,
+    )

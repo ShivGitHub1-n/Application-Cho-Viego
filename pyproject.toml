@@ -27,3 +27,6 @@ files = ["src"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+resume_tailor = ["templates/*.docx", "templates/*.json"]

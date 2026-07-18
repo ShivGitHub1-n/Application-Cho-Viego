@@ -7,6 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from resume_tailor.domain.models import MasterProfile
+from resume_tailor.infrastructure.application_data import ApplicationDataMigrationReport
 from resume_tailor.ports.interfaces import MasterProfileRepository
 
 
@@ -21,8 +22,14 @@ class CorruptStoredProfileError(ProfileStoreError):
 class SQLiteMasterProfileRepository(MasterProfileRepository):
     """Single-process local profile store with a replace-by-profile-ID contract."""
 
-    def __init__(self, database_path: Path) -> None:
+    def __init__(
+        self,
+        database_path: Path,
+        *,
+        migration_report: ApplicationDataMigrationReport | None = None,
+    ) -> None:
         self._database_path = database_path
+        self._migration_report = migration_report
         self._database_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with sqlite3.connect(self._database_path) as connection:
@@ -38,6 +45,17 @@ class SQLiteMasterProfileRepository(MasterProfileRepository):
                 )
         except sqlite3.Error as error:
             raise ProfileStoreError(f"Unable to initialize profile storage: {error}") from error
+
+    @property
+    def database_path(self) -> Path:
+        return self._database_path
+
+    @property
+    def migration_report(self) -> ApplicationDataMigrationReport | None:
+        return self._migration_report
+
+    def set_migration_report(self, report: ApplicationDataMigrationReport) -> None:
+        self._migration_report = report
 
     def get(self, profile_id: str) -> MasterProfile | None:
         if not profile_id.strip():

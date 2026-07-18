@@ -6,21 +6,27 @@ from pathlib import Path
 import pytest
 
 from resume_tailor.application.profile_editor import (
+    ProfileEditorInputError,
     add_bullet,
     add_entry,
     add_skill_category,
     editor_state_to_profile,
+    empty_profile_editor_state,
     move_item,
+    parse_profile_json,
     profile_to_editor_state,
     remove_bullet,
     remove_entry,
 )
+from resume_tailor.application.skill_categories import propose_reviewed_skill_categories
 from resume_tailor.domain.models import MasterProfile
 
 
 def _profile() -> MasterProfile:
     payload = json.loads(
-        (Path(__file__).parent / "fixtures" / "profile_completeness.json").read_text(encoding="utf-8")
+        (Path(__file__).parent / "fixtures" / "profile_completeness.json").read_text(
+            encoding="utf-8"
+        )
     )
     return MasterProfile.model_validate(payload)
 
@@ -69,6 +75,7 @@ def test_add_remove_reorder_entries_and_nested_bullets() -> None:
     state = move_item(state, "experiences", len(state["experiences"]) - 1, -1)
     state = add_bullet(state, "experiences", new_id)
     new_entry = next(entry for entry in state["experiences"] if entry["id"] == new_id)
+    new_entry["title"] = "Fixture Engineer"
     bullet_id = new_entry["bullets"][-1]["id"]
     new_entry["bullets"][-1]["text"] = "Built a deterministic test fixture."
     profile = editor_state_to_profile(state)
@@ -133,12 +140,50 @@ def test_existing_evidence_ids_are_preserved_and_blank_required_values_fail() ->
         editor_state_to_profile(state)
 
 
-def test_missing_optional_project_metadata_is_allowed_and_standalone_country_is_removed() -> None:
+def test_missing_optional_project_metadata_is_allowed_and_reviewed_country_is_preserved() -> None:
     state = profile_to_editor_state(_profile())
     state["contact"]["location"] = "Canada"
     state["projects"][0]["start_date"] = ""
     state["projects"][0]["location"] = ""
     profile = editor_state_to_profile(state)
-    assert profile.contact.location is None
+    assert profile.contact.location == "Canada"
     assert profile.projects[0].start_date is None
     assert profile.projects[0].location is None
+
+
+def test_empty_editor_and_empty_json_have_clear_validation_messages() -> None:
+    state = empty_profile_editor_state("profile-empty")
+
+    with pytest.raises(ValueError, match="Candidate name"):
+        editor_state_to_profile(state)
+    with pytest.raises(
+        ProfileEditorInputError,
+        match="structured editor before saving",
+    ):
+        parse_profile_json("")
+
+
+def test_malformed_json_error_is_sanitized_and_located() -> None:
+    with pytest.raises(ProfileEditorInputError) as raised:
+        parse_profile_json('{"id": "profile-1",')
+
+    message = str(raised.value)
+    assert "malformed near line 1" in message
+    assert "column" in message
+    assert "Expecting property name" not in message
+    assert "char " not in message
+
+
+def test_skill_category_proposal_preserves_only_reviewed_values_and_order() -> None:
+    reviewed = ["STM32", "Python", "ROS2", "Pandas", "Unmapped Tool", "python"]
+
+    categories = propose_reviewed_skill_categories(reviewed)
+
+    assert [category.category for category in categories] == [
+        "Embedded Systems & Microcontrollers",
+        "Programming & Scripting",
+        "Robotics & Perception",
+        "Data & AI",
+        "Other reviewed skills",
+    ]
+    assert [value for category in categories for value in category.values] == reviewed[:-1]

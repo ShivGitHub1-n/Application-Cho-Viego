@@ -284,8 +284,7 @@ def test_disabled_wiring_preserves_the_deterministic_plan_and_constructs_no_gemi
     assert actual.report.role.diagnostic is not None
     assert actual.report.role.diagnostic.semantic_enabled is False
     assert (
-        actual.report.role.diagnostic.fallback_reason
-        is RoleClassificationFallbackReason.DISABLED
+        actual.report.role.diagnostic.fallback_reason is RoleClassificationFallbackReason.DISABLED
     )
 
 
@@ -324,9 +323,7 @@ def test_enabled_valid_semantic_output_selects_gemini_once_and_preserves_determi
 
 
 def test_low_confidence_output_resolves_deterministically() -> None:
-    model = RecordingRoleModel(
-        _model_result(_semantic_output(confidence=0.69))
-    )
+    model = RecordingRoleModel(_model_result(_semantic_output(confidence=0.69)))
 
     plan = _hybrid_service(model, minimum_confidence=0.7).create_plan(
         _profile(),
@@ -344,9 +341,7 @@ def test_low_confidence_output_resolves_deterministically() -> None:
 
 
 def test_structurally_invalid_output_resolves_deterministically() -> None:
-    model = RecordingRoleModel(
-        _model_result(_semantic_output(primary_family=None))
-    )
+    model = RecordingRoleModel(_model_result(_semantic_output(primary_family=None)))
 
     plan = _hybrid_service(model).create_plan(
         _profile(),
@@ -523,10 +518,7 @@ def test_semantic_advisory_fields_never_become_candidate_authority() -> None:
     ):
         assert advisory_value not in serialized
     assert profile.model_dump() == profile_before
-    assert all(
-        candidate.evidence_ids
-        for candidate in plan.claim_candidates
-    )
+    assert all(candidate.evidence_ids for candidate in plan.claim_candidates)
     assert all(
         candidate.id in {item.id for item in profile.evidence}
         or candidate.id.startswith("combined:")
@@ -568,8 +560,7 @@ def test_semantic_primary_without_deterministic_family_support_falls_back() -> N
     assert plan.report.role.role_family == RoleFamily.EMBEDDED_FIRMWARE
     assert diagnostic.selected_source is RoleClassificationSource.DETERMINISTIC
     assert (
-        diagnostic.fallback_reason
-        is RoleClassificationFallbackReason.SEMANTIC_FAMILY_UNSUPPORTED
+        diagnostic.fallback_reason is RoleClassificationFallbackReason.SEMANTIC_FAMILY_UNSUPPORTED
     )
 
 
@@ -631,9 +622,7 @@ def test_streamlit_diagnostic_view_represents_gemini_selection() -> None:
 def test_streamlit_diagnostic_view_represents_sanitized_fallback() -> None:
     secret = "secret provider diagnostic"
     plan = _hybrid_service(
-        RecordingRoleModel(
-            LanguageModelError(LanguageModelErrorKind.UNAVAILABLE, secret)
-        )
+        RecordingRoleModel(LanguageModelError(LanguageModelErrorKind.UNAVAILABLE, secret))
     ).create_plan(_profile(), _posting(), TemplateConstraints())
 
     view = build_role_classification_diagnostic_view(plan.report.role)
@@ -672,19 +661,22 @@ def test_streamlit_tailoring_shows_compact_enabled_diagnostic(
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
     monkeypatch.setattr(dependencies, "create_profile_repository", lambda: repository)
 
-    app_path = (
-        Path(__file__).parents[1]
-        / "src"
-        / "resume_tailor"
-        / "frontend"
-        / "app.py"
-    )
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.text_area[0].input(json.dumps(_profile().model_dump(mode="json")))
-    app.text_area[1].input(_posting().description)
-    app.text_input[0].input(_profile().id)
-    app.text_input[1].input(_posting().title)
-    app.button[3].click().run()
+    app.radio(key="navigation_selection").set_value("Profile").run()
+    app.text_input(key="profile_id_input").input(_profile().id).run()
+    app.text_area(key="profile_editor_raw_json").input(
+        json.dumps(_profile().model_dump(mode="json"))
+    )
+    next(
+        button for button in app.button if button.label == "Validate and save raw JSON"
+    ).click().run()
+    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.text_area(key="job_description_input").input(_posting().description)
+    app.text_input(key="job_title_input").input(_posting().title)
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
 
     markdown_values = [element.value for element in app.markdown]
     caption_values = [element.value for element in app.caption]
@@ -694,7 +686,9 @@ def test_streamlit_tailoring_shows_compact_enabled_diagnostic(
     assert "Cached result reused: No" in caption_values
     assert model.call_count == 1
 
-    app.button[3].click().run()
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
 
     caption_values = [element.value for element in app.caption]
     assert "Cached result reused: Yes" in caption_values

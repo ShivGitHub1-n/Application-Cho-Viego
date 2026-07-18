@@ -12,10 +12,15 @@ Vertical-slice stage. The repository includes deterministic optimization, eviden
 2. Create and activate a virtual environment.
 3. Install dependencies: `pip install -r requirements-dev.txt`
 4. Copy `.env.example` to `.env`, set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable LLM features, or keep deterministic fallback enabled. Validated Gemini role classification is separately opt-in with `LLM_ENABLE_ROLE_CLASSIFICATION=true`; it is disabled by default.
-5. Run the API: `uvicorn resume_tailor.api.main:app --reload --app-dir src`
-6. Run the UI in another terminal: `streamlit run src/resume_tailor/frontend/app.py`
+5. Run the API: `python -m uvicorn resume_tailor.api.main:app --reload --app-dir src`
+6. Run the UI in another terminal: `python -m streamlit run src/resume_tailor/frontend/app.py`
 
 The API health check is available at `http://localhost:8000/health`. Use `POST /optimization-plans` with a reviewed profile and a job posting to obtain a strategy and decision report.
+
+User profiles and Job Search state default to
+`%LOCALAPPDATA%\Application Viego` on Windows, independently of the current
+clone or worktree. Set `APPLICATION_VIEGO_DATA_DIR` for a portable location or
+tests. See [Application data](docs/APPLICATION_DATA.md).
 
 ## Job discovery
 
@@ -71,6 +76,8 @@ raw payloads or secrets.
 - [Optimization-engine design](docs/RESUME_OPTIMIZATION_ENGINE.md)
 - [Master profile](docs/MASTER_PROFILE.md)
 - [Template engine](docs/TEMPLATE_ENGINE.md)
+- [Template V1 contract](docs/TEMPLATE_V1.md)
+- [Application data](docs/APPLICATION_DATA.md)
 - [Known issues and frozen layout scope](KNOWN_ISSUES.md)
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Validated role classification](docs/ROLE_CLASSIFICATION.md)

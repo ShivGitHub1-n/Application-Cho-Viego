@@ -13,9 +13,9 @@ from docx.enum.text import (
     WD_TAB_ALIGNMENT,
     WD_TAB_LEADER,
 )
+from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.shared import Pt, RGBColor, Twips
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
@@ -27,10 +27,17 @@ from resume_tailor.domain.layout import (
     ParagraphLayout,
     SemanticRoleLayout,
     TabStop,
-    Typography,
     TransitionSpacing,
+    Typography,
 )
-from resume_tailor.domain.models import EntityKind, ResumeItem, StructuredBullet, StructuredResume
+from resume_tailor.domain.models import (
+    EducationRecord,
+    EntityKind,
+    GraduationStatus,
+    ResumeItem,
+    StructuredBullet,
+    StructuredResume,
+)
 
 
 class AdaptiveDocxRenderError(ValueError):
@@ -97,21 +104,21 @@ class AdaptiveStructuredResumeRenderer:
                 first_content_role="skill_category_row",
             )
             self._add_skills(document, resume)
-        if resume.experience_bullets:
+        if resume.experiences or resume.experience_bullets:
             self._add_section_heading(
                 document,
                 "Technical Experience",
                 first_content_role="experience_title_date_row",
             )
             self._add_experiences(document, resume)
-        if resume.project_bullets:
+        if resume.projects or resume.project_bullets:
             self._add_section_heading(
                 document,
                 "Projects",
                 first_content_role="project_title_metadata_row",
             )
             self._add_projects(document, resume)
-        document.save(output_path)
+        document.save(str(output_path))
         return output_path
 
     def _apply_page_layout(self, document: DocumentType) -> None:
@@ -176,7 +183,7 @@ class AdaptiveStructuredResumeRenderer:
         for record in resume.education:
             date = _date_range(
                 record.start_date,
-                record.expected_graduation_date or record.graduation_date,
+                _education_end_date(record),
             )
             self._add_metadata_row(
                 document,
@@ -187,27 +194,27 @@ class AdaptiveStructuredResumeRenderer:
             self._add_metadata_row(
                 document,
                 "education_program_location_row",
-                record.program,
+                _education_program(record),
                 record.location,
             )
-            details: list[str] = []
-            if record.gpa:
-                details.append(f"GPA: {record.gpa}")
+            awards_and_gpa: list[str] = []
             if record.awards:
-                details.append(f"Awards: {', '.join(record.awards)}")
-            coursework = record.relevant_coursework or resume.selected_coursework
-            if coursework:
-                details.append(f"Relevant Coursework: {', '.join(coursework)}")
-            for detail_index, detail in enumerate(details):
-                role = (
-                    "final_paragraph_in_section"
-                    if detail_index == len(details) - 1
-                    else "education_detail_bullet"
-                )
+                awards_and_gpa.append(f"Awards: {', '.join(record.awards)}")
+            if record.gpa:
+                awards_and_gpa.append(f"GPA: {record.gpa}")
+            if awards_and_gpa:
                 self._add_bullet(
                     document,
-                    role,
-                    detail,
+                    "education_awards_row",
+                    ", ".join(awards_and_gpa),
+                    fallback_role="education_detail_bullet",
+                )
+            coursework = record.relevant_coursework or resume.selected_coursework
+            if coursework:
+                self._add_bullet(
+                    document,
+                    "education_coursework_row",
+                    f"Relevant Courses: {', '.join(coursework)}",
                     fallback_role="education_detail_bullet",
                 )
 
@@ -275,6 +282,11 @@ class AdaptiveStructuredResumeRenderer:
         )
         for entry_index, item in enumerate(records):
             left = item.title
+            if (
+                item.award_or_placement
+                and item.award_or_placement.casefold() not in left.casefold()
+            ):
+                left = f"{left} ({item.award_or_placement})"
             technology_label = item.technology_label or ", ".join(item.technologies)
             if technology_label and technology_label.casefold() not in left.casefold():
                 left = f"{left} | {technology_label}"
@@ -287,6 +299,13 @@ class AdaptiveStructuredResumeRenderer:
                 fallback_role="experience_title_date_row",
                 layout_role="project_title_metadata_row" if entry_index else None,
             )
+            if item.organization or item.location:
+                self._add_metadata_row(
+                    document,
+                    "employer_location_row",
+                    item.organization,
+                    item.location,
+                )
             bullets = resume.project_bullets.get(item.id, [])
             for bullet_index, bullet in enumerate(bullets):
                 role = (
@@ -456,9 +475,7 @@ class AdaptiveStructuredResumeRenderer:
         if role is None and fallback_role:
             role = self._profile.semantic_roles.get(fallback_role)
         if role is None:
-            raise AdaptiveDocxRenderError(
-                f"LayoutProfile is missing semantic role {role_name!r}"
-            )
+            raise AdaptiveDocxRenderError(f"LayoutProfile is missing semantic role {role_name!r}")
         return role
 
     def _apply_transition(
@@ -478,8 +495,7 @@ class AdaptiveStructuredResumeRenderer:
             return
         transition = max(matches, key=lambda item: item.occurrence_count)
         source_spacing = (
-            transition.resolved_source_space_after_twips
-            or transition.source_space_after_twips
+            transition.resolved_source_space_after_twips or transition.source_space_after_twips
         )
         destination_spacing = (
             transition.resolved_destination_space_before_twips
@@ -502,11 +518,23 @@ class AdaptiveStructuredResumeRenderer:
         destination_role: str,
         destination_section_first_role: str | None,
     ) -> list[TransitionSpacing]:
+        transition_role_aliases = {
+            "education_awards_row": "education_detail_bullet",
+            "education_coursework_row": "final_paragraph_in_section",
+        }
+        source_roles = {
+            source_role,
+            transition_role_aliases.get(source_role, source_role),
+        }
+        destination_roles = {
+            destination_role,
+            transition_role_aliases.get(destination_role, destination_role),
+        }
         matches = [
             transition
             for transition in self._profile.transition_spacings
-            if transition.source_role == source_role
-            and transition.destination_role == destination_role
+            if transition.source_role in source_roles
+            and transition.destination_role in destination_roles
         ]
         if destination_role == "section_heading" and matches:
             contextual = [
@@ -595,7 +623,9 @@ class AdaptiveStructuredResumeRenderer:
         run.font.name = str(family)
         run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:ascii"), str(family))
         run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:hAnsi"), str(family))
-        run.font.size = Pt(float(size) / 2 if isinstance(size, (int, float)) else _FALLBACKS.font_size_points)
+        run.font.size = Pt(
+            float(size) / 2 if isinstance(size, (int, float)) else _FALLBACKS.font_size_points
+        )
         run.bold = _optional_bool(typography.bold.value)
         run.italic = _optional_bool(typography.italic.value)
         underline = typography.underline.value
@@ -634,13 +664,17 @@ class AdaptiveStructuredResumeRenderer:
                 for tab in role.tab_stops
                 if tab.position_twips in group.observed_positions_twips
             ]
-            representative = min(
-                candidates or role.tab_stops,
-                key=lambda tab: (
-                    abs(tab.position_twips - group.representative_position_twips),
-                    tab.position_twips,
-                ),
-            ) if role.tab_stops else None
+            representative = (
+                min(
+                    candidates or role.tab_stops,
+                    key=lambda tab: (
+                        abs(tab.position_twips - group.representative_position_twips),
+                        tab.position_twips,
+                    ),
+                )
+                if role.tab_stops
+                else None
+            )
             if representative is not None:
                 return [
                     representative.model_copy(
@@ -656,13 +690,15 @@ class AdaptiveStructuredResumeRenderer:
             tab
             for candidate in self._profile.semantic_roles.values()
             for tab in candidate.tab_stops
-            if tab.semantic_use in {
+            if tab.semantic_use
+            in {
                 "right_aligned_metadata",
                 "positioned_metadata_column",
             }
         ]
         role_has_metadata = any(
-            tab.semantic_use in {
+            tab.semantic_use
+            in {
                 "right_aligned_metadata",
                 "positioned_metadata_column",
             }
@@ -694,43 +730,67 @@ class AdaptiveStructuredResumeRenderer:
         right: str,
         role: SemanticRoleLayout,
     ) -> bool:
-        anchor = self._metadata_anchor(role)
-        if anchor is None:
+        column = self._metadata_column(role)
+        if column is None:
             return False
+        anchor, alignment = column
         left_indent = role.paragraph.left_indent_twips.value
         if not isinstance(left_indent, int):
             left_indent = 0
         left_end = left_indent + _estimated_text_width_twips(left, role)
-        right_fits = anchor + _estimated_text_width_twips(right, role) <= self._profile.page.usable_width_twips
-        return left_end + _metadata_collision_tolerance(self._profile) > anchor or not right_fits
-
-    def _metadata_right_fits(self, right: str, role: SemanticRoleLayout) -> bool:
-        anchor = self._metadata_anchor(role)
-        return anchor is not None and (
-            anchor + _estimated_text_width_twips(right, role)
-            <= self._profile.page.usable_width_twips
+        right_width = _estimated_text_width_twips(right, role)
+        right_start = anchor - right_width if alignment == "right" else anchor
+        right_end = anchor if alignment == "right" else anchor + right_width
+        right_fits = right_start >= 0 and right_end <= self._profile.page.usable_width_twips
+        return (
+            left_end + _metadata_collision_tolerance(self._profile) > right_start or not right_fits
         )
 
-    def _metadata_anchor(self, role: SemanticRoleLayout) -> int | None:
+    def _metadata_right_fits(self, right: str, role: SemanticRoleLayout) -> bool:
+        column = self._metadata_column(role)
+        if column is None:
+            return False
+        anchor, alignment = column
+        width = _estimated_text_width_twips(right, role)
+        start = anchor - width if alignment == "right" else anchor
+        end = anchor if alignment == "right" else anchor + width
+        return start >= 0 and end <= self._profile.page.usable_width_twips
+
+    def _metadata_column(
+        self,
+        role: SemanticRoleLayout,
+    ) -> tuple[int, str] | None:
+        effective_tabs = self._effective_tab_stops(role, role.role)
+        metadata_effective = [
+            tab
+            for tab in effective_tabs
+            if tab.semantic_use
+            in {
+                "right_aligned_metadata",
+                "positioned_metadata_column",
+                "normalized_metadata_column",
+            }
+        ]
+        if metadata_effective:
+            selected = max(metadata_effective, key=lambda tab: tab.position_twips)
+            return selected.position_twips, selected.alignment
         positions = [
             group.representative_position_twips
             for group in self._profile.metadata_anchor_groups
-            if any(
-                tab.position_twips in group.observed_positions_twips
-                for tab in role.tab_stops
-            )
+            if any(tab.position_twips in group.observed_positions_twips for tab in role.tab_stops)
         ]
         if positions:
-            return max(positions)
+            return max(positions), "left"
         metadata_tabs = [
             tab.position_twips
             for tab in role.tab_stops
-            if tab.semantic_use in {
+            if tab.semantic_use
+            in {
                 "right_aligned_metadata",
                 "positioned_metadata_column",
             }
         ]
-        return max(metadata_tabs) if metadata_tabs else None
+        return (max(metadata_tabs), "left") if metadata_tabs else None
 
     def _apply_numbering(self, paragraph: Paragraph, bullet: BulletLayout) -> None:
         signature = bullet.model_dump_json()
@@ -742,8 +802,7 @@ class AdaptiveStructuredResumeRenderer:
                 for element in numbering.findall(qn("w:abstractNum"))
             ]
             num_ids = [
-                int(element.get(qn("w:numId")))
-                for element in numbering.findall(qn("w:num"))
+                int(element.get(qn("w:numId"))) for element in numbering.findall(qn("w:num"))
             ]
             abstract_id = max(abstract_ids, default=-1) + 1
             numbering_id = max(num_ids, default=0) + 1
@@ -855,7 +914,7 @@ def _ordered_records(
     kind: EntityKind,
 ) -> list[ResumeItem]:
     by_id = {item.id: item for item in records}
-    ordered = [by_id[entity_id] for entity_id in bullets if entity_id in by_id]
+    ordered = list(records)
     for entity_id in bullets:
         if entity_id not in by_id:
             ordered.append(
@@ -869,7 +928,33 @@ def _ordered_records(
 
 
 def _date_range(start: str | None, end: str | None) -> str | None:
-    return " - ".join(part for part in (start, end) if part) or None
+    return " – ".join(part for part in (start, end) if part) or None
+
+
+def _education_end_date(record: EducationRecord) -> str | None:
+    expected = record.expected_graduation_date
+    completed = record.graduation_date
+    status = record.graduation_status
+    if expected:
+        if status is GraduationStatus.EXPECTED and not expected.casefold().startswith(
+            ("expected ", "anticipated ")
+        ):
+            return f"Expected {expected}"
+        return expected
+    return completed
+
+
+def _education_program(record: EducationRecord) -> str:
+    values = [
+        record.program,
+        record.minor_or_specialization,
+        record.co_op_designation,
+    ]
+    unique: list[str] = []
+    for value in values:
+        if value and value.casefold() not in " ".join(unique).casefold():
+            unique.append(value)
+    return ", ".join(unique)
 
 
 def _hyperlink_target(value: str) -> str | None:
@@ -884,21 +969,29 @@ def _hyperlink_target(value: str) -> str | None:
 
 
 def _paragraph_alignment(value: object) -> WD_ALIGN_PARAGRAPH | None:
-    return {
-        "left": WD_ALIGN_PARAGRAPH.LEFT,
-        "center": WD_ALIGN_PARAGRAPH.CENTER,
-        "right": WD_ALIGN_PARAGRAPH.RIGHT,
-        "both": WD_ALIGN_PARAGRAPH.JUSTIFY,
-        "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
-    }.get(str(value)) if value is not None else None
+    return (
+        {
+            "left": WD_ALIGN_PARAGRAPH.LEFT,
+            "center": WD_ALIGN_PARAGRAPH.CENTER,
+            "right": WD_ALIGN_PARAGRAPH.RIGHT,
+            "both": WD_ALIGN_PARAGRAPH.JUSTIFY,
+            "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
+        }.get(str(value))
+        if value is not None
+        else None
+    )
 
 
 def _line_spacing_rule(value: object) -> WD_LINE_SPACING | None:
-    return {
-        "exact": WD_LINE_SPACING.EXACTLY,
-        "atLeast": WD_LINE_SPACING.AT_LEAST,
-        "auto": WD_LINE_SPACING.SINGLE,
-    }.get(str(value)) if value is not None else None
+    return (
+        {
+            "exact": WD_LINE_SPACING.EXACTLY,
+            "atLeast": WD_LINE_SPACING.AT_LEAST,
+            "auto": WD_LINE_SPACING.SINGLE,
+        }.get(str(value))
+        if value is not None
+        else None
+    )
 
 
 def _tab_alignment(tab: TabStop) -> WD_TAB_ALIGNMENT:
@@ -953,13 +1046,11 @@ def _apply_transition_spacing(
     attribute: str,
     value: object,
 ) -> None:
-    formatting = paragraph.paragraph_format
     if _is_twips(value):
-        setattr(formatting, attribute, Twips(value))
-    else:
-        # An absent reference contribution means no direct paragraph spacing,
-        # not permission to retain the role representative's spacing.
-        setattr(formatting, attribute, None)
+        # Transition values replace their matching role component. They are
+        # never added to it, and an absent transition cannot erase the
+        # explicit role spacing already written to the paragraph.
+        setattr(paragraph.paragraph_format, attribute, Twips(value))
 
 
 def _apply_spacing_flags(paragraph: Paragraph, layout: ParagraphLayout) -> None:

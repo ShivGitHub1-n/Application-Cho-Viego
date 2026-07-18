@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from resume_tailor.domain.models import EntityKind, MasterProfile
+from resume_tailor.domain.models import EntityKind, GraduationStatus, MasterProfile
 
 
 class EducationCompleteness(BaseModel):
@@ -11,6 +11,7 @@ class EducationCompleteness(BaseModel):
     program_present: bool
     start_date_present: bool
     graduation_date_present: bool
+    graduation_status_present: bool
     location_present: bool
     gpa_present: bool
     awards_count: int = Field(ge=0)
@@ -72,9 +73,8 @@ def validate_master_profile_completeness(
             institution_present=bool(item.school.strip()),
             program_present=bool(item.program.strip()),
             start_date_present=bool(item.start_date),
-            graduation_date_present=bool(
-                item.expected_graduation_date or item.graduation_date
-            ),
+            graduation_date_present=bool(item.expected_graduation_date or item.graduation_date),
+            graduation_status_present=(item.graduation_status is not GraduationStatus.UNKNOWN),
             location_present=bool(item.location),
             gpa_present=bool(item.gpa),
             awards_count=len(item.awards),
@@ -108,13 +108,13 @@ def validate_master_profile_completeness(
             EntryCompleteness(
                 entry_id=item.id,
                 role_or_name_present=bool(item.title.strip()),
-                organization_present=(bool(item.organization) if kind == EntityKind.EXPERIENCE else None),
+                organization_present=(
+                    bool(item.organization) if kind == EntityKind.EXPERIENCE else None
+                ),
                 start_date_present=bool(item.start_date),
                 end_date_present=bool(item.end_date),
                 location_present=bool(item.location),
-                subtitle_or_technology_label_present=bool(
-                    item.subtitle or item.technology_label
-                ),
+                subtitle_or_technology_label_present=bool(item.subtitle or item.technology_label),
                 evidence_count=evidence_counts.get(item.id, 0),
             )
             for item in records
@@ -129,32 +129,35 @@ def validate_master_profile_completeness(
     entry_ids = [item.id for item in profile.experiences + profile.projects]
     evidence_ids = [item.id for item in profile.evidence]
     duplicate_entries = sorted({value for value in entry_ids if entry_ids.count(value) > 1})
-    duplicate_evidence = sorted(
-        {value for value in evidence_ids if evidence_ids.count(value) > 1}
-    )
+    duplicate_evidence = sorted({value for value in evidence_ids if evidence_ids.count(value) > 1})
 
     incomplete: list[str] = []
-    for item in education:
+    for education_item in education:
         for field in (
+            "institution_present",
+            "program_present",
             "start_date_present",
             "graduation_date_present",
+            "graduation_status_present",
             "location_present",
             "gpa_present",
         ):
-            if not getattr(item, field):
-                incomplete.append(f"education[{item.index}].{field.removesuffix('_present')}")
-        if item.awards_count == 0:
-            incomplete.append(f"education[{item.index}].awards")
-        if item.relevant_coursework_count == 0:
-            incomplete.append(f"education[{item.index}].relevant_coursework")
+            if not getattr(education_item, field):
+                incomplete.append(
+                    f"education[{education_item.index}].{field.removesuffix('_present')}"
+                )
+        if education_item.awards_count == 0:
+            incomplete.append(f"education[{education_item.index}].awards")
+        if education_item.relevant_coursework_count == 0:
+            incomplete.append(f"education[{education_item.index}].relevant_coursework")
     if skills.legacy_flat_only:
         incomplete.append("technical_skills.categorized_skills")
     for group_name, group in (("experiences", experience), ("projects", projects)):
-        for item in group:
+        for entry_item in group:
             for field in ("start_date_present", "end_date_present", "location_present"):
-                if not getattr(item, field):
+                if not getattr(entry_item, field):
                     incomplete.append(
-                        f"{group_name}[{item.entry_id}].{field.removesuffix('_present')}"
+                        f"{group_name}[{entry_item.entry_id}].{field.removesuffix('_present')}"
                     )
 
     integrity = EvidenceIntegrityCompleteness(
