@@ -4,7 +4,13 @@ Resume Tailor is an evidence-backed AI platform for tailoring resumes to specifi
 
 ## Status
 
-Vertical-slice stage. The repository includes deterministic optimization, evidence-bound review, managed DOCX/PDF rendering, optional Gemini structured-output assistance, FastAPI endpoints, Streamlit MVP UI, and focused regression tests.
+Vertical-slice stage. Static Template V1 stabilization is committed; deterministic resume composition and one-page filling are the current uncommitted stage under review. The repository also includes evidence-bound review, managed DOCX/PDF rendering, optional Gemini structured-output assistance, FastAPI endpoints, Streamlit MVP UI, and focused regression tests.
+
+## Current project status
+
+- [Project status and accepted-versus-experimental boundaries](docs/PROJECT_STATUS.md)
+- [Ordered roadmap and acceptance gates](docs/ROADMAP.md)
+- [Codex operating guide](docs/CODEX_OPERATING_GUIDE.md)
 
 ## Quick start
 
@@ -69,7 +75,9 @@ raw payloads or secrets.
 
 ## Documentation
 
-- [Roadmap](ROADMAP.md)
+- [Project status](docs/PROJECT_STATUS.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Codex operating guide](docs/CODEX_OPERATING_GUIDE.md)
 - [Product specification](docs/PRODUCT_SPEC.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Decision engine](docs/RESUME_DECISION_ENGINE.md)
@@ -78,7 +86,7 @@ raw payloads or secrets.
 - [Template engine](docs/TEMPLATE_ENGINE.md)
 - [Template V1 contract](docs/TEMPLATE_V1.md)
 - [Application data](docs/APPLICATION_DATA.md)
-- [Known issues and frozen layout scope](KNOWN_ISSUES.md)
+- [Known issues and frozen layout scope](docs/KNOWN_ISSUES.md)
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Validated role classification](docs/ROLE_CLASSIFICATION.md)
 - [Contributing](docs/CONTRIBUTING.md)
