@@ -6,7 +6,9 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.llm_prompts import system_prompt, task_prompt
+from resume_tailor.domain.generated_artifact import GenerationStage
 from resume_tailor.domain.llm_models import (
     BulletRewriteOutput,
     BulletRewriteRequest,
@@ -14,12 +16,12 @@ from resume_tailor.domain.llm_models import (
     BulletShorteningOutput,
     BulletShorteningRequest,
     BulletShorteningResult,
-    CoverLetterDraftOutput,
-    CoverLetterDraftRequest,
-    CoverLetterDraftResult,
     CompositionRecommendationOutput,
     CompositionRecommendationRequest,
     CompositionRecommendationResult,
+    CoverLetterDraftOutput,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
     LanguageModelError,
     LanguageModelErrorKind,
     LlmOperation,
@@ -39,15 +41,24 @@ from resume_tailor.domain.llm_models import (
     SkillCompositionResult,
 )
 from resume_tailor.infrastructure.config import Settings
-from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 from resume_tailor.infrastructure.gemini_schema import gemini_response_schema
+from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 
 OutputType = TypeVar("OutputType", bound=BaseModel)
 ResultType = TypeVar("ResultType", bound=ModelResult)
 
 
+class _ProviderCachePayload(BaseModel):
+    payload: dict[str, Any]
+
+
 class GeminiResumeLanguageModel:
-    def __init__(self, settings: Settings, cache: InMemoryLlmCache | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cache: InMemoryLlmCache | None = None,
+        telemetry: GenerationTelemetry | None = None,
+    ) -> None:
         api_key = settings.gemini_api_key or os.getenv(settings.llm_api_key_env_var)
         if not api_key:
             raise LanguageModelError(
@@ -75,8 +86,14 @@ class GeminiResumeLanguageModel:
         self._model = settings.gemini_model
         self._temperature = settings.llm_temperature
         self._max_output_tokens = settings.llm_max_output_tokens
-        self._profile_extraction_max_output_tokens = settings.llm_profile_extraction_max_output_tokens
+        self._profile_extraction_max_output_tokens = (
+            settings.llm_profile_extraction_max_output_tokens
+        )
         self._cache = cache or InMemoryLlmCache(settings.llm_cache_ttl_seconds)
+        self._telemetry = telemetry or GenerationTelemetry()
+
+    def set_telemetry(self, telemetry: GenerationTelemetry) -> None:
+        self._telemetry = telemetry
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
         return self._generate(
@@ -156,8 +173,19 @@ class GeminiResumeLanguageModel:
         output_type: type[OutputType],
         result_type: type[ResultType],
     ) -> ResultType:
-        cache_key = self._cache.key_for(operation.value, self._model, request)
+        cache_key = self._cache.key_for(
+            operation.value,
+            self._model,
+            self._cache_payload(operation, request),
+        )
+        telemetry = getattr(self, "_telemetry", None)
+        cache_started = telemetry.clock() if telemetry is not None else 0.0
         cached = self._cache.get(cache_key, result_type)
+        if telemetry is not None:
+            telemetry.record(
+                GenerationStage.WRITER_CACHE_LOOKUP,
+                telemetry.clock() - cache_started,
+            )
         if cached is not None:
             metadata = cached.metadata.model_copy(update={"cache_hit": True, "latency_ms": 0})
             return cached.model_copy(update={"metadata": metadata})
@@ -185,6 +213,7 @@ class GeminiResumeLanguageModel:
                     ),
                 ),
             )
+            parsing_started = telemetry.clock() if telemetry is not None else 0.0
             finish_reason, finish_message = self._finish_diagnostics(response)
             usage = getattr(response, "usage_metadata", None)
             if self._is_truncated(finish_reason, finish_message):
@@ -211,6 +240,11 @@ class GeminiResumeLanguageModel:
                 output = parsed
             else:
                 output = output_type.model_validate(parsed)
+            if telemetry is not None:
+                telemetry.record(
+                    GenerationStage.PROVIDER_RESPONSE_PARSING,
+                    telemetry.clock() - parsing_started,
+                )
         except LanguageModelError:
             raise
         except ValidationError as error:
@@ -226,6 +260,22 @@ class GeminiResumeLanguageModel:
         return result
 
     @staticmethod
+    def _cache_payload(
+        operation: LlmOperation,
+        request: BaseModel,
+    ) -> BaseModel:
+        if operation is not LlmOperation.REWRITE_BULLETS:
+            return request
+        payload = request.model_dump(
+            mode="json",
+            exclude={"max_total_lines", "max_bullets_per_entry"},
+        )
+        for group in payload.get("groups", []):
+            if isinstance(group, dict):
+                group.pop("max_rendered_lines", None)
+        return _ProviderCachePayload(payload=payload)
+
+    @staticmethod
     def _finish_diagnostics(response: Any) -> tuple[str | None, str | None]:
         candidates = getattr(response, "candidates", None) or []
         candidate = candidates[0] if candidates else None
@@ -238,9 +288,13 @@ class GeminiResumeLanguageModel:
     @staticmethod
     def _is_truncated(finish_reason: str | None, finish_message: str | None) -> bool:
         value = f"{finish_reason or ''} {finish_message or ''}".casefold()
-        return any(token in value for token in ("max_tokens", "max tokens", "length", "token limit"))
+        return any(
+            token in value for token in ("max_tokens", "max tokens", "length", "token limit")
+        )
 
-    def _metadata(self, operation: LlmOperation, response: Any, started: float) -> ModelCallMetadata:
+    def _metadata(
+        self, operation: LlmOperation, response: Any, started: float
+    ) -> ModelCallMetadata:
         usage = getattr(response, "usage_metadata", None)
         return ModelCallMetadata(
             provider="gemini",
@@ -258,11 +312,21 @@ class GeminiResumeLanguageModel:
     def _map_error(error: Exception) -> LanguageModelError:
         message = str(error).casefold()
         if "429" in message or "rate" in message or "resource exhausted" in message:
-            return LanguageModelError(LanguageModelErrorKind.RATE_LIMITED, "Gemini rate limit reached.", True)
+            return LanguageModelError(
+                LanguageModelErrorKind.RATE_LIMITED, "Gemini rate limit reached.", True
+            )
         if "timeout" in message or "timed out" in message:
-            return LanguageModelError(LanguageModelErrorKind.TIMEOUT, "Gemini request timed out.", True)
+            return LanguageModelError(
+                LanguageModelErrorKind.TIMEOUT, "Gemini request timed out.", True
+            )
         if "404" in message or "model" in message and "not found" in message:
-            return LanguageModelError(LanguageModelErrorKind.UNAVAILABLE, "Configured Gemini model is unavailable.")
+            return LanguageModelError(
+                LanguageModelErrorKind.UNAVAILABLE, "Configured Gemini model is unavailable."
+            )
         if "connection" in message or "network" in message or "dns" in message:
-            return LanguageModelError(LanguageModelErrorKind.NETWORK, "Gemini network request failed.", True)
-        return LanguageModelError(LanguageModelErrorKind.UNAVAILABLE, "Gemini request failed.", True)
+            return LanguageModelError(
+                LanguageModelErrorKind.NETWORK, "Gemini network request failed.", True
+            )
+        return LanguageModelError(
+            LanguageModelErrorKind.UNAVAILABLE, "Gemini request failed.", True
+        )

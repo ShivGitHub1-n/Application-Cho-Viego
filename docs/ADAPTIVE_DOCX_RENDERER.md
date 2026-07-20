@@ -14,9 +14,10 @@ source-derived OOXML prototypes and replaces semantic placeholders without
 creating a blank document or reconstructing formatting from
 `template_v1_layout.json`.
 
-The managed renderer still owns the strict final DOCX page-count gate, bounded
-overflow-only reduction loop, and typed page-utilization diagnostic; underfill
-expansion remains disabled. The JSON profile remains available for occupancy
+The managed renderer still owns the final DOCX page-count gate, bounded
+overflow-only reduction loop, and typed page-utilization diagnostic; selection
+and underfill expansion remain outside the renderer in
+`DeterministicResumeComposer`. The JSON profile remains available for occupancy
 diagnostics and explicit profile-driven renderer experiments. Passing a
 reference path without an explicit profile remains rejected.
 
@@ -56,7 +57,15 @@ rows and unused prototypes are omitted completely, and no blank paragraphs are
 added for spacing. Profile-driven transition resolution described elsewhere in
 this document applies only to explicit adaptive-renderer experiments.
 
-`ManagedResumeRenderer` requires an exact DOCX page-count provider (LibreOffice when available, with Microsoft Word COM as an optional fallback). Estimated or unavailable measurements raise a controlled verification error; they are never reported as an exact one-page result. If exact measurement reports overflow, only deterministic optional-content reduction is attempted, with geometry unchanged, through a bounded loop. A one-page document is then estimated for occupied vertical space: severe underfill is reported separately from acceptable one-page composition and never triggers automatic content insertion.
+`ManagedResumeRenderer` prefers an exact DOCX page-count provider (LibreOffice
+when available, with Microsoft Word COM as an optional fallback). Exact
+measurement is authoritative. When all exact providers fail, the renderer
+retains their failure, returns an explicitly unverified occupied-height
+estimate, and never reports exact one-page verification. If exact measurement
+reports overflow, only deterministic optional-content reduction is attempted,
+with geometry unchanged, through a bounded loop. Automatic underfill expansion
+occurs earlier through application composition, not by inserting content in
+the renderer.
 
 ## Hyperlinks
 

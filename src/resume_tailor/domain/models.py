@@ -7,6 +7,12 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from resume_tailor.domain.hybrid_resume import (
+    BulletVariantRecord,
+    HybridResumeDiagnostic,
+)
+from resume_tailor.domain.resume_composition import ResumeCompositionDiagnostic
+
 
 class ClaimSupport(StrEnum):
     DIRECT = "direct"
@@ -418,7 +424,7 @@ class TemplateConstraints(BaseModel):
     max_total_lines: Annotated[int, Field(gt=0)] = 42
     max_experience_lines: Annotated[int, Field(gt=0)] = 24
     max_project_lines: Annotated[int, Field(gt=0)] = 12
-    max_skill_lines: Annotated[int, Field(gt=0)] = 3
+    max_skill_lines: Annotated[int, Field(gt=0)] = 4
     max_coursework_lines: Annotated[int, Field(gt=0)] = 2
     experience_entry_overhead_lines: Annotated[int, Field(ge=0)] = 2
     project_entry_overhead_lines: Annotated[int, Field(ge=0)] = 2
@@ -444,6 +450,7 @@ class ClaimCandidate(BaseModel):
     composition: ClaimComposition = ClaimComposition.SINGLE
     required_terms: list[str] = Field(default_factory=list)
     max_rendered_lines: Annotated[int, Field(gt=0)] = 2
+    writing_variant: BulletVariantRecord | None = None
 
 
 class Decision(BaseModel):
@@ -499,6 +506,7 @@ class TailoringPlan(BaseModel):
     estimated_lines: int = 0
     composition_selection: CompositionSelection | None = None
     demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
+    hybrid_diagnostic: HybridResumeDiagnostic | None = None
 
     @model_validator(mode="after")
     def derive_legacy_selected_skills(self) -> TailoringPlan:
@@ -516,6 +524,7 @@ class StructuredBullet(BaseModel):
     text: str
     evidence_ids: list[str] = Field(min_length=1)
     support: ClaimSupport
+    writing_variant: BulletVariantRecord | None = None
 
 
 class StructuredResume(BaseModel):
@@ -539,6 +548,8 @@ class StructuredResume(BaseModel):
     review_pending_bullets: list[StructuredBullet] = Field(default_factory=list)
     review_pending_skills: list[GeneratedSkill] = Field(default_factory=list)
     demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
+    composition_diagnostic: ResumeCompositionDiagnostic | None = None
+    hybrid_diagnostic: HybridResumeDiagnostic | None = None
 
     @model_validator(mode="after")
     def derive_legacy_selected_skills(self) -> StructuredResume:

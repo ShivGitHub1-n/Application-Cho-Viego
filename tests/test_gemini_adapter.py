@@ -1,21 +1,24 @@
 import pytest
 
 from resume_tailor.domain.llm_models import (
+    ApprovedEvidenceGroup,
     BulletRewriteOutput,
+    BulletRewriteRequest,
     BulletShorteningOutput,
     CompositionRecommendationOutput,
     LanguageModelError,
     LanguageModelErrorKind,
+    LlmOperation,
     OpportunityAnalysisOutput,
     OpportunityAnalysisRequest,
-    SkillCompositionOutput,
     ProfileExtractionOutput,
     ProfileExtractionRequest,
+    SkillCompositionOutput,
 )
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
-from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 from resume_tailor.infrastructure.gemini_schema import gemini_response_schema
+from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 
 
 def test_gemini_error_mapping_is_provider_specific() -> None:
@@ -134,9 +137,18 @@ def test_profile_extraction_uses_compact_schema_and_explicit_budget() -> None:
     assert isinstance(config, dict)
     assert config["max_output_tokens"] == 8192
     schema = config["response_schema"]
-    assert "description" not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
-    assert "bullets" not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
-    assert "bullet_points" not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
+    assert (
+        "description"
+        not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
+    )
+    assert (
+        "bullets"
+        not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
+    )
+    assert (
+        "bullet_points"
+        not in schema["properties"]["profile"]["properties"]["experiences"]["items"]["properties"]
+    )
 
 
 def test_truncated_profile_response_is_actionable_and_not_retried() -> None:
@@ -184,4 +196,36 @@ def test_non_truncated_malformed_profile_json_remains_schema_error() -> None:
     with pytest.raises(LanguageModelError) as error:
         adapter.extract_profile(_profile_request())
     assert error.value.kind == LanguageModelErrorKind.MALFORMED_RESPONSE
-    LanguageModelError,
+
+
+def test_rewrite_provider_cache_identity_ignores_page_fit_thresholds() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="entry",
+        evidence_ids=["evidence"],
+        source_texts=["Built a grounded service."],
+        max_rendered_lines=2,
+    )
+    first = BulletRewriteRequest(
+        primary_focus="Backend",
+        groups=[group],
+        max_bullets_per_entry=4,
+        max_total_lines=42,
+    )
+    second = first.model_copy(
+        update={
+            "max_bullets_per_entry": 6,
+            "max_total_lines": 50,
+            "groups": [group.model_copy(update={"max_rendered_lines": 3})],
+        }
+    )
+
+    first_payload = GeminiResumeLanguageModel._cache_payload(
+        LlmOperation.REWRITE_BULLETS,
+        first,
+    )
+    second_payload = GeminiResumeLanguageModel._cache_payload(
+        LlmOperation.REWRITE_BULLETS,
+        second,
+    )
+
+    assert first_payload == second_payload

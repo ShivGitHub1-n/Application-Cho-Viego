@@ -1,3 +1,6 @@
+# Prompt policy text is intentionally retained as exact long-form provider input.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import json
@@ -38,7 +41,12 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
             "for existing selected categories using the supplied evidence, linked evidence IDs, "
             "and confidence classification."
         ),
-        LlmOperation.REWRITE_BULLETS: "Tailor approved evidence into concise bullets with materially new wording when useful.",
+        LlmOperation.REWRITE_BULLETS: (
+            "Tailor the bounded same-entry evidence groups into genuinely job-specific, "
+            "natural resume bullets. Return claim-level supporting evidence IDs. Provide a "
+            "concise alternative only when it is also fully grounded. Respect the supplied "
+            "versioned writing policy, length classes, and prohibited phrases."
+        ),
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (
             "Draft a concise, natural, evidence-grounded cover letter from the supplied selected "

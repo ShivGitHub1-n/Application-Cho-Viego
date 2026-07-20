@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -66,15 +67,25 @@ def build_resume_docx(request: DocumentRequest) -> Response:
     resume = _validated_resume(request)
     with TemporaryDirectory() as directory:
         output_path = Path(directory) / "tailored-resume.docx"
+        renderer = ManagedResumeRenderer()
         try:
-            ManagedResumeRenderer().render_docx(resume, output_path)
+            renderer.render_docx(resume, output_path)
         except PageCountVerificationError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
         content = output_path.read_bytes()
+        measurement = renderer.last_measurement
+        verification = "exact" if measurement is not None and measurement.exact else "unverified"
+        verification_failure = renderer.last_verification_failure
+    headers = {
+        "Content-Disposition": 'attachment; filename="tailored-resume.docx"',
+        "X-Resume-Page-Verification": verification,
+    }
+    if verification_failure:
+        headers["X-Resume-Page-Verification-Failure"] = quote(verification_failure[:1500])
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": 'attachment; filename="tailored-resume.docx"'},
+        headers=headers,
     )
 
 

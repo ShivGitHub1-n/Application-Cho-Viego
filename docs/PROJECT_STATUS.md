@@ -11,11 +11,12 @@ tailored resumes, cover letters, role classification, Job Discovery,
 structured review and editing, application tracking, conversational agent
 workflows, and career intelligence.
 
-The current active stage is deterministic resume composition and one-page
-filling on top of the accepted static Template V1 renderer. The template
-stabilization is committed. The composition work in this checkout is
-experimental, uncommitted, under review, and not yet finally accepted. The
-resume system as a whole is not complete.
+The current active stage is hybrid evidence retrieval, deterministic resume
+composition, grounded bullet writing, and one-page filling on top of the
+accepted static Template V1 renderer. The template stabilization is committed.
+The composition and hybrid-writing work in this checkout is experimental,
+uncommitted, under review, and not yet finally accepted. The resume system as a
+whole is not complete.
 
 ## Repository and Git checkpoints
 
@@ -103,25 +104,37 @@ The accepted packaged-template SHA-256 is:
 The hash was re-measured from the current packaged template while preparing
 this checkpoint and matches the accepted value.
 
-## Deterministic composition implementation under review
+## Hybrid composition and writing implementation under review
 
-The uncommitted composition implementation is designed to work with all LLM
-flags disabled:
+The uncommitted implementation preserves a deterministic zero-provider
+fallback and adds an optional evidence-grounded writing path:
 
-- It admits reviewed evidence only and preserves reviewed bullet text
-  exactly; this stage performs no bullet rewriting.
+- It admits reviewed evidence only. With writing disabled, reviewed bullet text
+  is preserved exactly. With writing enabled, only validated same-entry
+  variants or explicitly approved review-required variants can replace it.
 - Atomic candidates cover coherent experience and project entries,
   individual reviewed experience and project bullets, reviewed
   skill-category rows, and supported education-detail rows.
 - Every selected bullet retains its entry metadata and provenance. Orphan
   bullets and empty entries are invalid.
+- A typed metadata-fidelity check rejects accumulated date ranges, repeated
+  title/organization/location metadata, and duplicate selected entries before
+  static rendering. Year-only and month/year source precision remain unchanged.
+- Reviewed education specialization, co-op designation, GPA, awards, and
+  coursework render when present and participate in the same Template V1
+  occupancy evaluations; absent optional fields are not invented.
 - Ranking uses direct posting-to-evidence relevance rather than requiring a
   role-family classification. Signals include normalized phrase and
   technical overlap, responsibility and tool/platform overlap, evidence
   strength, specificity, requirement coverage, title relevance, structured
   recency, and redundancy.
-- A bounded two-stage search explores candidates with the deterministic
-  occupancy estimator, then renders and paginates a bounded finalist set.
+- A bounded beam plus reserved progressive-completion stage explores
+  candidates with the deterministic occupancy estimator, then renders and
+  paginates a bounded density-diverse finalist set. The completion lane advances
+  after its first fitting expansion so its reserved budget deepens coherent
+  entries rather than repeatedly rendering successful shallow siblings.
+- Dominance remains an entry-substitution signal. It no longer suppresses
+  additional strong reviewed bullets inside an entry that is already selected.
 - Exact Microsoft Word or LibreOffice pagination is authoritative when
   available. When it is unavailable, the system returns a typed
   `unverified` result with the estimator and the provider failure; it must not
@@ -134,8 +147,22 @@ flags disabled:
   relevance or redundancy exclusions, candidates excluded only by search
   bounds, iterations, overflow rollbacks, utilization, and verification
   status.
+- The typed retrieval contract reevaluates the complete current profile on
+  every run and is replaceable by a future RAG adapter.
+- A bounded provider batch runs outside page-fit iterations. Cache identity
+  includes profile/posting fingerprints, evidence, policy/contract versions,
+  provider, and model while excluding layout thresholds.
 - With LLM flags disabled, the composition acceptance test records zero
   provider calls while still producing a plan and DOCX.
+
+Bullet rewriting predated this stage behind `llm_enable_bullet_rewrite`.
+The older non-composer/live-smoke route could render validated rewritten plan
+claims, but the production page-fill route reconstructed bullets from
+`EvidenceItem.source_text` and discarded those rewrites. The current
+orchestration consolidates production on one bounded write/validate/layout
+handoff. Historical deterministic manual artifacts were generated with
+providers disabled; repository evidence cannot prove the provenance of every
+other previously viewed document.
 
 The calibrated estimator measurements currently recorded by the composition
 contract are:
@@ -162,12 +189,11 @@ immediately before this documentation-only checkpoint, records:
 
 | Validation | Result |
 | --- | --- |
-| Focused composition and calibration | 21 passed |
-| Rendering and static-template group | 59 passed, 1 skipped |
-| Affected frontend, API, planning, profile, and role-classification group | 178 passed |
-| Full offline suite | 544 passed, 1 skipped, 2 deselected, 1 warning in 47.20s |
+| Focused metadata, composition, hybrid, and Template V1 rendering | 78 passed, 1 skipped |
+| Affected frontend, API, planning, profile, LLM, and role-classification group | 234 passed, 1 warning |
+| Full offline suite | 593 passed, 1 skipped, 2 deselected, 1 warning in 130.02s |
 | Ruff on changed Python and tests | Passed |
-| Targeted mypy on seven changed typed source modules | Passed with `--follow-imports=silent` |
+| Targeted mypy on the metadata contract and composer | Passed; broader import traces still expose pre-existing errors in `adaptive_docx.py`, `skill_composition.py`, and `cover_letter.py` |
 
 The full offline command used for that report was:
 
@@ -175,10 +201,8 @@ The full offline command used for that report was:
 & "C:\Users\Shiv\AppData\Local\Programs\Python\Python311\python.exe" -m pytest -q -m "not gemini_integration and not job_source_integration"
 ```
 
-These are validation results for the uncommitted worktree, not evidence of a
-committed or finally accepted composition release. The test suite was not
-rerun for this documentation-only checkpoint because no production or test
-code was to change.
+These are validation results for the current uncommitted hybrid-composition
+worktree, not evidence of a committed or finally accepted release.
 
 ## Visual acceptance findings
 
@@ -262,14 +286,16 @@ adding weak entries, expansion should prefer:
    nonredundant evidence.
 
 One hundred percent visual utilization is not the goal. The provisional
-desired visual range is approximately 82%–90%, subject to further
+desired visual range is approximately 90%–95%, with 95% as the safe upper aim, subject to further
 Microsoft Word-rendered calibration. This visual goal does not replace the
 current deterministic 72%–97% acceptance band while calibration work is
 ongoing.
 
 ## Known limitations and deferred capabilities
 
-- Bullet text is currently preserved byte-for-byte and is not yet tailored.
+- The connected writer policy and prompts still require user-facing style
+  calibration; provider output remains subject to deterministic grounding and
+  source-text fallback.
 - Existing reviewed bullet quality and length can limit page density.
 - Exact Word verification cannot run in some Codex sandbox sessions; failures
   must remain visible and produce an unverified result.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from docx import Document
 from docx.enum.text import WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
@@ -19,11 +20,16 @@ from resume_tailor.domain.models import (
     StructuredBullet,
     StructuredResume,
 )
+from resume_tailor.domain.resume_composition import (
+    TEMPLATE_V1_UTILIZATION_TARGET_CEILING,
+    TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
+)
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.rendering import (
     PageCountMeasurement,
     diagnose_docx_page_utilization,
 )
+from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
 from resume_tailor.infrastructure.template_v1 import (
     TEMPLATE_V1_ID,
     TEMPLATE_V1_REFERENCE_SHA256,
@@ -31,6 +37,7 @@ from resume_tailor.infrastructure.template_v1 import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "template_v1_complete_profile.json"
+REFERENCE = Path("manual-test/reference-resume.docx")
 
 
 def _profile() -> MasterProfile:
@@ -204,8 +211,7 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
     assert all(
         len(paragraph.paragraph_format.tab_stops) == 1
         and paragraph.paragraph_format.tab_stops[0].alignment == WD_TAB_ALIGNMENT.RIGHT
-        and paragraph.paragraph_format.tab_stops[0].position.twips
-        == 11_160
+        and paragraph.paragraph_format.tab_stops[0].position.twips == 11_160
         for paragraph in metadata_rows
     )
     assert profile.page.usable_width_twips == 11_160
@@ -414,7 +420,7 @@ def test_template_v1_transition_spacing_replaces_without_adding_or_erasing(
     assert institution.paragraph_format.space_before.twips == 29
 
 
-def test_page_utilization_distinguishes_severe_underfill_from_complete_fixture(
+def test_page_utilization_uses_static_template_v1_calibration_floor(
     tmp_path: Path,
 ) -> None:
     profile = load_template_v1_layout_profile()
@@ -436,8 +442,8 @@ def test_page_utilization_distinguishes_severe_underfill_from_complete_fixture(
     )
     sparse_path = tmp_path / "sparse.docx"
     complete_path = tmp_path / "complete.docx"
-    render_structured_resume(sparse, profile, sparse_path)
-    render_structured_resume(_resume(), profile, complete_path)
+    render_template_v1_resume(sparse, sparse_path)
+    render_template_v1_resume(_resume(), complete_path)
 
     sparse_diagnostic = diagnose_docx_page_utilization(
         sparse_path,
@@ -446,6 +452,11 @@ def test_page_utilization_distinguishes_severe_underfill_from_complete_fixture(
     )
     complete_diagnostic = diagnose_docx_page_utilization(
         complete_path,
+        profile,
+        measurement,
+    )
+    canonical_diagnostic = diagnose_docx_page_utilization(
+        REFERENCE,
         profile,
         measurement,
     )
@@ -461,8 +472,15 @@ def test_page_utilization_distinguishes_severe_underfill_from_complete_fixture(
     )
 
     assert sparse_diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL
-    assert complete_diagnostic.status is PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+    assert complete_diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL
+    assert canonical_diagnostic.status is PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
     assert overflow_diagnostic.status is PageUtilizationStatus.OVERFLOW
+    assert complete_diagnostic.estimated_utilization_ratio == pytest.approx(0.6669571045576408)
+    assert canonical_diagnostic.estimated_utilization_ratio == pytest.approx(0.964343163538874)
+    assert complete_diagnostic.severe_underfill_threshold == TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
+    assert (
+        canonical_diagnostic.estimated_utilization_ratio <= TEMPLATE_V1_UTILIZATION_TARGET_CEILING
+    )
     assert complete_diagnostic.uncontrolled_blank_paragraph_count == 0
     assert (
         complete_diagnostic.estimated_utilization_ratio

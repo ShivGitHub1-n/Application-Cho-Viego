@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 
-
 DERIVED_WORKFLOW_KEYS = (
     "plan",
     "resume",
+    "generated_resume_artifact",
     "generated_content_reviewed",
     "workflow_profile_fingerprint",
     "workflow_posting_fingerprint",
@@ -25,6 +25,7 @@ PROFILE_FINGERPRINT_KEY = "workflow_profile_fingerprint"
 POSTING_DERIVED_WORKFLOW_KEYS = (
     "plan",
     "resume",
+    "generated_resume_artifact",
     "generated_content_reviewed",
     POSTING_FINGERPRINT_KEY,
     "cover_letter",
@@ -39,6 +40,7 @@ POSTING_DERIVED_WORKFLOW_KEYS = (
 PROFILE_DERIVED_WORKFLOW_KEYS = (
     "plan",
     "resume",
+    "generated_resume_artifact",
     "generated_content_reviewed",
     PROFILE_FINGERPRINT_KEY,
     "cover_letter",

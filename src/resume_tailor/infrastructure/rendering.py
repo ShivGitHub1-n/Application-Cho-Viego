@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -24,11 +25,12 @@ from resume_tailor.domain.layout import (
 from resume_tailor.domain.models import (
     EducationRecord,
     EntityKind,
-    GraduationStatus,
     ResumeItem,
     StructuredBullet,
     StructuredResume,
 )
+from resume_tailor.domain.resume_composition import TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
+from resume_tailor.domain.resume_metadata import compose_date_range, education_end_date
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
 from resume_tailor.infrastructure.template_v1 import load_template_v1_layout_profile
@@ -57,57 +59,94 @@ class DocxPageCountProvider(Protocol):
 class LibreOfficeDocxPageCountProvider:
     """Measure DOCX pages through LibreOffice and its converted PDF page tree."""
 
-    def __init__(self, executable: str | None = None) -> None:
+    def __init__(
+        self,
+        executable: str | None = None,
+        timeout_seconds: float = 15.0,
+    ) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("LibreOffice pagination timeout must be positive")
         self._executable = executable or shutil.which("soffice") or shutil.which("libreoffice")
+        self._timeout_seconds = timeout_seconds
 
     def measure(self, docx_path: Path) -> PageCountMeasurement:
-        docx_path = _validated_docx_path(docx_path, "LibreOffice")
+        return self.measure_many([docx_path])[0]
+
+    def measure_many(self, docx_paths: list[Path]) -> list[PageCountMeasurement]:
+        if not docx_paths:
+            return []
+        validated_paths = [
+            _validated_docx_path(path, "LibreOffice") for path in docx_paths
+        ]
         if self._executable is None:
             raise PageCountVerificationError(
                 "Exact DOCX page-count verification requires LibreOffice or Microsoft Word; "
                 "no supported provider is available."
             )
         with TemporaryDirectory(prefix="resume-page-count-") as directory:
-            result = subprocess.run(
-                [
-                    self._executable,
-                    "--headless",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    directory,
-                    str(docx_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            try:
+                result = subprocess.run(
+                    [
+                        self._executable,
+                        "--headless",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        directory,
+                        *[str(path) for path in validated_paths],
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=self._timeout_seconds,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise PageCountVerificationError(
+                    "LibreOffice page-count verification could not complete within "
+                    f"{self._timeout_seconds:g} seconds: {error}"
+                ) from error
             if result.returncode != 0:
                 raise PageCountVerificationError(
                     f"LibreOffice could not render the DOCX for page-count verification: "
                     f"{result.stderr.strip() or result.stdout.strip()} "
-                    f"({_docx_diagnostics(docx_path, 'LibreOffice')})"
+                    f"({_docx_diagnostics(validated_paths[0], 'LibreOffice')})"
                 )
-            pdf_path = Path(directory) / f"{docx_path.stem}.pdf"
-            if not pdf_path.is_file():
-                raise PageCountVerificationError(
-                    "LibreOffice reported success but did not produce a PDF for page counting "
-                    f"({_docx_diagnostics(docx_path, 'LibreOffice')})."
+            measurements: list[PageCountMeasurement] = []
+            for path in validated_paths:
+                pdf_path = Path(directory) / f"{path.stem}.pdf"
+                if not pdf_path.is_file():
+                    raise PageCountVerificationError(
+                        "LibreOffice reported success but did not produce a PDF for page "
+                        f"counting ({_docx_diagnostics(path, 'LibreOffice')})."
+                    )
+                measurements.append(
+                    PageCountMeasurement(
+                        page_count=_count_pdf_pages(pdf_path),
+                        provider="LibreOffice DOCX->PDF page tree",
+                        confidence="exact",
+                        exact=True,
+                    )
                 )
-            page_count = _count_pdf_pages(pdf_path)
-            return PageCountMeasurement(
-                page_count=page_count,
-                provider="LibreOffice DOCX->PDF page tree",
-                confidence="exact",
-                exact=True,
-            )
+            return measurements
 
 
 class MicrosoftWordDocxPageCountProvider:
     """Measure DOCX pages with Word through its native Windows COM automation."""
 
+    def __init__(self, timeout_seconds: float = 15.0) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("Microsoft Word pagination timeout must be positive")
+        self._timeout_seconds = timeout_seconds
+
     def measure(self, docx_path: Path) -> PageCountMeasurement:
-        docx_path = _validated_docx_path(docx_path, "Microsoft Word")
+        return self.measure_many([docx_path])[0]
+
+    def measure_many(self, docx_paths: list[Path]) -> list[PageCountMeasurement]:
+        if not docx_paths:
+            return []
+        validated_paths = [
+            _validated_docx_path(path, "Microsoft Word") for path in docx_paths
+        ]
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None:
             raise PageCountVerificationError(
@@ -115,75 +154,118 @@ class MicrosoftWordDocxPageCountProvider:
                 "PowerShell is not available."
             )
         script = r"""
-$Path = $env:RESUME_DOCX_PATH
-$beforeWordIds = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+$Paths = @(Get-Content -LiteralPath $env:RESUME_DOCX_PATHS_FILE)
+$OwnedProcessPath = $env:RESUME_WORD_OWNED_PROCESS_PATH
 $word = $null
 $document = $null
+$counts = @()
 try {
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
-    $document = $word.Documents.Open($Path, $false, $true, $false)
-    [int]$document.ComputeStatistics(2)
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class ResumeWordNative {
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@
+    [uint32]$createdProcessId = 0
+    [void][ResumeWordNative]::GetWindowThreadProcessId(
+        [IntPtr]$word.Hwnd,
+        [ref]$createdProcessId
+    )
+    if ($createdProcessId -gt 0) {
+        $createdProcess = Get-Process -Id $createdProcessId -ErrorAction Stop
+        "$createdProcessId|$($createdProcess.StartTime.ToUniversalTime().Ticks)" |
+            Set-Content -LiteralPath $OwnedProcessPath -Encoding ASCII
+    }
+    foreach ($path in $Paths) {
+        try {
+            $document = $word.Documents.Open($path, $false, $true, $false)
+            $counts += [int]$document.ComputeStatistics(2)
+        }
+        finally {
+            if ($null -ne $document) {
+                $document.Close($false)
+                $document = $null
+            }
+        }
+    }
+    $counts -join ','
 }
 finally {
     if ($null -ne $document) { $document.Close($false) }
     if ($null -ne $word) { $word.Quit() }
-    if ($null -eq $word) {
-        $afterWordIds = @(
-            Get-Process WINWORD -ErrorAction SilentlyContinue |
-                ForEach-Object { $_.Id }
-        )
-        foreach ($id in $afterWordIds) {
-            if ($beforeWordIds -notcontains $id) {
-                Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
+    Remove-Item -LiteralPath $OwnedProcessPath -Force -ErrorAction SilentlyContinue
 }
 """
         environment = os.environ.copy()
-        environment["RESUME_DOCX_PATH"] = str(docx_path)
-        try:
-            result = subprocess.run(
-                [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=60,
-                env=environment,
+        with TemporaryDirectory(prefix="resume-word-pagination-") as directory:
+            paths_file = Path(directory) / "docx-paths.txt"
+            paths_file.write_text(
+                "\n".join(str(path) for path in validated_paths),
+                encoding="utf-8",
             )
-        except (OSError, subprocess.TimeoutExpired) as error:
-            raise PageCountVerificationError(
-                f"Microsoft Word page-count verification could not run: {error}"
-            ) from error
+            owned_process_path = Path(directory) / "owned-word-process.txt"
+            environment["RESUME_DOCX_PATHS_FILE"] = str(paths_file)
+            environment["RESUME_WORD_OWNED_PROCESS_PATH"] = str(owned_process_path)
+            try:
+                result = subprocess.run(
+                    [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=self._timeout_seconds,
+                    env=environment,
+                )
+            except subprocess.TimeoutExpired as error:
+                _cleanup_owned_word_process(owned_process_path, powershell)
+                raise PageCountVerificationError(
+                    "Microsoft Word page-count verification timed out after "
+                    f"{self._timeout_seconds:g} seconds."
+                ) from error
+            except OSError as error:
+                _cleanup_owned_word_process(owned_process_path, powershell)
+                raise PageCountVerificationError(
+                    f"Microsoft Word page-count verification could not run: {error}"
+                ) from error
         if result.returncode != 0:
             raise PageCountVerificationError(
                 "Microsoft Word could not render the DOCX for page-count verification: "
                 f"{result.stderr.strip() or result.stdout.strip()} "
-                f"({_docx_diagnostics(docx_path, 'Microsoft Word')})"
+                f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})"
             )
         try:
-            page_count = int(result.stdout.strip().splitlines()[-1])
+            raw_counts = result.stdout.strip().splitlines()[-1].split(",")
+            page_counts = [int(value) for value in raw_counts]
         except (IndexError, ValueError) as error:
             raise PageCountVerificationError(
-                "Microsoft Word returned no usable page count for the DOCX "
-                f"({_docx_diagnostics(docx_path, 'Microsoft Word')})."
+                "Microsoft Word returned no usable page-count batch "
+                f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})."
             ) from error
-        return PageCountMeasurement(
-            page_count=page_count,
-            provider="Microsoft Word ComputeStatistics",
-            confidence="exact",
-            exact=True,
-        )
+        if len(page_counts) != len(validated_paths):
+            raise PageCountVerificationError(
+                "Microsoft Word returned an incomplete page-count batch."
+            )
+        return [
+            PageCountMeasurement(
+                page_count=page_count,
+                provider="Microsoft Word ComputeStatistics",
+                confidence="exact",
+                exact=True,
+            )
+            for page_count in page_counts
+        ]
 
 
 class ExactDocxPageCountProvider:
     """Prefer LibreOffice and fall back to Microsoft Word if available."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, word_timeout_seconds: float = 15.0) -> None:
         self._providers: tuple[DocxPageCountProvider, ...] = (
             LibreOfficeDocxPageCountProvider(),
-            MicrosoftWordDocxPageCountProvider(),
+            MicrosoftWordDocxPageCountProvider(word_timeout_seconds),
         )
 
     def measure(self, docx_path: Path) -> PageCountMeasurement:
@@ -196,6 +278,54 @@ class ExactDocxPageCountProvider:
         raise PageCountVerificationError(
             "Exact DOCX page-count verification failed: " + " ".join(failures)
         )
+
+    def measure_many(self, docx_paths: list[Path]) -> list[PageCountMeasurement]:
+        failures: list[str] = []
+        for provider in self._providers:
+            try:
+                batch_measure = getattr(provider, "measure_many", None)
+                if callable(batch_measure):
+                    return list(batch_measure(docx_paths))
+                return [provider.measure(path) for path in docx_paths]
+            except PageCountVerificationError as error:
+                failures.append(str(error))
+        raise PageCountVerificationError(
+            "Exact DOCX page-count verification failed: " + " ".join(failures)
+        )
+
+
+def _cleanup_owned_word_process(owned_process_path: Path, powershell: str) -> None:
+    """Terminate only the Word PID recorded by this application's COM instance."""
+
+    if not owned_process_path.is_file():
+        return
+    cleanup_script = r"""
+$parts = (Get-Content -Raw -LiteralPath $env:RESUME_WORD_OWNED_PROCESS_PATH).Trim().Split('|')
+if ($parts.Count -ne 2) { exit 0 }
+[int]$ownedProcessId = $parts[0]
+[long]$ownedStartTicks = $parts[1]
+$owned = Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue
+if (
+    $null -ne $owned -and
+    $owned.ProcessName -eq 'WINWORD' -and
+    $owned.StartTime.ToUniversalTime().Ticks -eq $ownedStartTicks
+) {
+    Stop-Process -Id $ownedProcessId -Force -ErrorAction SilentlyContinue
+}
+"""
+    environment = os.environ.copy()
+    environment["RESUME_WORD_OWNED_PROCESS_PATH"] = str(owned_process_path)
+    try:
+        subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", cleanup_script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=environment,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
 
 
 def _validated_docx_path(path: Path, provider: str) -> Path:
@@ -225,6 +355,7 @@ class ManagedRenderResult:
     exact_page_count_verified: bool
     overflow_reduction_count: int
     page_utilization: PageUtilizationDiagnostic
+    verification_failure: str | None = None
 
 
 class ManagedResumeRenderer:
@@ -234,7 +365,7 @@ class ManagedResumeRenderer:
     _body_font = "Helvetica"
     _body_size = 9
     _max_overflow_reductions = 32
-    _severe_underfill_threshold = 0.50
+    _severe_underfill_threshold = TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
 
     def __init__(
         self,
@@ -254,6 +385,7 @@ class ManagedResumeRenderer:
         self._initial_measurement: PageCountMeasurement | None = None
         self._last_overflow_reduction_count = 0
         self._last_page_utilization: PageUtilizationDiagnostic | None = None
+        self._last_verification_failure: str | None = None
 
     @property
     def layout_profile(self) -> LayoutProfile:
@@ -274,6 +406,10 @@ class ManagedResumeRenderer:
     @property
     def last_page_utilization(self) -> PageUtilizationDiagnostic | None:
         return self._last_page_utilization
+
+    @property
+    def last_verification_failure(self) -> str | None:
+        return self._last_verification_failure
 
     @property
     def underfill_expansion_enabled(self) -> bool:
@@ -307,6 +443,7 @@ class ManagedResumeRenderer:
             exact_page_count_verified=measurement.exact,
             overflow_reduction_count=self._last_overflow_reduction_count,
             page_utilization=utilization,
+            verification_failure=self._last_verification_failure,
         )
 
     def _render_docx(self, resume: StructuredResume, path: Path) -> None:
@@ -325,6 +462,7 @@ class ManagedResumeRenderer:
         self._initial_measurement = None
         self._last_overflow_reduction_count = 0
         self._last_page_utilization = None
+        self._last_verification_failure = None
         for _ in range(self._max_overflow_reductions + 1):
             if self._uses_static_template_v1:
                 render_template_v1_resume(candidate, path)
@@ -337,17 +475,21 @@ class ManagedResumeRenderer:
                 )
             try:
                 measurement = self._page_count_provider.measure(path)
-            except Exception:
-                path.unlink(missing_ok=True)
-                raise
+            except PageCountVerificationError as error:
+                self._last_verification_failure = str(error)
+                return self._accept_estimated_candidate(candidate, path)
             self._last_measurement = measurement
             if self._initial_measurement is None:
                 self._initial_measurement = measurement
             if not measurement.exact:
-                path.unlink(missing_ok=True)
-                raise PageCountVerificationError(
+                self._last_verification_failure = (
                     f"Page-count provider {measurement.provider!r} is not exact; "
                     "the one-page invariant cannot be verified."
+                )
+                return self._accept_estimated_candidate(
+                    candidate,
+                    path,
+                    provider=measurement.provider,
                 )
             if measurement.page_count == 1:
                 self._last_page_utilization = diagnose_docx_page_utilization(
@@ -375,6 +517,49 @@ class ManagedResumeRenderer:
             "The rendered DOCX did not reach one page within the bounded reduction loop."
         )
 
+    def _accept_estimated_candidate(
+        self,
+        candidate: StructuredResume,
+        path: Path,
+        *,
+        provider: str = "deterministic Template V1 occupancy estimate",
+    ) -> StructuredResume:
+        provisional = PageCountMeasurement(
+            page_count=1,
+            provider=provider,
+            confidence="estimated",
+            exact=False,
+        )
+        diagnostic = diagnose_docx_page_utilization(
+            path,
+            self._layout_profile,
+            provisional,
+            severe_underfill_threshold=self._severe_underfill_threshold,
+        )
+        estimated_page_count = max(
+            1,
+            math.ceil(diagnostic.estimated_utilization_ratio),
+        )
+        self._last_measurement = PageCountMeasurement(
+            page_count=estimated_page_count,
+            provider=provider,
+            confidence="estimated",
+            exact=False,
+        )
+        self._last_page_utilization = diagnostic
+        if diagnostic.estimated_utilization_ratio <= 1.0:
+            return candidate
+        path.unlink(missing_ok=True)
+        failure = (
+            f" Exact pagination failure: {self._last_verification_failure}"
+            if self._last_verification_failure
+            else ""
+        )
+        raise PageOverflowError(
+            "The deterministic Template V1 occupancy estimate exceeds one page while "
+            f"exact pagination is unavailable.{failure}"
+        )
+
     def _render_pdf(self, resume: StructuredResume, path: Path) -> None:
         canvas = Canvas(str(path), pagesize=letter)
         left = self._layout_profile.page.left_margin_twips / 20
@@ -394,7 +579,7 @@ class ManagedResumeRenderer:
                 y = self._pdf_metadata(
                     canvas,
                     record.school,
-                    _pdf_date_range(record.start_date, _pdf_education_end(record)),
+                    compose_date_range(record.start_date, education_end_date(record)),
                     y,
                     left,
                     right,
@@ -509,7 +694,7 @@ class ManagedResumeRenderer:
             y = self._pdf_metadata(
                 canvas,
                 title,
-                _pdf_date_range(item.start_date, item.end_date),
+                compose_date_range(item.start_date, item.end_date),
                 y,
                 left,
                 right,
@@ -631,23 +816,6 @@ class ManagedResumeRenderer:
             )
 
 
-def _pdf_date_range(start: str | None, end: str | None) -> str | None:
-    return " – ".join(value for value in (start, end) if value) or None
-
-
-def _pdf_education_end(record: EducationRecord) -> str | None:
-    expected = record.expected_graduation_date
-    completed = record.graduation_date
-    status = record.graduation_status
-    if (
-        expected
-        and status is GraduationStatus.EXPECTED
-        and not expected.casefold().startswith(("expected ", "anticipated "))
-    ):
-        return f"Expected {expected}"
-    return expected or completed
-
-
 def _pdf_education_program(record: EducationRecord) -> str:
     values = [
         getattr(record, "program", ""),
@@ -686,7 +854,7 @@ def diagnose_docx_page_utilization(
     layout_profile: LayoutProfile,
     measurement: PageCountMeasurement,
     *,
-    severe_underfill_threshold: float = 0.50,
+    severe_underfill_threshold: float = TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
 ) -> PageUtilizationDiagnostic:
     """Estimate occupied vertical space while keeping exact page count authoritative."""
 
@@ -712,8 +880,8 @@ def diagnose_docx_page_utilization(
     elif measurement.page_count == 1 and ratio < severe_underfill_threshold:
         status = PageUtilizationStatus.SEVERE_UNDERFILL
         message = (
-            "The resume is one page but severely underfilled; selected content was not "
-            "expanded automatically."
+            "The resume is one page but severely underfilled; no additional admissible "
+            "evidence was selected."
         )
     elif measurement.page_count == 1:
         status = PageUtilizationStatus.ACCEPTABLE_ONE_PAGE

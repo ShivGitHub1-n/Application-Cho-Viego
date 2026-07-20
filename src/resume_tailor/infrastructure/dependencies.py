@@ -6,6 +6,8 @@ import httpx
 
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle
 from resume_tailor.application.cover_letter import CoverLetterService
+from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
+from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.job_discovery.confirmation import ConfirmJobSearchPreferencesService
 from resume_tailor.application.job_discovery.preferences import SuggestJobSearchPreferencesService
 from resume_tailor.application.job_discovery.queries import (
@@ -18,20 +20,28 @@ from resume_tailor.application.job_discovery.saved import (
     SaveJobService,
 )
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.role_classification import (
     HybridRoleClassifier,
     HybridRoleOpportunityAnalyzer,
     RoleClassificationCacheIdentity,
 )
 from resume_tailor.application.services import TailorResumeService
+from resume_tailor.domain.hybrid_resume import (
+    RESUME_WRITING_CONTRACT_VERSION,
+    RESUME_WRITING_POLICY_VERSION,
+)
 from resume_tailor.domain.job_discovery.models import ConnectorType, SupportedJobSource
 from resume_tailor.domain.job_discovery.preferences import DeterministicJobSearchPreferenceSuggester
 from resume_tailor.domain.llm_models import LanguageModelError
+from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
 from resume_tailor.infrastructure.application_data import (
     application_database_path,
     migrate_legacy_application_database,
     repository_local_legacy_database,
 )
+from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
+from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
@@ -52,6 +62,8 @@ from resume_tailor.infrastructure.optimization import (
     EvidenceBoundResumeWriter,
 )
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
+from resume_tailor.infrastructure.rendering import ExactDocxPageCountProvider
+from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
 from resume_tailor.ports.interfaces import ResumeLanguageModel, RoleClassificationCache
 
 
@@ -73,7 +85,11 @@ def create_tailor_service(
     role_classification_cache: RoleClassificationCache | None = None,
 ) -> TailorResumeService:
     resolved_settings = settings or Settings()
+    telemetry = GenerationTelemetry()
     language_model = _create_language_model(resolved_settings)
+    set_model_telemetry = getattr(language_model, "set_telemetry", None)
+    if callable(set_model_telemetry):
+        set_model_telemetry(telemetry)
     optimizer = DeterministicResumeOptimizer()
     if resolved_settings.llm_enable_role_classification:
         resolved_role_cache: RoleClassificationCache | None = None
@@ -108,6 +124,9 @@ def create_tailor_service(
         enable_opportunity_analysis=resolved_settings.llm_enable_opportunity_analysis,
         enable_composition=resolved_settings.llm_enable_composition,
         enable_bullet_rewrite=resolved_settings.llm_enable_bullet_rewrite,
+        provider_name=resolved_settings.llm_provider,
+        model_name=resolved_settings.gemini_model or "unconfigured",
+        telemetry=telemetry,
     )
     cover_letter_service = CoverLetterService(
         language_model=language_model if resolved_settings.llm_enable_cover_letter else None,
@@ -118,6 +137,34 @@ def create_tailor_service(
         EvidenceBoundResumeWriter(),
         hybrid_services=hybrid_services,
         cover_letter_service=cover_letter_service,
+        resume_composer=DeterministicResumeComposer(
+            TemplateV1PageFitEvaluator(
+                ExactDocxPageCountProvider(
+                    word_timeout_seconds=resolved_settings.word_pagination_timeout_seconds
+                ),
+                telemetry=telemetry,
+            ),
+            telemetry=telemetry,
+        ),
+        artifact_renderer=TemplateV1ArtifactRenderer(telemetry),
+        generation_configuration=ResumeGenerationConfiguration(
+            template_identity=f"{TEMPLATE_V1_ID}:{TEMPLATE_V1_DOCX_SHA256}",
+            composition_contract_version=RESUME_COMPOSITION_CONTRACT_VERSION,
+            writing_policy_version=RESUME_WRITING_POLICY_VERSION,
+            writing_contract_version=RESUME_WRITING_CONTRACT_VERSION,
+            feature_flags={
+                "opportunity_analysis": resolved_settings.llm_enable_opportunity_analysis,
+                "semantic_composition": resolved_settings.llm_enable_composition,
+                "bullet_rewrite": resolved_settings.llm_enable_bullet_rewrite,
+                "shortening": resolved_settings.llm_enable_shortening,
+                "role_classification": resolved_settings.llm_enable_role_classification,
+            },
+            provider=resolved_settings.llm_provider,
+            model=resolved_settings.gemini_model or "unconfigured",
+            provider_timeout_seconds=resolved_settings.llm_timeout_seconds,
+            provider_retry_count=resolved_settings.llm_retry_count,
+        ),
+        telemetry=telemetry,
     )
 
 
@@ -226,7 +273,11 @@ def create_job_discovery_services(
     )
 
 
-def _create_language_model(settings: Settings) -> ResumeLanguageModel | None:
+def _create_language_model(
+    settings: Settings,
+    *,
+    telemetry: GenerationTelemetry | None = None,
+) -> ResumeLanguageModel | None:
     enabled = any(
         [
             settings.llm_enable_opportunity_analysis,
@@ -240,7 +291,7 @@ def _create_language_model(settings: Settings) -> ResumeLanguageModel | None:
     if not enabled:
         return None
     try:
-        return GeminiResumeLanguageModel(settings)
+        return GeminiResumeLanguageModel(settings, telemetry=telemetry)
     except LanguageModelError:
         if settings.llm_deterministic_fallback:
             return None

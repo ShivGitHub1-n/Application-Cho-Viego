@@ -1,0 +1,643 @@
+{
+  "profile": {
+    "id": "composition-engineering-profile",
+    "user_id": "composition-user",
+    "version": 1,
+    "display_name": "Avery Engineer",
+    "contact": {
+      "email": "avery@example.com",
+      "phone": "555-0100",
+      "location": "Toronto, Ontario",
+      "links": [
+        "linkedin.com/in/avery-engineer"
+      ]
+    },
+    "education": [
+      {
+        "school": "Example University",
+        "program": "Bachelor of Applied Science in Engineering",
+        "start_date": "Sep. 2022",
+        "expected_graduation_date": "Apr. 2027",
+        "graduation_status": "expected",
+        "location": "Toronto, Ontario",
+        "gpa": "3.8/4.0",
+        "awards": [
+          "Engineering Design Award"
+        ],
+        "relevant_coursework": [
+          "Embedded Systems",
+          "Mechanical Design",
+          "Cloud Computing"
+        ]
+      }
+    ],
+    "experiences": [
+      {
+        "id": "firmware-intern",
+        "title": "Embedded Firmware Intern",
+        "kind": "experience",
+        "organization": "Northstar Robotics",
+        "start_date": "May 2025",
+        "end_date": "Present",
+        "location": "Toronto, Ontario",
+        "technology_label": "C, STM32, FreeRTOS"
+      },
+      {
+        "id": "mechanical-team",
+        "title": "Mechanical Design Lead",
+        "kind": "experience",
+        "organization": "University Design Team",
+        "start_date": "Sep. 2023",
+        "end_date": "Apr. 2025",
+        "location": "Toronto, Ontario",
+        "technology_label": "SolidWorks, GD&T, CNC"
+      },
+      {
+        "id": "electronics-lab",
+        "title": "Hardware Integration Assistant",
+        "kind": "experience",
+        "organization": "Embedded Systems Laboratory",
+        "start_date": "Jan. 2025",
+        "end_date": "Apr. 2025",
+        "location": "Toronto, Ontario",
+        "technology_label": "PCB, STM32, Oscilloscope"
+      },
+      {
+        "id": "controls-test-coop",
+        "title": "Embedded Controls Test Co-op",
+        "kind": "experience",
+        "organization": "Vector Motion Systems",
+        "start_date": "May 2024",
+        "end_date": "Aug. 2024",
+        "location": "Waterloo, Ontario",
+        "technology_label": "C++, CAN, Python"
+      },
+      {
+        "id": "cloud-intern",
+        "title": "Software Platform Intern",
+        "kind": "experience",
+        "organization": "Example Cloud",
+        "start_date": "May 2024",
+        "end_date": "Aug. 2024",
+        "location": "Remote",
+        "technology_label": "Python, AWS, Docker"
+      }
+    ],
+    "projects": [
+      {
+        "id": "rover-controller",
+        "title": "Autonomous Rover Controller",
+        "kind": "project",
+        "technology_label": "C, STM32, CAN, PCB",
+        "technologies": [
+          "C",
+          "STM32",
+          "CAN",
+          "PCB"
+        ]
+      },
+      {
+        "id": "cloud-observability",
+        "title": "Cloud Observability Platform",
+        "kind": "project",
+        "technology_label": "Python, Kubernetes, PostgreSQL",
+        "technologies": [
+          "Python",
+          "Kubernetes",
+          "PostgreSQL"
+        ]
+      },
+      {
+        "id": "sensor-node",
+        "title": "Distributed Sensor Node",
+        "kind": "project",
+        "technology_label": "C, STM32, FreeRTOS, SPI",
+        "technologies": [
+          "C",
+          "STM32",
+          "FreeRTOS",
+          "SPI"
+        ]
+      }
+    ],
+    "technical_skills": [
+      {
+        "category": "Embedded Systems",
+        "values": [
+          "C",
+          "C++",
+          "STM32",
+          "FreeRTOS",
+          "SPI",
+          "I2C",
+          "CAN"
+        ]
+      },
+      {
+        "category": "Mechanical Design & Manufacturing",
+        "values": [
+          "SolidWorks",
+          "GD&T",
+          "CNC machining",
+          "3D printing",
+          "Design for manufacturing"
+        ]
+      },
+      {
+        "category": "Software & Cloud",
+        "values": [
+          "Python",
+          "AWS",
+          "Docker",
+          "Kubernetes",
+          "PostgreSQL",
+          "CI/CD"
+        ]
+      },
+      {
+        "category": "Electronics & Test",
+        "values": [
+          "PCB design",
+          "Oscilloscope",
+          "Logic analyzer",
+          "Hardware-in-the-loop testing"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "id": "firmware-drivers",
+        "entity_id": "firmware-intern",
+        "source_text": "Developed C firmware for STM32 peripherals and debugged SPI and I2C sensor interfaces with oscilloscopes and logic analyzers.",
+        "capabilities": [
+          "firmware development",
+          "hardware debugging",
+          "sensor integration"
+        ],
+        "technologies": [
+          "C",
+          "STM32",
+          "SPI",
+          "I2C",
+          "oscilloscope",
+          "logic analyzer"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "firmware-rtos",
+        "entity_id": "firmware-intern",
+        "source_text": "Implemented FreeRTOS task scheduling, interrupt handling, and CAN communication for a real-time mobile robot controller.",
+        "capabilities": [
+          "real-time systems",
+          "interrupt handling",
+          "communication protocols"
+        ],
+        "technologies": [
+          "FreeRTOS",
+          "CAN",
+          "C"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "firmware-hil-test",
+        "entity_id": "firmware-intern",
+        "source_text": "Built hardware-in-the-loop test fixtures that exercised fault handling and regression scenarios across 120 firmware test cases.",
+        "capabilities": [
+          "hardware-in-the-loop testing",
+          "firmware validation",
+          "fault handling"
+        ],
+        "outcomes": [
+          "120 firmware test cases"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "firmware-latency",
+        "entity_id": "firmware-intern",
+        "source_text": "Optimized embedded C interrupt and DMA paths on STM32, reducing worst-case sensor processing latency by 22%.",
+        "capabilities": [
+          "embedded optimization",
+          "interrupt handling",
+          "firmware performance"
+        ],
+        "technologies": [
+          "C",
+          "STM32",
+          "DMA"
+        ],
+        "outcomes": [
+          "22% lower sensor processing latency"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "firmware-drivers-duplicate",
+        "entity_id": "firmware-intern",
+        "source_text": "Developed C firmware for STM32 peripherals and debugged SPI sensor interfaces using an oscilloscope and logic analyzer.",
+        "capabilities": [
+          "firmware development",
+          "hardware debugging",
+          "sensor integration"
+        ],
+        "technologies": [
+          "C",
+          "STM32",
+          "SPI",
+          "oscilloscope",
+          "logic analyzer"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "mechanical-cad",
+        "entity_id": "mechanical-team",
+        "source_text": "Designed load-bearing assemblies in SolidWorks, produced GD&T drawings, and completed tolerance analyses for manufactured components.",
+        "capabilities": [
+          "mechanical design",
+          "CAD",
+          "tolerance analysis",
+          "design for manufacturing"
+        ],
+        "technologies": [
+          "SolidWorks",
+          "GD&T"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "mechanical-prototype",
+        "entity_id": "mechanical-team",
+        "source_text": "Fabricated and iterated functional prototypes through CNC machining and 3D printing while coordinating supplier manufacturing constraints.",
+        "capabilities": [
+          "prototyping",
+          "manufacturing",
+          "supplier coordination"
+        ],
+        "technologies": [
+          "CNC machining",
+          "3D printing"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "mechanical-test",
+        "entity_id": "mechanical-team",
+        "source_text": "Executed static-load and fatigue testing, documented failure modes, and revised the mechanical design to improve measured stiffness by 18%.",
+        "capabilities": [
+          "mechanical testing",
+          "failure analysis",
+          "design validation"
+        ],
+        "outcomes": [
+          "18% stiffness improvement"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "electronics-bringup",
+        "entity_id": "electronics-lab",
+        "source_text": "Performed PCB bring-up for STM32 control boards, validating power rails, clocks, SPI buses, and sensor signals with an oscilloscope.",
+        "capabilities": [
+          "PCB bring-up",
+          "hardware debugging",
+          "sensor integration"
+        ],
+        "technologies": [
+          "PCB",
+          "STM32",
+          "SPI",
+          "oscilloscope"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "electronics-faults",
+        "entity_id": "electronics-lab",
+        "source_text": "Diagnosed intermittent firmware and wiring faults through repeatable bench tests and documented corrective actions for future builds.",
+        "capabilities": [
+          "firmware debugging",
+          "hardware testing",
+          "fault diagnosis"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "controls-can-diagnostics",
+        "entity_id": "controls-test-coop",
+        "source_text": "Developed C++ CAN diagnostic firmware for motor-control nodes and used logic analyzer traces to isolate intermittent message timing faults.",
+        "capabilities": [
+          "firmware development",
+          "communication protocols",
+          "fault diagnosis"
+        ],
+        "technologies": [
+          "C++",
+          "CAN",
+          "logic analyzer"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "controls-system-integration",
+        "entity_id": "controls-test-coop",
+        "source_text": "Integrated encoders, current sensors, and motor controllers on a hardware test rig, then executed repeatable system test procedures.",
+        "capabilities": [
+          "sensor integration",
+          "hardware testing",
+          "system testing"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "controls-regression-runner",
+        "entity_id": "controls-test-coop",
+        "source_text": "Implemented a Python regression runner for hardware-in-the-loop firmware tests and archived deterministic results for each controller build.",
+        "capabilities": [
+          "test automation",
+          "hardware-in-the-loop testing",
+          "firmware validation"
+        ],
+        "technologies": [
+          "Python"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "controls-fault-matrix",
+        "entity_id": "controls-test-coop",
+        "source_text": "Defined fault-injection matrices for disconnected sensors, stalled actuators, and CAN timeouts, then verified documented safe-state handling.",
+        "capabilities": [
+          "fault injection",
+          "fault handling",
+          "system validation"
+        ],
+        "technologies": [
+          "CAN"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "cloud-services",
+        "entity_id": "cloud-intern",
+        "source_text": "Built Python services on AWS that processed asynchronous application events and persisted validated records in PostgreSQL.",
+        "capabilities": [
+          "backend development",
+          "cloud services",
+          "data validation"
+        ],
+        "technologies": [
+          "Python",
+          "AWS",
+          "PostgreSQL"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "cloud-delivery",
+        "entity_id": "cloud-intern",
+        "source_text": "Containerized services with Docker and implemented CI/CD checks that reduced failed production deployments by 35%.",
+        "capabilities": [
+          "continuous integration",
+          "continuous delivery",
+          "deployment automation"
+        ],
+        "technologies": [
+          "Docker",
+          "CI/CD"
+        ],
+        "outcomes": [
+          "35% fewer failed deployments"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "cloud-reliability",
+        "entity_id": "cloud-intern",
+        "source_text": "Added service health checks, structured logging, and AWS monitoring dashboards that reduced incident diagnosis time by 30%.",
+        "capabilities": [
+          "observability",
+          "health monitoring",
+          "cloud reliability"
+        ],
+        "technologies": [
+          "AWS"
+        ],
+        "outcomes": [
+          "30% faster incident diagnosis"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "cloud-performance",
+        "entity_id": "cloud-intern",
+        "source_text": "Profiled Python and PostgreSQL request paths, then added asynchronous batching that improved backend throughput by 45% on AWS.",
+        "capabilities": [
+          "backend performance",
+          "asynchronous processing",
+          "cloud optimization"
+        ],
+        "technologies": [
+          "Python",
+          "PostgreSQL",
+          "AWS"
+        ],
+        "outcomes": [
+          "45% higher backend throughput"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "rover-integration",
+        "entity_id": "rover-controller",
+        "source_text": "Integrated a custom PCB, STM32 firmware, motor drivers, wheel encoders, and CAN messaging into a working autonomous rover prototype.",
+        "capabilities": [
+          "hardware-software integration",
+          "embedded control",
+          "prototyping"
+        ],
+        "technologies": [
+          "PCB",
+          "STM32",
+          "C",
+          "CAN"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "rover-validation",
+        "entity_id": "rover-controller",
+        "source_text": "Created bench and field test procedures for sensor faults, motor stalls, and emergency stops, then traced failures through firmware and wiring.",
+        "capabilities": [
+          "system testing",
+          "fault diagnosis",
+          "firmware debugging"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "rover-enclosure",
+        "entity_id": "rover-controller",
+        "source_text": "Designed a sheet-metal electronics enclosure and sensor mounts in SolidWorks with GD&T drawings for repeatable manufacturing.",
+        "capabilities": [
+          "mechanical design",
+          "CAD",
+          "design for manufacturing"
+        ],
+        "technologies": [
+          "SolidWorks",
+          "GD&T"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "rover-fabrication",
+        "entity_id": "rover-controller",
+        "source_text": "Manufactured rover brackets through CNC machining and 3D printing, then verified assembly fit across three prototype iterations.",
+        "capabilities": [
+          "manufacturing",
+          "prototyping",
+          "fit validation"
+        ],
+        "technologies": [
+          "CNC machining",
+          "3D printing"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "observability-platform",
+        "entity_id": "cloud-observability",
+        "source_text": "Developed a Kubernetes-hosted Python observability service with PostgreSQL storage and automated health monitoring for distributed applications.",
+        "capabilities": [
+          "cloud infrastructure",
+          "observability",
+          "distributed systems"
+        ],
+        "technologies": [
+          "Kubernetes",
+          "Python",
+          "PostgreSQL"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "observability-deployment",
+        "entity_id": "cloud-observability",
+        "source_text": "Automated Kubernetes deployment and PostgreSQL migration checks through a CI/CD pipeline with repeatable integration tests.",
+        "capabilities": [
+          "deployment automation",
+          "integration testing",
+          "continuous delivery"
+        ],
+        "technologies": [
+          "Kubernetes",
+          "PostgreSQL",
+          "CI/CD"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "observability-alerting",
+        "entity_id": "cloud-observability",
+        "source_text": "Implemented distributed health alerts and failure dashboards that surfaced unhealthy Kubernetes services before customer impact.",
+        "capabilities": [
+          "distributed monitoring",
+          "health alerting",
+          "incident prevention"
+        ],
+        "technologies": [
+          "Kubernetes"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "sensor-node-drivers",
+        "entity_id": "sensor-node",
+        "source_text": "Implemented embedded C drivers for STM32 SPI sensors and verified register transactions against logic analyzer captures.",
+        "capabilities": [
+          "firmware development",
+          "sensor integration",
+          "hardware debugging"
+        ],
+        "technologies": [
+          "C",
+          "STM32",
+          "SPI",
+          "logic analyzer"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "sensor-node-rtos",
+        "entity_id": "sensor-node",
+        "source_text": "Configured FreeRTOS tasks and interrupt-driven queues to collect and transmit sensor samples within real-time timing constraints.",
+        "capabilities": [
+          "real-time systems",
+          "interrupt handling",
+          "sensor acquisition"
+        ],
+        "technologies": [
+          "FreeRTOS",
+          "C"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "sensor-node-bringup",
+        "entity_id": "sensor-node",
+        "source_text": "Completed PCB bring-up for the STM32 sensor node by validating power, clocks, and SPI signals with an oscilloscope.",
+        "capabilities": [
+          "PCB bring-up",
+          "hardware debugging",
+          "sensor integration"
+        ],
+        "technologies": [
+          "PCB",
+          "STM32",
+          "SPI",
+          "oscilloscope"
+        ],
+        "confirmed": true
+      },
+      {
+        "id": "sensor-node-fault-tests",
+        "entity_id": "sensor-node",
+        "source_text": "Created 64 hardware-in-the-loop fault tests covering sensor disconnections, corrupted samples, and communication recovery.",
+        "capabilities": [
+          "hardware-in-the-loop testing",
+          "fault handling",
+          "firmware validation"
+        ],
+        "outcomes": [
+          "64 fault tests"
+        ],
+        "confirmed": true
+      }
+    ]
+  },
+  "postings": {
+    "firmware": {
+      "id": "posting-firmware",
+      "title": "Embedded Firmware Engineering Intern",
+      "description": "Develop C and C++ firmware for STM32 microcontrollers in real-time systems. Integrate sensors over SPI, I2C, and CAN. Debug hardware with oscilloscopes and logic analyzers. Create hardware-in-the-loop tests and validate fault handling. Experience with PCB integration, mechatronic prototypes, and system testing is preferred."
+    },
+    "mechanical": {
+      "id": "posting-mechanical",
+      "title": "Mechanical Design Engineering Intern",
+      "description": "Design mechanical assemblies in SolidWorks and create GD&T manufacturing drawings. Perform tolerance analysis and design for manufacturing. Build prototypes with CNC machining and 3D printing. Execute mechanical testing, failure analysis, and design validation. Python may be used incidentally to review test data."
+    },
+    "software": {
+      "id": "posting-software",
+      "title": "Software and Cloud Engineering Intern",
+      "description": "Build Python backend services on AWS with PostgreSQL. Containerize distributed applications using Docker and Kubernetes. Implement CI/CD, deployment automation, observability, health monitoring, and data validation."
+    },
+    "mixed": {
+      "id": "posting-mixed",
+      "title": "Product Engineering Intern",
+      "description": "Develop embedded C firmware, integrate electronics and mechanical assemblies, build manufactured prototypes, and validate complete systems. The role also creates Python tools for test automation and cloud-connected device monitoring."
+    }
+  }
+}

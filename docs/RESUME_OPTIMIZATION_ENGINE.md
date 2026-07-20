@@ -15,7 +15,13 @@ The engine selects the most credible, role-relevant evidence that fits a managed
 3. Build one recommended strategy with a primary focus, de-emphasized themes, and content budget.
 4. Select evidence-backed claim candidates under template constraints.
 5. Build only approved claim variants into the Resume Document IR.
-6. Render PDF, measure one-page fit, and revise or fail with an explicit overflow reason.
+6. Render candidate DOCX plans through Template V1, measure one-page fit, and
+   continue bounded alternative search after an overflow.
+
+The automatic composer operates on the complete confirmed evidence pool after
+plan validation. Candidate relevance comes from direct posting-to-evidence
+comparison, not the role-family classifier. Exact reviewed bullet wording is
+retained; composition does not invoke rewriting, shortening, or providers.
 
 Internal alternatives are retained for tests, debugging, and counterfactual explanations. The MVP presents one recommendation rather than multiple complete resumes.
 

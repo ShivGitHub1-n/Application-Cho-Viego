@@ -12,10 +12,14 @@ from lxml import etree  # type: ignore[import-untyped]
 from resume_tailor.domain.models import (
     EducationRecord,
     EntityKind,
-    GraduationStatus,
     ResumeItem,
     StructuredBullet,
     StructuredResume,
+)
+from resume_tailor.domain.resume_metadata import (
+    compose_date_range,
+    education_end_date,
+    validate_structured_resume_metadata,
 )
 from resume_tailor.infrastructure.template_v1 import template_v1_docx_path
 
@@ -56,6 +60,7 @@ class StaticTemplateV1Renderer:
             raise StaticTemplateRenderError(
                 f"Packaged Template V1 DOCX is unavailable: {self._template_path}"
             )
+        validate_structured_resume_metadata(resume)
         output_path = Path(output_path).expanduser().resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -107,7 +112,7 @@ class StaticTemplateV1Renderer:
     ) -> list[etree._Element]:
         paragraphs: list[etree._Element] = []
         for record in resume.education:
-            dates = _date_range(record.start_date, _education_end_date(record))
+            dates = compose_date_range(record.start_date, education_end_date(record))
             paragraphs.append(
                 catalog.populate(
                     "{{EDUCATION_INSTITUTION}}",
@@ -200,7 +205,7 @@ class StaticTemplateV1Renderer:
             subtitle = item.subtitle or item.technology_label
             if subtitle and subtitle.casefold() in item.title.casefold():
                 subtitle = None
-            dates = _date_range(item.start_date, item.end_date)
+            dates = compose_date_range(item.start_date, item.end_date)
             paragraphs.append(
                 catalog.populate(
                     marker,
@@ -256,7 +261,7 @@ class StaticTemplateV1Renderer:
             technologies = item.technology_label or ", ".join(item.technologies)
             if technologies and technologies.casefold() in title.casefold():
                 technologies = ""
-            dates = _date_range(item.start_date, item.end_date)
+            dates = compose_date_range(item.start_date, item.end_date)
             paragraphs.append(
                 catalog.populate(
                     "{{PROJECT_TITLE}}",
@@ -464,23 +469,6 @@ def _ordered_records(
                 )
             )
     return ordered
-
-
-def _date_range(start: str | None, end: str | None) -> str | None:
-    return " – ".join(part for part in (start, end) if part) or None
-
-
-def _education_end_date(record: EducationRecord) -> str | None:
-    expected = record.expected_graduation_date
-    completed = record.graduation_date
-    status = record.graduation_status
-    if expected:
-        if status is GraduationStatus.EXPECTED and not expected.casefold().startswith(
-            ("expected ", "anticipated ")
-        ):
-            return f"Expected {expected}"
-        return expected
-    return completed
 
 
 def _education_program(record: EducationRecord) -> str:

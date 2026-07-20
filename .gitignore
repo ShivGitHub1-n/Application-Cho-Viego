@@ -11,5 +11,6 @@ generated/
 .mypy_cache/
 *.docx
 !/src/resume_tailor/templates/template_v1.docx
+manual-test/generated-template-v1-*.diagnostics.json
 *.pdf
 

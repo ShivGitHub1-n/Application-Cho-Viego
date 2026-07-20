@@ -4,7 +4,9 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 import resume_tailor.infrastructure.dependencies as dependencies
+from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
 from resume_tailor.application.llm_services import HybridLlmServices
+from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.application.workflow_state import (
     get_active_posting,
@@ -12,18 +14,27 @@ from resume_tailor.application.workflow_state import (
     invalidate_posting_derived_workflow,
     invalidate_profile_derived_workflow,
 )
+from resume_tailor.domain.hybrid_resume import (
+    RESUME_WRITING_CONTRACT_VERSION,
+    RESUME_WRITING_POLICY_VERSION,
+)
 from resume_tailor.domain.llm_models import (
     CompositionRecommendationOutput,
     CompositionRecommendationResult,
     LlmOperation,
 )
 from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
+from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
+from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
 )
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
+from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
 from tests.fakes import FakeResumeLanguageModel, metadata
+from tests.test_resume_composition import ParagraphLimitPageProvider
 
 
 class _Strategy:
@@ -32,6 +43,20 @@ class _Strategy:
 
 class _Plan:
     strategy = _Strategy()
+
+
+def _generation_configuration() -> ResumeGenerationConfiguration:
+    return ResumeGenerationConfiguration(
+        template_identity=f"{TEMPLATE_V1_ID}:{TEMPLATE_V1_DOCX_SHA256}",
+        composition_contract_version=RESUME_COMPOSITION_CONTRACT_VERSION,
+        writing_policy_version=RESUME_WRITING_POLICY_VERSION,
+        writing_contract_version=RESUME_WRITING_CONTRACT_VERSION,
+        feature_flags={"bullet_rewrite": False},
+        provider="gemini",
+        model="controlled",
+        provider_timeout_seconds=30,
+        provider_retry_count=0,
+    )
 
 
 def _workflow_state() -> dict[str, object]:
@@ -172,6 +197,8 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
         DeterministicResumeOptimizer(),
         EvidenceBoundResumeWriter(),
         hybrid_services=hybrid,
+        artifact_renderer=TemplateV1ArtifactRenderer(),
+        generation_configuration=_generation_configuration(),
     )
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
     monkeypatch.setattr(
@@ -222,17 +249,16 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
     assert "resume" not in app.session_state
     assert app.session_state["generated_content_reviewed"] is False
 
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run()
+    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
+        timeout=10
+    )
 
     assert app.session_state["resume"].experience_bullets["streamlit-entry"][0].text == (
         "Validated SPI hardware sensor interfaces."
     )
     assert app.session_state["generated_content_reviewed"] is False
     assert any("Generated resume review" in element.value for element in app.subheader)
-    assert (
-        next(button for button in app.button if button.label == "Export reviewed resume").disabled
-        is True
-    )
+    assert app.session_state["generated_resume_artifact"].docx_bytes
 
 
 def test_streamlit_uses_persisted_profile_with_pasted_job_description(
@@ -269,3 +295,74 @@ def test_streamlit_uses_persisted_profile_with_pasted_job_description(
     assert app.session_state["profile"].id == "local-profile"
     assert app.session_state["posting"].description == "Build firmware.\n\n- Test systems"
     assert app.session_state["profile_load_status"] == "Loaded from persistent storage."
+
+
+def test_streamlit_shows_collapsed_typed_composition_diagnostic(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fixture_path = Path(__file__).parent / "fixtures" / "resume_composition_cases.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    profile = MasterProfile.model_validate(fixture["profile"]).model_copy(
+        update={"id": "local-profile"}
+    )
+    posting = fixture["postings"]["firmware"]
+    database = tmp_path / "composition-diagnostic.sqlite3"
+    repository = SQLiteMasterProfileRepository(database)
+    repository.save(profile)
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        resume_composer=DeterministicResumeComposer(
+            TemplateV1PageFitEvaluator(ParagraphLimitPageProvider())
+        ),
+        artifact_renderer=TemplateV1ArtifactRenderer(),
+        generation_configuration=_generation_configuration(),
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "create_profile_repository",
+        lambda: SQLiteMasterProfileRepository(database),
+    )
+    monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
+
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+    app = AppTest.from_file(str(app_path)).run()
+    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.text_input(key="job_title_input").input(posting["title"])
+    app.text_area(key="job_description_input").input(posting["description"])
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
+    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
+        timeout=10
+    )
+
+    assert any(expander.label == "Composition diagnostic" for expander in app.expander)
+    assert any("Selected experiences:" in element.value for element in app.markdown)
+    assert any("overflow rollback" in element.value for element in app.caption)
+    assert any("Termination:" in element.value for element in app.caption)
+    assert any(
+        "Candidates excluded by relevance or redundancy thresholds" in element.value
+        for element in app.markdown
+    )
+    artifact_fingerprint = app.session_state[
+        "generated_resume_artifact"
+    ].artifact_fingerprint
+
+    app.radio(key="navigation_selection").set_value("Settings / Diagnostics").run()
+
+    assert (
+        app.session_state["generated_resume_artifact"].artifact_fingerprint
+        == artifact_fingerprint
+    )
+
+    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.text_area(key="job_description_input").input(
+        posting["description"] + "\nChanged material requirement."
+    )
+    next(
+        button for button in app.button if button.label == "Recommend resume strategy"
+    ).click().run()
+
+    assert "generated_resume_artifact" not in app.session_state

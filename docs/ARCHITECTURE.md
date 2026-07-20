@@ -32,6 +32,11 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 - The Career Evidence layer owns facts, provenance, demonstrated capabilities, declared skills, preferences, and profile versions.
 - The Opportunity Optimization layer owns posting analysis, strategy, content selection, claim proposals, and decision explanations. These are modules, not separately deployed MVP services.
 - `ResumeOptimizer` creates a `TailoringPlan` from profile, posting, and template constraints. Its algorithm is replaceable.
+- `ResumeEvidenceRetriever` returns a typed, bounded view over the complete
+  current reviewed profile. The in-process implementation combines normalized
+  lexical features, structured evidence, intrinsic strength, and credible
+  technical adjacency. A future lexical-plus-embedding or external RAG adapter
+  can implement the same contract without changing the planner or writer.
 - The optimizer's `OpportunityAnalyzer` dependency is the single role-classification boundary for resume tailoring. When explicitly enabled, the hybrid analyzer may resolve a validated Gemini primary family over deterministic posting signals; default and fallback behavior remains the deterministic analyzer.
 - `ResumeLanguageModel` exposes typed profile extraction, role classification, opportunity analysis, composition recommendation, bullet rewriting, shortening, and cover-letter drafting. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
 - `ResumeRenderer` maps structured resume content to a versioned template; it owns all styling.
@@ -39,6 +44,17 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   populates or clones its semantic OOXML prototypes. The accompanying JSON
   layout profile is diagnostic only and is not a formatting source for the
   default renderer.
+- Composed metadata remains a direct reference to authoritative reviewed entry
+  fields. A domain fidelity check rejects accumulated ranges, repeated
+  output-bearing metadata, and duplicate selected entry IDs before final
+  handoff and again before static Template V1 rendering. It reports source date
+  precision without normalizing or inferring missing calendar components.
+- `DeterministicResumeComposer` selects exact reviewed profile atoms after plan
+  integrity validation. It depends on a page-fit evaluation port; the
+  Template V1 infrastructure adapter renders and measures candidate documents.
+  Entry and bullet admission remain separate marginal decisions. Legacy flat
+  reviewed skills may be regrouped into bounded display-only rows with exact
+  source-index provenance; canonical profile data is unchanged.
 - `CompanyResearcher` returns sourced company facts, never candidate claims.
 
 ## Data flow
@@ -47,13 +63,69 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 2. Normalize a job posting into title, responsibilities, requirements, and optional company context.
 3. Build one recommended strategy and decision plan before requesting prose.
 4. Validate every proposed claim against evidence and policy; strong inferences require user approval.
-5. Render only validated structured content by populating the packaged static
-   DOCX template. An exact DOCX page-count provider determines the strict
-   one-page invariant; PDF rendering remains a separate delivery concern.
+5. Compose validated reviewed atoms through bounded candidate search and render
+   every evaluated state through the packaged static DOCX template.
+6. Use exact DOCX page count as the one-page authority when available. Retain
+   provider failures and return an explicitly unverified deterministic
+   occupancy estimate when exact pagination is unavailable; PDF rendering
+   remains a separate delivery concern.
 
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
-Gemini composition is advisory and evidence-grounded. The application may narrow or reorder optimizer-selected candidates, and a separate rewrite operation may create new candidate wording by combining or splitting same-entry evidence. Both paths are replayed through typed deterministic evidence, support, entry, grouping, bullet-count, section-budget, total-line, and entry-overhead checks. Strongly implied wording and demonstrated skills remain review-pending until approval. Reconciled plans retain their evidence links so the plan-integrity gate can reconstruct and verify them before writing.
+Gemini composition is advisory and evidence-grounded. The application may
+narrow or reorder optimizer-selected candidates. Resume writing now uses one
+bounded batch after deterministic retrieval and source-text composition; the
+validated variants are cached and reused during the final deterministic
+page-fit search. This corrects the former production handoff in which
+`DeterministicResumeComposer` rebuilt selected bullets from
+`EvidenceItem.source_text` and therefore discarded validated rewrites produced
+earlier in the request.
+
+The hybrid authority split is explicit:
+
+- retrieval and semantic planning may rank evidence, but cannot create facts;
+- the writer may reframe same-entry evidence and return bounded length
+  variants with claim-level evidence IDs;
+- deterministic validation rejects unsupported identifiers, numbers,
+  technologies, outcomes, ownership expansion, cross-entry claims, or
+  provenance loss;
+- a variant that introduces content-bearing terminology which deterministic
+  checks cannot prove is quarantined for bounded semantic review rather than
+  rendered automatically;
+- the layout optimizer selects only validated or explicitly approved variants,
+  falls back to reviewed source text, and remains authoritative for structure,
+  duplication, page fit, and export;
+- Template V1 alone owns DOCX formatting.
+
+Cache identity includes profile and posting fingerprints, evidence bundles,
+writing-policy and contract versions, provider, and model. Page-fit thresholds
+are deliberately excluded, so a validated wording variant is not regenerated
+merely because a layout budget changes. Provider calls and cache hits are
+typed diagnostics. With all LLM features disabled, no provider is constructed
+or called.
+
+The Streamlit production flow completes generation through one typed immutable
+`GeneratedResumeArtifact`. Its identity covers the reviewed profile, normalized
+posting, validated plan, approvals, Template V1 hash, composition and writing
+contract versions, relevant feature flags, provider, and model. The artifact
+retains the final structured resume, diagnostics, stage timings, call counts,
+pagination status, and exact final DOCX bytes. Unrelated reruns reuse this
+object; any material identity change invalidates it.
+
+Composition continues to compare the same bounded exact finalist portfolio,
+but the infrastructure adapter renders the finalist batch and opens Word once
+for all page counts. Final artifact rendering is deterministic and does not
+paginate again. Streamlit download reads the stored bytes with a frontend-only
+download action, so it performs no retrieval, planning, provider, validation,
+composition, rendering, or pagination work.
+
+The versioned writing policy is centralized in
+`application/resume_writing_policy.py`. It establishes evidence, tone,
+ATS-readable text, prohibited-phrase, and one-to-two-line guidance without
+encoding a rigid sentence template. Generated three-line variants require
+review unless a clean grounded alternative is available. This version does
+not add a second semantic-provider call: uncertain entailment remains
+review-required and falls back to reviewed source text.
 
 Gemini role classification is a separate opt-in tailoring concern. Production
 wiring injects the configured adapter, model/cache identity, in-memory cache,
@@ -133,10 +205,22 @@ configuration, and is never part of ordinary offline test execution.
 
 Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter, and authentication dependency without moving domain or application code. FastAPI is the stable product API; Streamlit is a replaceable client.
 
+The retrieval port is the RAG seam. A later retriever may combine structured
+profile evidence with embeddings, portfolio documents, Git repositories, or an
+MCP-backed source while returning the same evidence IDs and provenance. Future
+specialized planning, writing, and verification agents must communicate only
+through typed evidence, plans, claims, and validation records; the
+deterministic orchestrator continues to execute tools and authorize export. A
+cover-letter agent can consume the approved plan, final resume, and additional
+retrieved-but-omitted evidence through this same seam without changing the
+current cover-letter implementation.
+
 ## Architectural risks and assumptions
 
 - PDF-to-structured-resume extraction is unreliable; parsed data must be user-reviewable before use.
-- Exact page count needs a configured DOCX provider. Template V1 utilization estimates are diagnostic and never substitute for exact verification.
+- Exact page count needs a configured DOCX provider. Template V1 utilization
+  estimates permit an explicitly unverified fallback but never substitute for
+  or claim exact one-page verification.
 - AI inference needs conservative policy and evidence citations to remain trustworthy.
 - Company research must respect source terms, permissions, rate limits, and clear provenance.
 - DOCX-to-PDF conversion varies by platform; production export needs a chosen conversion service or runtime.

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     llm_retry_count: int = 2
     llm_max_calls_per_generation: int = 12
     llm_cache_ttl_seconds: int = 900
+    word_pagination_timeout_seconds: float = Field(default=15.0, gt=0)
     llm_enable_role_classification: bool = False
     llm_role_classification_minimum_confidence: float = Field(
         default=0.7,

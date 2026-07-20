@@ -5,7 +5,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose, normalize_paragraph_purpose
+from resume_tailor.domain.cover_letter import (
+    CoverLetterParagraphPurpose,
+    normalize_paragraph_purpose,
+)
+from resume_tailor.domain.hybrid_resume import (
+    RESUME_WRITING_CONTRACT_VERSION,
+    RESUME_WRITING_POLICY_VERSION,
+    BulletLengthClass,
+)
 from resume_tailor.domain.models import ClaimConfidence, MasterProfile, RoleFamily
 
 
@@ -254,12 +262,24 @@ class ApprovedEvidenceGroup(StrictModel):
 
 
 class BulletRewriteRequest(StrictModel):
+    profile_fingerprint: str = ""
+    posting_fingerprint: str = ""
     primary_focus: str
     target_terms: list[str] = Field(default_factory=list)
+    target_requirements: list[str] = Field(default_factory=list)
     groups: list[ApprovedEvidenceGroup] = Field(min_length=1)
     max_bullets_per_entry: int = Field(gt=0)
     max_total_lines: int = Field(gt=0)
+    writing_policy_version: str = RESUME_WRITING_POLICY_VERSION
+    contract_version: str = RESUME_WRITING_CONTRACT_VERSION
+    writing_instructions: list[str] = Field(default_factory=list)
+    prohibited_phrases: list[str] = Field(default_factory=list)
     correction_notes: list[str] = Field(default_factory=list)
+
+
+class BulletRewriteClaim(StrictModel):
+    text: str = Field(min_length=1, max_length=500)
+    supporting_evidence_ids: list[str] = Field(min_length=1, max_length=4)
 
 
 class BulletRewrite(StrictModel):
@@ -274,6 +294,9 @@ class BulletRewrite(StrictModel):
     confidence: float = Field(ge=0, le=1)
     support: ClaimConfidence = ClaimConfidence.EXPLICITLY_SUPPORTED
     support_rationale: str = Field(default="", max_length=400)
+    claims: list[BulletRewriteClaim] = Field(default_factory=list)
+    target_requirements_addressed: list[str] = Field(default_factory=list)
+    intended_length_class: BulletLengthClass = BulletLengthClass.STANDARD_ONE_TO_TWO_LINES
 
 
 class BulletRewriteOutput(StrictModel):

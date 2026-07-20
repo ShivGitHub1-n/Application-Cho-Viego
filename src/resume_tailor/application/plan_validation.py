@@ -2,12 +2,13 @@ from resume_tailor.application.composition import (
     CompositionReconciliationError,
     DeterministicCompositionReconciler,
 )
+from resume_tailor.application.hybrid_plan import apply_generic_technical_fallback
 from resume_tailor.application.skill_composition import (
     DeterministicSkillCompositionReconciler,
     SkillCompositionReconciliationError,
 )
 from resume_tailor.domain.models import MasterProfile, TailoringPlan
-from resume_tailor.ports.interfaces import ResumeOptimizer
+from resume_tailor.ports.interfaces import ResumeEvidenceRetriever, ResumeOptimizer
 
 
 class PlanIntegrityError(ValueError):
@@ -15,15 +16,26 @@ class PlanIntegrityError(ValueError):
 
 
 class DeterministicPlanIntegrityValidator:
-    def __init__(self, optimizer: ResumeOptimizer) -> None:
+    def __init__(
+        self,
+        optimizer: ResumeOptimizer,
+        evidence_retriever: ResumeEvidenceRetriever | None = None,
+    ) -> None:
         self._optimizer = optimizer
         self._composition_reconciler = DeterministicCompositionReconciler()
         self._skill_composition_reconciler = DeterministicSkillCompositionReconciler()
+        self._evidence_retriever = evidence_retriever
 
     def validate(self, plan: TailoringPlan, profile: MasterProfile) -> None:
         failures = self._structural_failures(plan, profile)
         if not failures:
             trusted = self._optimizer.create_plan(profile, plan.posting, plan.constraints)
+            if self._evidence_retriever is not None:
+                trusted = apply_generic_technical_fallback(
+                    trusted,
+                    profile,
+                    self._evidence_retriever.retrieve(profile, plan.posting),
+                )
             if plan.composition_selection is not None:
                 try:
                     trusted = self._composition_reconciler.reconcile(

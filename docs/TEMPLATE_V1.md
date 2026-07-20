@@ -82,9 +82,14 @@ model. The renderer does not infer content from the canonical reference.
 
 ## Fit diagnostics
 
-Exact DOCX page count remains the export gate. A typed utilization diagnostic
+Exact DOCX page count remains the page-fit authority. A typed utilization diagnostic
 then distinguishes overflow, acceptable one-page composition, severe underfill,
 and an unverified result. A one-page document with estimated occupied height
-below 50% of the usable page is severely underfilled. Severe underfill does not
-cause the renderer to add unselected evidence or fabricate content. It is an
-explicit signal for a later optimization stage.
+below the calibrated 72% Template V1 target floor is underfilled. The
+composition objective stops rewarding additional occupancy at the 97% upper
+target, which is anchored by the accepted canonical reference's 96.43%
+estimate. The renderer never adds
+unselected evidence or fabricates content. The application composer uses this
+signal while rendering bounded reviewed-content alternatives through Template
+V1. Exact-provider failure is retained and produces an unverified estimate,
+never an exact one-page claim.

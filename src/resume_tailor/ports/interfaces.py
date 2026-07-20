@@ -3,6 +3,7 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.hybrid_resume import EvidenceRetrievalResult
 from resume_tailor.domain.llm_models import (
     BulletRewriteRequest,
     BulletRewriteResult,
@@ -29,6 +30,7 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
+from resume_tailor.domain.resume_composition import PageFitEvaluation
 
 CacheModelT = TypeVar("CacheModelT", bound=BaseModel)
 
@@ -63,6 +65,14 @@ class ResumeOptimizer(Protocol):
         posting: JobPosting,
         constraints: TemplateConstraints,
     ) -> TailoringPlan: ...
+
+
+class ResumeEvidenceRetriever(Protocol):
+    def retrieve(
+        self,
+        profile: MasterProfile,
+        posting: JobPosting,
+    ) -> EvidenceRetrievalResult: ...
 
 
 class ResumeWriter(Protocol):
@@ -107,3 +117,16 @@ class RenderResult(Protocol):
 
 class ResumeRenderer(Protocol):
     def render(self, resume: StructuredResume, output_directory: Path) -> RenderResult: ...
+
+
+class ResumeArtifactRenderer(Protocol):
+    def render_docx_bytes(self, resume: StructuredResume) -> bytes: ...
+
+
+class ResumePageFitEvaluator(Protocol):
+    def evaluate(
+        self,
+        resume: StructuredResume,
+        *,
+        attempt_exact: bool = True,
+    ) -> PageFitEvaluation: ...

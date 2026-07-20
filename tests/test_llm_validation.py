@@ -1,3 +1,6 @@
+# Provider fixture prose is intentionally retained as exact test input.
+# ruff: noqa: E501
+
 import pytest
 
 from resume_tailor.application.llm_validation import (
@@ -9,6 +12,7 @@ from resume_tailor.application.llm_validation import (
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
     BulletRewrite,
+    BulletRewriteClaim,
     BulletRewriteOutput,
     BulletShorteningOutput,
     BulletShorteningRequest,
@@ -21,7 +25,9 @@ from resume_tailor.domain.models import ClaimConfidence
 def test_composition_rejects_unknown_and_cross_entry_evidence() -> None:
     output = CompositionRecommendationOutput(
         selected_entry_ids=["entry-1"],
-        proposed_evidence_groupings=[EvidenceGrouping(entry_id="entry-1", evidence_ids=["evidence-2"])],
+        proposed_evidence_groupings=[
+            EvidenceGrouping(entry_id="entry-1", evidence_ids=["evidence-2"])
+        ],
         rationale="Use evidence.",
     )
 
@@ -179,3 +185,89 @@ def test_rewrite_rejects_unsupported_confidence_and_new_metrics() -> None:
 
     with pytest.raises(GroundingValidationError):
         validate_rewrites(output, [group])
+
+
+def test_rewrite_rejects_unsupported_outcome() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="entry-1",
+        evidence_ids=["evidence-1"],
+        source_texts=["Validated a sensor interface."],
+        max_rendered_lines=2,
+    )
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="entry-1",
+                final_bullet_text="Validated a sensor interface and eliminated defects.",
+                source_evidence_ids=["evidence-1"],
+                evidence_combined=False,
+                concise_alternative="Validated a sensor interface.",
+                confidence=0.9,
+            )
+        ]
+    )
+
+    with pytest.raises(GroundingValidationError, match="unsupported outcomes"):
+        validate_rewrites(output, [group])
+
+
+def test_rewrite_rejects_claim_provenance_outside_evidence_bundle() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="entry-1",
+        evidence_ids=["evidence-1"],
+        source_texts=["Validated a sensor interface."],
+        max_rendered_lines=2,
+    )
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="entry-1",
+                final_bullet_text="Validated a sensor interface.",
+                source_evidence_ids=["evidence-1"],
+                evidence_combined=False,
+                concise_alternative="Validated a sensor interface.",
+                confidence=0.9,
+                claims=[
+                    BulletRewriteClaim(
+                        text="Validated a sensor interface.",
+                        supporting_evidence_ids=["evidence-2"],
+                    )
+                ],
+            )
+        ]
+    )
+
+    with pytest.raises(GroundingValidationError, match="outside its bundle"):
+        validate_rewrites(output, [group])
+
+
+def test_rewrite_rejects_combining_facts_from_unrelated_entries() -> None:
+    groups = [
+        ApprovedEvidenceGroup(
+            entry_id="entry-1",
+            evidence_ids=["evidence-1"],
+            source_texts=["Built a sensor interface."],
+            max_rendered_lines=2,
+        ),
+        ApprovedEvidenceGroup(
+            entry_id="entry-2",
+            evidence_ids=["evidence-2"],
+            source_texts=["Validated a deployment pipeline."],
+            max_rendered_lines=2,
+        ),
+    ]
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="entry-1",
+                final_bullet_text=("Built a sensor interface and validated a deployment pipeline."),
+                source_evidence_ids=["evidence-1", "evidence-2"],
+                evidence_combined=True,
+                concise_alternative="Built and validated integrated systems.",
+                confidence=0.9,
+            )
+        ]
+    )
+
+    with pytest.raises(GroundingValidationError, match="cross-entry bullet"):
+        validate_rewrites(output, groups)

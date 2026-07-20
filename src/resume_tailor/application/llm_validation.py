@@ -8,15 +8,16 @@ from pydantic import BaseModel
 
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
+    BulletRewrite,
     BulletRewriteOutput,
-    BulletShorteningRequest,
     BulletShorteningOutput,
+    BulletShorteningRequest,
     CompositionRecommendationOutput,
     ProposedDemonstratedSkill,
     RoleClassificationOutput,
     RoleClassificationRequest,
 )
-from resume_tailor.domain.models import ClaimConfidence, EvidenceItem, RoleFamily
+from resume_tailor.domain.models import ClaimConfidence, EvidenceItem
 
 MAX_ROLE_SEMANTIC_ITEMS_PER_FIELD = 20
 MAX_ROLE_SEMANTIC_ITEM_LENGTH = 500
@@ -105,7 +106,9 @@ def validate_role_classification(
     )
     if any(len(items) > MAX_ROLE_SEMANTIC_ITEMS_PER_FIELD for items in semantic_fields):
         found.add(RoleClassificationReasonCode.SEMANTIC_ITEM_LIMIT_EXCEEDED)
-    if any(len(item) > MAX_ROLE_SEMANTIC_ITEM_LENGTH for items in semantic_fields for item in items):
+    if any(
+        len(item) > MAX_ROLE_SEMANTIC_ITEM_LENGTH for items in semantic_fields for item in items
+    ):
         found.add(RoleClassificationReasonCode.SEMANTIC_ITEM_LENGTH_EXCEEDED)
 
     ordered_reasons = [code for code in RoleClassificationReasonCode if code in found]
@@ -177,26 +180,30 @@ def validate_demonstrated_skills(
             failures.append(f"unknown or ineligible skill category: {proposal.category_id}")
         if proposal.confidence == ClaimConfidence.UNSUPPORTED:
             failures.append(f"unsupported demonstrated skill: {proposal.value}")
-        if proposal.confidence == ClaimConfidence.EXPLICITLY_SUPPORTED and evidence_by_id is not None:
+        if (
+            proposal.confidence == ClaimConfidence.EXPLICITLY_SUPPORTED
+            and evidence_by_id is not None
+        ):
             source_text = " ".join(
-                " ".join(
-                    [item.source_text, *item.technologies, *item.capabilities, *item.outcomes]
-                )
+                " ".join([item.source_text, *item.technologies, *item.capabilities, *item.outcomes])
                 for evidence_id in proposal.source_evidence_ids
                 if (item := evidence_by_id.get(evidence_id)) is not None
             ).casefold()
             if proposal.value.casefold() not in source_text:
-                failures.append(f"explicit demonstrated skill is not stated in evidence: {proposal.value}")
+                failures.append(
+                    f"explicit demonstrated skill is not stated in evidence: {proposal.value}"
+                )
         if len(set(proposal.source_evidence_ids)) != len(proposal.source_evidence_ids):
             failures.append(f"demonstrated skill repeats evidence IDs: {proposal.value}")
         entry_ids = {
-            evidence_to_entry.get(evidence_id)
-            for evidence_id in proposal.source_evidence_ids
+            evidence_to_entry.get(evidence_id) for evidence_id in proposal.source_evidence_ids
         }
         if None in entry_ids:
             failures.append(f"demonstrated skill references unknown evidence: {proposal.value}")
         if len(entry_ids - {None}) > 1:
-            failures.append(f"demonstrated skill combines evidence across entries: {proposal.value}")
+            failures.append(
+                f"demonstrated skill combines evidence across entries: {proposal.value}"
+            )
         key = (proposal.category_id, proposal.value.casefold())
         if key in seen_values:
             failures.append(f"demonstrated skill is duplicated: {proposal.value}")
@@ -213,9 +220,7 @@ def validate_rewrites(
     max_total_lines: int | None = None,
 ) -> None:
     group_by_evidence = {
-        evidence_id: group
-        for group in groups
-        for evidence_id in group.evidence_ids
+        evidence_id: group for group in groups for evidence_id in group.evidence_ids
     }
     failures: list[str] = []
     entry_bullet_counts: dict[str, int] = {}
@@ -224,7 +229,9 @@ def validate_rewrites(
         if len(set(bullet.source_evidence_ids)) != len(bullet.source_evidence_ids):
             failures.append(f"rewrite repeats evidence IDs: {bullet.source_evidence_ids}")
             continue
-        source_groups = [group_by_evidence.get(evidence_id) for evidence_id in bullet.source_evidence_ids]
+        source_groups = [
+            group_by_evidence.get(evidence_id) for evidence_id in bullet.source_evidence_ids
+        ]
         if any(group is None for group in source_groups):
             failures.append(f"unknown evidence group: {bullet.source_evidence_ids}")
             continue
@@ -237,21 +244,16 @@ def validate_rewrites(
         if bullet.support == ClaimConfidence.UNSUPPORTED:
             failures.append(f"unsupported generated claim: {bullet.final_bullet_text}")
             continue
+        _validate_claim_provenance(bullet, group_by_evidence, failures)
         _validate_protected_facts(
             bullet.final_bullet_text,
-            [
-                fact
-                for item in groups_for_bullet
-                for fact in [*item.technologies, *item.metrics]
-            ],
+            [fact for item in groups_for_bullet for fact in [*item.technologies, *item.metrics]],
             [text for item in groups_for_bullet for text in item.source_texts],
             failures,
             require_preserved_facts=False,
         )
         known_terms = {
-            term
-            for item in groups_for_bullet
-            for term in [*item.technologies, *item.metrics]
+            term for item in groups_for_bullet for term in [*item.technologies, *item.metrics]
         }
         unknown_terms = set(bullet.preserved_technologies + bullet.preserved_metrics) - known_terms
         if unknown_terms:
@@ -269,17 +271,117 @@ def validate_rewrites(
             failures,
             allow_strong_inference=bullet.support == ClaimConfidence.STRONGLY_IMPLIED,
         )
+        _validate_outcomes(
+            bullet.final_bullet_text,
+            [text for item in groups_for_bullet for text in item.source_texts],
+            failures,
+        )
+        _validate_variant_text(
+            bullet.concise_alternative,
+            groups_for_bullet,
+            bullet.support,
+            failures,
+            label="concise alternative",
+        )
         entry_bullet_counts[bullet.entry_id] = entry_bullet_counts.get(bullet.entry_id, 0) + 1
         total_lines += _estimated_lines(bullet.final_bullet_text)
     if any(count > max_bullets_per_entry for count in entry_bullet_counts.values()):
         failures.append("rewrite exceeds the configured per-entry bullet budget")
-    line_budget = max_total_lines if max_total_lines is not None else sum(
-        group.max_rendered_lines for group in groups
+    line_budget = (
+        max_total_lines
+        if max_total_lines is not None
+        else sum(group.max_rendered_lines for group in groups)
     )
     if total_lines > line_budget:
         failures.append("rewrite exceeds the selected evidence line budget")
     if failures:
         raise GroundingValidationError(failures)
+
+
+def _validate_claim_provenance(
+    bullet: BulletRewrite,
+    group_by_evidence: dict[str, ApprovedEvidenceGroup],
+    failures: list[str],
+) -> None:
+    if not bullet.claims:
+        return
+    source_ids = set(bullet.source_evidence_ids)
+    covered_spans: list[str] = []
+    for claim in bullet.claims:
+        if not set(claim.supporting_evidence_ids).issubset(source_ids):
+            failures.append(
+                f"claim references evidence outside its bundle: {claim.supporting_evidence_ids}"
+            )
+        if claim.text.casefold() not in bullet.final_bullet_text.casefold():
+            failures.append(f"claim span is absent from rewritten bullet: {claim.text}")
+        claim_groups = [
+            group_by_evidence[evidence_id]
+            for evidence_id in claim.supporting_evidence_ids
+            if evidence_id in group_by_evidence
+        ]
+        source_texts = [source_text for group in claim_groups for source_text in group.source_texts]
+        claim_terms = [
+            term for group in claim_groups for term in [*group.technologies, *group.metrics]
+        ]
+        _validate_protected_facts(
+            claim.text,
+            claim_terms,
+            source_texts,
+            failures,
+            require_preserved_facts=False,
+        )
+        _validate_factual_terms(
+            claim.text,
+            source_texts,
+            claim_terms,
+            failures,
+            allow_new_terminology=(bullet.support == ClaimConfidence.STRONGLY_IMPLIED),
+        )
+        _validate_ownership(
+            claim.text,
+            source_texts,
+            failures,
+            allow_strong_inference=(bullet.support == ClaimConfidence.STRONGLY_IMPLIED),
+        )
+        _validate_outcomes(claim.text, source_texts, failures)
+        covered_spans.append(claim.text)
+    if not covered_spans:
+        failures.append("rewritten bullet did not retain claim-level provenance")
+
+
+def _validate_variant_text(
+    text: str,
+    groups: list[ApprovedEvidenceGroup],
+    support: ClaimConfidence,
+    failures: list[str],
+    *,
+    label: str,
+) -> None:
+    local_failures: list[str] = []
+    source_texts = [source for group in groups for source in group.source_texts]
+    known_terms = {term for group in groups for term in [*group.technologies, *group.metrics]}
+    _validate_protected_facts(
+        text,
+        list(known_terms),
+        source_texts,
+        local_failures,
+        require_preserved_facts=False,
+    )
+    _validate_factual_terms(
+        text,
+        source_texts,
+        list(known_terms),
+        local_failures,
+        allow_new_terminology=support == ClaimConfidence.STRONGLY_IMPLIED,
+    )
+    _validate_ownership(
+        text,
+        source_texts,
+        local_failures,
+        allow_strong_inference=support == ClaimConfidence.STRONGLY_IMPLIED,
+    )
+    _validate_outcomes(text, source_texts, local_failures)
+    failures.extend(f"{label}: {failure}" for failure in local_failures)
 
 
 def validate_shortening(output: BulletShorteningOutput, request: BulletShorteningRequest) -> None:
@@ -290,7 +392,9 @@ def validate_shortening(output: BulletShorteningOutput, request: BulletShortenin
         failures.append("shortening changed source evidence IDs")
     if not output.no_new_claim_introduced:
         failures.append("shortening did not confirm no new claim")
-    _validate_protected_facts(output.shortened_text, request.protected_facts, request.source_texts, failures)
+    _validate_protected_facts(
+        output.shortened_text, request.protected_facts, request.source_texts, failures
+    )
     if failures:
         raise GroundingValidationError(failures)
 
@@ -361,12 +465,39 @@ def _validate_ownership(
         default=0,
     )
     if allow_strong_inference and any(
-        verb in source_text for verb in ("built", "developed", "implemented", "designed", "tested", "validated")
+        verb in source_text
+        for verb in ("built", "developed", "implemented", "designed", "tested", "validated")
     ):
         source_level = max(source_level, 1)
-    result_level = max((level for verb, level in levels.items() if verb in text.casefold()), default=0)
+    result_level = max(
+        (level for verb, level in levels.items() if verb in text.casefold()), default=0
+    )
     if result_level > source_level:
         failures.append("ownership or causality was strengthened beyond source evidence")
+
+
+def _validate_outcomes(
+    text: str,
+    source_texts: list[str],
+    failures: list[str],
+) -> None:
+    outcome_terms = {
+        "accelerated",
+        "decreased",
+        "doubled",
+        "eliminated",
+        "increased",
+        "improved",
+        "reduced",
+        "resolved",
+        "saved",
+    }
+    source = " ".join(source_texts).casefold()
+    introduced = sorted(
+        term for term in outcome_terms if term in text.casefold() and term not in source
+    )
+    if introduced:
+        failures.append(f"unsupported outcomes: {introduced}")
 
 
 def _estimated_lines(text: str) -> int:

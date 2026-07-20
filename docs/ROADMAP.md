@@ -10,11 +10,12 @@ The branch names below are recommendations, not evidence that a branch
 already exists. The model configurations follow the durable budget policy in
 [CODEX_OPERATING_GUIDE.md](CODEX_OPERATING_GUIDE.md).
 
-## 1. Complete deterministic resume composition
+## 1. Complete hybrid evidence-grounded resume composition
 
-**Purpose:** Finish deterministic selection and one-page filling so the
-result presents the strongest coherent evidence portfolio rather than the
-largest keyword count.
+**Purpose:** Finish deterministic selection and one-page filling so the result
+presents the strongest coherent evidence portfolio rather than the largest
+keyword count, with optional validated job-specific wording and a zero-provider
+fallback.
 
 **In scope:** Portfolio-strength ranking; dominance and substitution between
 overlapping entries; expansion priority; deterministic bounded search;
@@ -22,8 +23,8 @@ typed termination and unused-evidence diagnostics; exact-page rollback; and
 firmware, mechanical, software/cloud, mixed-role, sparse, redundant, and
 overflow acceptance cases.
 
-**Out of scope:** Bullet rewriting, Template V1 formatting changes,
-role-classifier repair, cover letters, and Job Discovery.
+**Out of scope:** Template V1 formatting changes, role-classifier repair,
+cover letters, and Job Discovery.
 
 **Acceptance gate:** Relevant reviewed evidence only; zero provider calls with
 LLM flags disabled; deterministic output; no unsupported or duplicate
@@ -57,10 +58,10 @@ Template V1 appearance, and focused plus offline regressions passing.
 
 **Recommended model:** GPT-5.6 Sol, Extra High reasoning, Fast mode Off.
 
-## 3. Evidence-safe bullet tailoring
+## 3. Evidence-safe bullet tailoring calibration
 
-**Purpose:** Improve the relevance and quality of reviewed bullets without
-introducing unsupported claims.
+**Purpose:** Calibrate the connected versioned writing policy and prompts with
+user-provided examples without introducing unsupported claims.
 
 **In scope:** Use reviewed evidence only; improve action, technical depth,
 specificity, and contextual relevance; preserve factual provenance; define

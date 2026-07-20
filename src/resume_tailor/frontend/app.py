@@ -4,11 +4,13 @@ from collections.abc import MutableMapping
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import perf_counter
 from typing import Any, cast
 
 import streamlit as st
 from pydantic import ValidationError
 
+from resume_tailor.application.generated_artifact import prepare_artifact_download
 from resume_tailor.application.job_intake import (
     InvalidJobDescriptionError,
     build_job_posting,
@@ -41,7 +43,10 @@ from resume_tailor.application.workflow_state import (
     invalidate_profile_derived_workflow,
 )
 from resume_tailor.domain.cover_letter import CoverLetterRecipient
-from resume_tailor.domain.layout import PageUtilizationStatus
+from resume_tailor.domain.generated_artifact import (
+    GeneratedResumeArtifact,
+    GenerationStage,
+)
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import (
     JobPosting,
@@ -80,7 +85,6 @@ from resume_tailor.infrastructure.profile_repository import (
     SQLiteMasterProfileRepository,
 )
 from resume_tailor.infrastructure.rendering import (
-    ManagedResumeRenderer,
     PageOverflowError,
 )
 from resume_tailor.infrastructure.resume_extraction import (
@@ -102,6 +106,24 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+_streamlit_run_started = perf_counter()
+
+_PROGRESS_LABELS = {
+    GenerationStage.PROFILE_LOADING: "Loading profile",
+    GenerationStage.POSTING_NORMALIZATION: "Analyzing posting",
+    GenerationStage.EVIDENCE_RETRIEVAL: "Retrieving evidence",
+    GenerationStage.DETERMINISTIC_PLANNING: "Planning resume",
+    GenerationStage.SEMANTIC_PLANNING: "Planning resume",
+    GenerationStage.WRITER_CACHE_LOOKUP: "Tailoring bullets",
+    GenerationStage.PROVIDER_REQUEST: "Tailoring bullets",
+    GenerationStage.PROVIDER_RESPONSE_PARSING: "Tailoring bullets",
+    GenerationStage.CLAIM_VALIDATION: "Validating claims",
+    GenerationStage.COMPOSITION_CANDIDATE_CONSTRUCTION: "Fitting page",
+    GenerationStage.PORTFOLIO_PAGE_FIT_SEARCH: "Fitting page",
+    GenerationStage.DOCX_RENDERING: "Rendering document",
+    GenerationStage.EXACT_WORD_PAGINATION: "Verifying pagination",
+    GenerationStage.ESTIMATED_PAGINATION_FALLBACK: "Verifying pagination",
+}
 
 
 def _editor_widget_key(token: str, *parts: object) -> str:
@@ -115,6 +137,87 @@ def _state() -> MutableMapping[str, Any]:
 
 def _active_posting() -> JobPosting | None:
     return cast(JobPosting | None, get_active_posting(_state()))
+
+
+def _build_and_store_resume_artifact(
+    service: Any,
+    plan: Any,
+    profile: MasterProfile,
+    approved_claim_ids: set[str],
+) -> GeneratedResumeArtifact:
+    existing = cast(
+        GeneratedResumeArtifact | None,
+        st.session_state.get("generated_resume_artifact"),
+    )
+    with st.status("Building reviewed resume", expanded=True) as status:
+        seen_labels: set[str] = set()
+
+        def show_stage(stage: GenerationStage) -> None:
+            label = _PROGRESS_LABELS.get(stage)
+            if label is None:
+                return
+            status.update(label=label)
+            if label not in seen_labels:
+                status.write(label)
+                seen_labels.add(label)
+
+        service.telemetry.set_stage_callback(show_stage)
+        try:
+            artifact = service.build_generated_artifact(
+                plan,
+                profile,
+                approved_claim_ids,
+                existing_artifact=existing,
+            )
+        finally:
+            service.telemetry.set_stage_callback(None)
+        if artifact is not existing:
+            storage_started = service.telemetry.clock()
+            with service.telemetry.measure(GenerationStage.GENERATED_ARTIFACT_STORAGE):
+                st.session_state["generated_resume_artifact"] = artifact
+            storage_elapsed = service.telemetry.clock() - storage_started
+            artifact = artifact.model_copy(
+                update={
+                    "stage_timings": service.telemetry.timings(),
+                    "total_build_seconds": artifact.total_build_seconds + storage_elapsed,
+                }
+            )
+        st.session_state["generated_resume_artifact"] = artifact
+        st.session_state["resume"] = artifact.final_resume
+        st.session_state["generated_content_reviewed"] = False
+        status.update(label="Complete", state="complete", expanded=False)
+    return artifact
+
+
+def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
+    composition = artifact.composition_diagnostic
+    provider = artifact.provider_diagnostic
+    pagination = artifact.pagination_diagnostic
+    utilization = (
+        f"{composition.final_utilization_ratio:.0%}" if composition is not None else "unavailable"
+    )
+    st.success(f"Completed in {artifact.total_build_seconds:.2f} seconds.")
+    st.caption(
+        f"Provider: {provider.status} · {provider.call_count} call(s) · "
+        f"{provider.cache_hit_count} cache hit(s) · Pagination: {pagination.status} · "
+        f"Utilization: {utilization}"
+    )
+    if provider.deterministic_fallback_used:
+        st.info(provider.reason)
+    if pagination.failure_reason:
+        st.warning("Exact pagination was unavailable: " + pagination.failure_reason)
+    if composition is not None:
+        for warning in composition.underfill_reasons:
+            if warning.value != "none":
+                st.warning("Composition warning: " + warning.value.replace("_", " "))
+    with st.expander("Build timing", expanded=False):
+        for timing in artifact.stage_timings:
+            detail = f" · {timing.detail}" if timing.detail else ""
+            st.write(
+                f"{timing.stage.value.replace('_', ' ').title()}: "
+                f"{timing.elapsed_seconds:.3f}s · {timing.status.value}"
+                f" · {timing.invocation_count} invocation(s){detail}"
+            )
 
 
 def _comma_text(value: list[str]) -> str:
@@ -162,6 +265,7 @@ def _persist_profile(
         _state(),
         profile,
         f"saved:{profile.id}:{profile_change_fingerprint(profile)}",
+        defer_raw_json=True,
     )
     st.session_state.pop("profile_extraction_draft", None)
     st.session_state.pop("profile_extraction_source", None)
@@ -585,6 +689,9 @@ def _render_structured_profile_editor(
             "Use this fallback only when a schema field is not exposed above. "
             "It follows the same validation and save path."
         )
+        pending_raw_json = st.session_state.pop("profile_editor_pending_raw_json", None)
+        if pending_raw_json is not None:
+            st.session_state["profile_editor_raw_json"] = pending_raw_json
         raw = st.text_area(
             "Raw profile JSON",
             key="profile_editor_raw_json",
@@ -901,6 +1008,251 @@ def _render_role_diagnostic(plan: Any) -> None:
             st.caption("Cached result reused: " + ("Yes" if view.cached_reuse else "No"))
 
 
+def _render_composition_diagnostic(resume: StructuredResume) -> None:
+    diagnostic = resume.composition_diagnostic
+    if diagnostic is None:
+        return
+    with st.expander("Composition diagnostic"):
+        st.write(diagnostic.reason)
+        verification = (
+            f"Exact page verification via {diagnostic.verification_provider}"
+            if diagnostic.verification_status.value == "exact"
+            else f"Estimated page fit via {diagnostic.verification_provider}"
+        )
+        st.caption(
+            f"Outcome: {diagnostic.outcome.value.replace('_', ' ')} · "
+            f"utilization: {diagnostic.final_utilization_ratio:.1%} · {verification}"
+        )
+        st.caption(
+            "Termination: "
+            + diagnostic.termination_reason.value.replace("_", " ")
+            + f" · target: {diagnostic.utilization_target_floor:.0%}–"
+            + f"{diagnostic.utilization_target_ceiling:.0%} · "
+            + ("target reached" if diagnostic.utilization_target_reached else "target not reached")
+        )
+        exact_best = (
+            f"{diagnostic.best_exact_verified_utilization_ratio:.1%}"
+            if diagnostic.best_exact_verified_utilization_ratio is not None
+            else "Unavailable"
+        )
+        st.caption(
+            f"Best estimated utilization: "
+            f"{diagnostic.best_estimated_utilization_ratio:.1%} · "
+            f"best exact verified utilization: {exact_best}"
+        )
+        st.caption(
+            f"Preferred density: {diagnostic.preferred_density_floor:.0%}-"
+            f"{diagnostic.preferred_density_ceiling:.0%}; "
+            + diagnostic.preferred_density_status.value.replace("_", " ")
+        )
+        if diagnostic.underfill_reasons:
+            st.write(
+                "Underfill classification: "
+                + ", ".join(
+                    reason.value.replace("_", " ") for reason in diagnostic.underfill_reasons
+                )
+            )
+        st.caption(
+            "Profile appears incomplete: "
+            + ("Yes" if diagnostic.profile_appears_incomplete else "No")
+        )
+        st.write(
+            "Selected experiences: " + (", ".join(diagnostic.selected_experience_ids) or "None")
+        )
+        st.write("Selected projects: " + (", ".join(diagnostic.selected_project_ids) or "None"))
+        st.write(
+            "Selected bullets: "
+            + (
+                ", ".join(
+                    f"{entry_id} ({count})" for entry_id, count in diagnostic.bullet_counts.items()
+                )
+                or "None"
+            )
+        )
+        for entry in diagnostic.entry_bullet_selections:
+            if not entry.selected_bullet_ids:
+                continue
+            retained = (
+                "all retained"
+                if entry.retained_all_available_bullets
+                else f"{len(entry.omitted_bullet_reasons)} omitted"
+            )
+            st.caption(
+                f"{entry.entry_id}: {len(entry.selected_bullet_ids)}/"
+                f"{len(entry.available_bullet_ids)} bullets selected · {retained}"
+            )
+        if diagnostic.project_representation is not None:
+            st.caption(
+                "Project representation: "
+                + diagnostic.project_representation.status.value.replace("_", " ")
+            )
+            st.write(diagnostic.project_representation.reason)
+        st.write(
+            "Selected skill categories: "
+            + (", ".join(diagnostic.selected_skill_category_labels) or "None")
+        )
+        for row in diagnostic.selected_skill_rows:
+            st.caption(f"{row.label}: {len(row.skill_values)} reviewed skill(s)")
+            if row.one_skill_exception_reason:
+                st.write(row.one_skill_exception_reason)
+        st.caption(
+            f"Credible skill categories: {diagnostic.credible_skill_category_count} Â· "
+            f"soft target: {diagnostic.desired_skill_category_count}"
+        )
+        if diagnostic.skill_category_shortfall_reason:
+            st.caption("Skill-category shortfall: " + diagnostic.skill_category_shortfall_reason)
+        st.caption(
+            f"{diagnostic.estimated_page_evaluations} estimated render(s) · "
+            f"{diagnostic.exact_page_evaluations} exact pagination attempt(s) · "
+            f"{diagnostic.expansion_operations} expansion operation(s) · "
+            f"{diagnostic.overflow_rollbacks} overflow rollback(s) · "
+            "additional evidence unavailable: "
+            + ("Yes" if diagnostic.additional_evidence_unavailable else "No")
+        )
+        hybrid = resume.hybrid_diagnostic
+        if hybrid is not None:
+            st.markdown("**Hybrid evidence and writing**")
+            st.caption(
+                "Writing: "
+                + hybrid.writer_execution_status.value.replace("_", " ")
+            )
+            st.write(hybrid.writing_reason)
+            st.caption(
+                f"Planning: {hybrid.planning_status.value.replace('_', ' ')} · "
+                f"provider calls: {hybrid.provider_call_count} · "
+                f"cache hits: {hybrid.provider_cache_hits} · "
+                f"layout input: {hybrid.layout_input.replace('_', ' ')}"
+            )
+            st.caption(
+                f"Source bullets: {hybrid.source_bullet_count} · "
+                f"rewritten: {hybrid.rewritten_bullet_count} · "
+                f"fallback: {hybrid.fallback_bullet_count} · "
+                f"rejected variants: {hybrid.rejected_variant_count}"
+            )
+            if hybrid.estimated_remaining_lines is not None:
+                st.caption(f"Estimated remaining text lines: {hybrid.estimated_remaining_lines}")
+            if hybrid.retrieval is not None:
+                st.write(
+                    "Retrieved reviewed evidence: "
+                    f"{len(hybrid.retrieval.admitted)} admitted, "
+                    f"{len(hybrid.retrieval.rejected)} rejected from "
+                    f"{hybrid.retrieval.complete_profile_evidence_count} current items."
+                )
+                for item in hybrid.retrieval.admitted[:8]:
+                    st.caption(
+                        f"{item.evidence_id}: "
+                        f"{item.admission_status.value.replace('_', ' ')} · "
+                        f"relevance {item.contextual_relevance:.1f} · "
+                        f"strength {item.intrinsic_evidence_strength:.1f}"
+                    )
+            selected_variants = [item for item in hybrid.bullet_variants if item.selected]
+            if selected_variants:
+                st.write("Validated rewritten bullets used by layout:")
+                for item in selected_variants:
+                    st.caption(
+                        f"{item.variant_id} · "
+                        f"{item.intended_length_class.value.replace('_', ' ')} · "
+                        f"{item.validation_status.value.replace('_', ' ')}"
+                    )
+                    st.write(f"Source: {' '.join(item.original_reviewed_text)}")
+                    st.write(f"Written: {item.rewritten_text}")
+            if hybrid.rejected_variants:
+                st.write("Rejected generated variants:")
+                for item in hybrid.rejected_variants[:8]:
+                    st.caption(f"{item.variant_id}: " + "; ".join(item.validation_reasons))
+            if hybrid.validation_failures:
+                st.write("Provider output validation failures:")
+                for failure in hybrid.validation_failures[:8]:
+                    st.caption(failure)
+        st.write(
+            "Unused relevant entries: "
+            + (
+                ", ".join(
+                    [
+                        *diagnostic.unused_experience_ids,
+                        *diagnostic.unused_project_ids,
+                    ]
+                )
+                or "None"
+            )
+        )
+        st.write(
+            "Unused reviewed bullets: "
+            + (", ".join(diagnostic.unused_reviewed_bullet_ids) or "None")
+        )
+        for entry in diagnostic.entry_bullet_selections:
+            if not entry.omitted_bullet_reasons:
+                continue
+            st.markdown(f"**Omitted bullets · {entry.entry_id}**")
+            for evidence_id, omission_reason in entry.omitted_bullet_reasons.items():
+                st.write(f"{evidence_id}: {omission_reason}")
+        retained_all_entries = [
+            entry
+            for entry in diagnostic.entry_bullet_selections
+            if entry.retained_all_available_bullets and entry.selected_bullet_ids
+        ]
+        if retained_all_entries:
+            st.markdown("**Entries retaining all reviewed bullets**")
+            for entry in retained_all_entries:
+                st.write(entry.entry_id)
+                for evidence_id, contribution in entry.distinct_contributions.items():
+                    st.caption(f"{evidence_id}: {contribution}")
+        st.write(
+            "Unused relevant skill rows: "
+            + (", ".join(diagnostic.unused_relevant_skill_category_ids) or "None")
+        )
+        if diagnostic.selected_candidates:
+            st.markdown("**Selection reasons**")
+            for candidate in diagnostic.selected_candidates:
+                if candidate.kind.value == "education_detail":
+                    continue
+                st.write(
+                    f"{candidate.candidate_id}: "
+                    f"{candidate.selection_reason or 'Selected by deterministic ranking.'}"
+                )
+                if candidate.line_fit is not None:
+                    st.caption(
+                        f"Estimated line fit: {candidate.line_fit.expected_line_count} line(s); "
+                        "final-line width "
+                        f"{candidate.line_fit.expected_final_line_width_ratio:.0%}; "
+                        "future shortening candidate: "
+                        + ("Yes" if candidate.line_fit.future_rewrite_recommended else "No")
+                    )
+        diagnostic_groups = (
+            (
+                "Unused admissible candidates",
+                diagnostic.unused_admissible_candidates,
+            ),
+            (
+                "Candidates excluded only by bounds",
+                diagnostic.candidates_excluded_by_search_bounds,
+            ),
+            (
+                "Candidates excluded by relevance or redundancy thresholds",
+                diagnostic.candidates_excluded_by_thresholds,
+            ),
+        )
+        for label, candidates in diagnostic_groups:
+            if not candidates:
+                continue
+            st.markdown(f"**{label}**")
+            for candidate in candidates:
+                penalty = (
+                    f" Redundancy penalty: {candidate.redundancy_penalty:.1f}."
+                    if candidate.redundancy_penalty
+                    else ""
+                )
+                st.write(
+                    f"{candidate.candidate_id}: "
+                    f"{candidate.exclusion_reason or 'Not selected.'}{penalty}"
+                )
+        if diagnostic.verification_failure:
+            st.warning(
+                "Exact pagination provider failure retained for diagnosis: "
+                + diagnostic.verification_failure
+            )
+
+
 def _render_tailor_page(service: Any) -> None:
     st.title("Tailor resume")
     profile = st.session_state.get("profile")
@@ -938,11 +1290,24 @@ def _render_tailor_page(service: Any) -> None:
             pass
     if recommend:
         try:
-            posting = build_job_posting(
-                "local-posting",
-                st.session_state.get("job_title_input", ""),
-                st.session_state.get("job_description_input", ""),
+            service.start_generation()
+            service.telemetry.record(
+                GenerationStage.STREAMLIT_RERUN_OVERHEAD,
+                perf_counter() - _streamlit_run_started,
             )
+            with service.telemetry.measure(
+                GenerationStage.PROFILE_LOADING,
+                detail="Reviewed profile reused from Streamlit session state.",
+            ):
+                service.telemetry.increment("profile_loads")
+                profile = cast(MasterProfile, st.session_state["profile"])
+            with service.telemetry.measure(GenerationStage.POSTING_NORMALIZATION):
+                service.telemetry.increment("posting_normalizations")
+                posting = build_job_posting(
+                    "local-posting",
+                    st.session_state.get("job_title_input", ""),
+                    st.session_state.get("job_description_input", ""),
+                )
             previous_posting = _active_posting()
             if (
                 previous_posting is not None
@@ -955,6 +1320,7 @@ def _render_tailor_page(service: Any) -> None:
             st.session_state["workflow_profile_fingerprint"] = profile_change_fingerprint(profile)
             st.session_state["plan"] = plan
             st.session_state.pop("resume", None)
+            st.session_state.pop("generated_resume_artifact", None)
             st.session_state["generated_content_reviewed"] = False
             _clear_cover_letter_state()
         except (InvalidJobDescriptionError, ValueError) as error:
@@ -999,16 +1365,30 @@ def _render_tailor_page(service: Any) -> None:
         type="primary",
         icon=":material/build:",
     ):
-        st.session_state["resume"] = service.build_document(
-            plan,
-            profile,
-            approved_ids,
+        service.telemetry.record(
+            GenerationStage.STREAMLIT_RERUN_OVERHEAD,
+            perf_counter() - _streamlit_run_started,
         )
-        st.session_state["generated_content_reviewed"] = False
+        try:
+            _build_and_store_resume_artifact(
+                service,
+                plan,
+                profile,
+                approved_ids,
+            )
+        except (PageOverflowError, ValueError) as error:
+            st.error(str(error))
 
     resume = st.session_state.get("resume")
     if resume is None:
         return
+    artifact = cast(
+        GeneratedResumeArtifact | None,
+        st.session_state.get("generated_resume_artifact"),
+    )
+    if artifact is not None:
+        _render_artifact_summary(artifact)
+    _render_composition_diagnostic(resume)
     st.subheader("Generated resume review")
     for label, items in _generated_content_review(resume).items():
         if items:
@@ -1042,55 +1422,57 @@ def _render_tailor_page(service: Any) -> None:
         "I reviewed the generated resume content and approve it for export.",
         key="generated_content_reviewed",
     )
-    if st.button(
-        "Export reviewed resume",
-        type="primary",
-        icon=":material/download:",
-        disabled=not st.session_state.get("generated_content_reviewed", False),
-    ):
+    final_approved_ids = approved_ids | pending_approved_ids
+    artifact_is_current = False
+    if artifact is not None:
         try:
-            export_resume = service.build_document(
-                plan,
-                profile,
-                approved_ids | pending_approved_ids,
+            artifact_is_current = artifact.artifact_fingerprint == (
+                service.expected_artifact_fingerprint(
+                    plan,
+                    profile,
+                    final_approved_ids,
+                )
             )
-            with TemporaryDirectory() as directory:
-                result = ManagedResumeRenderer().render(
-                    export_resume,
-                    Path(directory),
+        except ValueError:
+            artifact_is_current = False
+    if artifact is not None and not artifact_is_current:
+        st.warning("Approved wording changed. Rebuild once before downloading the artifact.")
+        if st.button(
+            "Rebuild with approved wording",
+            type="primary",
+            icon=":material/build:",
+        ):
+            try:
+                artifact = _build_and_store_resume_artifact(
+                    service,
+                    plan,
+                    profile,
+                    final_approved_ids,
                 )
-                diagnostic = result.page_utilization
-                if result.overflow_reduction_count:
-                    st.warning(
-                        "Exact page fitting removed "
-                        f"{result.overflow_reduction_count} optional content item(s). "
-                        "Review the exported document against the generated-content summary."
-                    )
-                if diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL:
-                    st.warning(diagnostic.message)
-                else:
-                    st.success(diagnostic.message)
-                st.caption(
-                    f"Estimated page utilization: "
-                    f"{diagnostic.estimated_utilization_ratio:.0%} · "
-                    f"exact page count via {result.measurement_provider}"
-                )
-                st.download_button(
-                    "Download DOCX",
-                    result.docx_path.read_bytes(),
-                    "tailored-resume.docx",
-                    mime=(
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    ),
-                )
-                st.download_button(
-                    "Download PDF",
-                    result.pdf_path.read_bytes(),
-                    "tailored-resume.pdf",
-                    mime="application/pdf",
-                )
-        except PageOverflowError as error:
-            st.error(str(error))
+                artifact_is_current = True
+            except (PageOverflowError, ValueError) as error:
+                st.error(str(error))
+    if artifact is not None:
+        download = prepare_artifact_download(
+            artifact,
+            clock=service.telemetry.clock,
+        )
+        st.download_button(
+            "Download DOCX",
+            download.docx_bytes,
+            "tailored-resume.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            icon=":material/download:",
+            disabled=(
+                not st.session_state.get("generated_content_reviewed", False)
+                or not artifact_is_current
+            ),
+            on_click="ignore",
+        )
+        st.caption(
+            f"Download preparation: {download.preparation_timing.elapsed_seconds:.3f}s · "
+            "stored artifact bytes reused"
+        )
 
 
 def _render_cover_letter_page(service: Any) -> None:
