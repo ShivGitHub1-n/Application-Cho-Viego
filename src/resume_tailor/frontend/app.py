@@ -1056,6 +1056,39 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
             "Profile appears incomplete: "
             + ("Yes" if diagnostic.profile_appears_incomplete else "No")
         )
+        if diagnostic.posting_requirements:
+            st.markdown("**Posting requirements**")
+            for requirement in diagnostic.posting_requirements:
+                st.caption(
+                    f"{requirement.authority.value}: {requirement.text} "
+                    f"(importance {requirement.importance:.2f})"
+                )
+        if diagnostic.requirement_coverage:
+            st.markdown("**Requirement coverage**")
+            for coverage in diagnostic.requirement_coverage:
+                relationships = ", ".join(
+                    relationship.value for relationship in coverage.relationships
+                )
+                st.caption(
+                    f"{coverage.text}: "
+                    + (
+                        f"{', '.join(coverage.selected_entry_ids)} via "
+                        f"{relationships or 'reviewed evidence'}"
+                        if coverage.selected_bullet_ids
+                        else "uncovered"
+                    )
+                )
+        if diagnostic.portfolio_coverage_gaps:
+            st.write(
+                "Portfolio coverage gaps: "
+                + "; ".join(diagnostic.portfolio_coverage_gaps)
+            )
+        if diagnostic.direct_candidate_tradeoffs:
+            st.markdown("**Direct-evidence tradeoffs**")
+            for tradeoff in diagnostic.direct_candidate_tradeoffs:
+                st.caption(
+                    f"{tradeoff.omitted_candidate_id}: {tradeoff.reason}"
+                )
         st.write(
             "Selected experiences: " + (", ".join(diagnostic.selected_experience_ids) or "None")
         )
@@ -1092,9 +1125,36 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
             + (", ".join(diagnostic.selected_skill_category_labels) or "None")
         )
         for row in diagnostic.selected_skill_rows:
-            st.caption(f"{row.label}: {len(row.skill_values)} reviewed skill(s)")
+            st.caption(
+                f"{row.label}: {', '.join(row.skill_values)} "
+                f"({len(row.skill_values)} reviewed skill(s), {row.relationship.value})"
+            )
+            st.caption(
+                "Estimated Template V1 row width: "
+                f"{row.estimated_used_width_points:.1f}/"
+                f"{row.estimated_available_width_points:.1f} pt "
+                f"({row.estimated_used_width_ratio:.0%}); "
+                f"{row.estimated_remaining_width_points:.1f} pt remaining"
+            )
+            if row.grouping_reason:
+                st.write(row.grouping_reason)
+            st.caption("Source provenance: " + ", ".join(row.provenance))
+            if row.compatible_omitted_skill_values:
+                st.caption(
+                    "Compatible omitted skills: "
+                    + ", ".join(row.compatible_omitted_skill_values)
+                )
+            if row.underfill_exception_reason:
+                st.caption("Underfill exception: " + row.underfill_exception_reason)
             if row.one_skill_exception_reason:
                 st.write(row.one_skill_exception_reason)
+        if diagnostic.omitted_direct_skill_values:
+            st.write(
+                "Omitted direct reviewed skills: "
+                + ", ".join(diagnostic.omitted_direct_skill_values)
+            )
+            for skill, reason in diagnostic.omitted_direct_skill_reasons.items():
+                st.caption(f"{skill}: {reason}")
         st.caption(
             f"Credible skill categories: {diagnostic.credible_skill_category_count} Â· "
             f"soft target: {diagnostic.desired_skill_category_count}"
@@ -1210,6 +1270,19 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
                     f"{candidate.candidate_id}: "
                     f"{candidate.selection_reason or 'Selected by deterministic ranking.'}"
                 )
+                if candidate.kind.value.endswith("bullet"):
+                    st.caption(
+                        "Relationship: "
+                        + candidate.evidence_relationship.value
+                        + f"; marginal contribution: {candidate.marginal_contribution:.1f}"
+                    )
+                    for token in candidate.short_token_contributions:
+                        context = ", ".join(token.corroborating_context) or "none"
+                        st.caption(
+                            f"Short token {token.token}: contribution "
+                            f"{token.contribution:.1f}; corroborated "
+                            f"{'yes' if token.corroborated else 'no'}; context: {context}"
+                        )
                 if candidate.line_fit is not None:
                     st.caption(
                         f"Estimated line fit: {candidate.line_fit.expected_line_count} line(s); "

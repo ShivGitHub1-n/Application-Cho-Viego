@@ -5,6 +5,13 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from resume_tailor.domain.layout import PageUtilizationStatus
+from resume_tailor.domain.requirement_ranking import (
+    DirectCandidateTradeoffDiagnostic,
+    EvidenceRelationship,
+    PostingRequirement,
+    RequirementCoverageDiagnostic,
+    ShortTokenContribution,
+)
 
 TEMPLATE_V1_UTILIZATION_TARGET_FLOOR = 0.72
 TEMPLATE_V1_UTILIZATION_TARGET_CEILING = 0.97
@@ -135,6 +142,15 @@ class CompositionCandidateDiagnostic(BaseModel):
     portfolio_contribution: float = 0
     dominance_relationship: str | None = None
     unique_capability_retained: bool = False
+    evidence_relationship: EvidenceRelationship = EvidenceRelationship.REJECTED
+    direct_requirement_ids: list[str] = Field(default_factory=list)
+    adjacent_requirement_ids: list[str] = Field(default_factory=list)
+    complementary_requirement_ids: list[str] = Field(default_factory=list)
+    incidental_requirement_ids: list[str] = Field(default_factory=list)
+    short_token_contributions: list[ShortTokenContribution] = Field(
+        default_factory=list
+    )
+    marginal_contribution: float = 0
 
 
 class PageFillIterationDiagnostic(BaseModel):
@@ -155,6 +171,10 @@ class EntryBulletSelectionDiagnostic(BaseModel):
     omitted_bullet_reasons: dict[str, str] = Field(default_factory=dict)
     retained_all_available_bullets: bool = False
     distinct_contributions: dict[str, str] = Field(default_factory=dict)
+    evidence_relationships: dict[str, EvidenceRelationship] = Field(
+        default_factory=dict
+    )
+    marginal_contributions: dict[str, float] = Field(default_factory=dict)
 
 
 class ProjectRepresentationDiagnostic(BaseModel):
@@ -172,7 +192,15 @@ class SkillRowSelectionDiagnostic(BaseModel):
     skill_ids: list[str] = Field(default_factory=list)
     skill_values: list[str] = Field(default_factory=list)
     provenance: list[str] = Field(default_factory=list)
+    relationship: EvidenceRelationship = EvidenceRelationship.REJECTED
+    estimated_available_width_points: float = Field(default=0, ge=0)
+    estimated_used_width_points: float = Field(default=0, ge=0)
+    estimated_remaining_width_points: float = Field(default=0, ge=0)
+    estimated_used_width_ratio: float = Field(default=0, ge=0, le=1)
+    compatible_omitted_skill_values: list[str] = Field(default_factory=list)
+    underfill_exception_reason: str | None = None
     one_skill_exception_reason: str | None = None
+    grouping_reason: str | None = None
 
 
 class ResumeCompositionDiagnostic(BaseModel):
@@ -192,6 +220,16 @@ class ResumeCompositionDiagnostic(BaseModel):
     )
     project_representation: ProjectRepresentationDiagnostic | None = None
     selected_skill_rows: list[SkillRowSelectionDiagnostic] = Field(default_factory=list)
+    posting_requirements: list[PostingRequirement] = Field(default_factory=list)
+    requirement_coverage: list[RequirementCoverageDiagnostic] = Field(
+        default_factory=list
+    )
+    portfolio_coverage_gaps: list[str] = Field(default_factory=list)
+    direct_candidate_tradeoffs: list[DirectCandidateTradeoffDiagnostic] = Field(
+        default_factory=list
+    )
+    omitted_direct_skill_values: list[str] = Field(default_factory=list)
+    omitted_direct_skill_reasons: dict[str, str] = Field(default_factory=dict)
     selected_candidates: list[CompositionCandidateDiagnostic] = Field(default_factory=list)
     excluded_high_ranking_candidates: list[CompositionCandidateDiagnostic] = Field(
         default_factory=list

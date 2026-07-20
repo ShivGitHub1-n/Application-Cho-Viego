@@ -4,6 +4,11 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from resume_tailor.domain.requirement_ranking import (
+    EvidenceRelationship,
+    PostingRequirement,
+    ShortTokenContribution,
+)
 from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 
 EVIDENCE_RETRIEVAL_CONTRACT_VERSION = "resume-evidence-retrieval-v1"
@@ -14,6 +19,8 @@ RESUME_WRITING_POLICY_VERSION = "technical-resume-writing-v1"
 class RetrievalAdmissionStatus(StrEnum):
     ADMITTED_DIRECT = "admitted_direct"
     ADMITTED_ADJACENT = "admitted_adjacent"
+    ADMITTED_COMPLEMENTARY = "admitted_complementary"
+    REJECTED_INCIDENTAL = "rejected_incidental"
     REJECTED_GENERIC_ONLY = "rejected_generic_only"
     REJECTED_LOW_RELEVANCE = "rejected_low_relevance"
     REJECTED_MISSING_METADATA = "rejected_missing_metadata"
@@ -72,6 +79,14 @@ class RetrievedEvidence(BaseModel):
     normalized_features: list[str] = Field(default_factory=list)
     meaningful_overlap: list[str] = Field(default_factory=list)
     matched_requirements: list[str] = Field(default_factory=list)
+    relationship: EvidenceRelationship = EvidenceRelationship.REJECTED
+    direct_requirement_ids: list[str] = Field(default_factory=list)
+    adjacent_requirement_ids: list[str] = Field(default_factory=list)
+    complementary_requirement_ids: list[str] = Field(default_factory=list)
+    incidental_requirement_ids: list[str] = Field(default_factory=list)
+    short_token_contributions: list[ShortTokenContribution] = Field(
+        default_factory=list
+    )
     admission_status: RetrievalAdmissionStatus
     admission_reason: str
     provenance: list[str] = Field(default_factory=list)
@@ -84,6 +99,7 @@ class EvidenceRetrievalResult(BaseModel):
     posting_fingerprint: str
     complete_profile_evidence_count: int = Field(ge=0)
     reviewed_evidence_count: int = Field(ge=0)
+    posting_requirements: list[PostingRequirement] = Field(default_factory=list)
     admitted: list[RetrievedEvidence] = Field(default_factory=list)
     rejected: list[RetrievedEvidence] = Field(default_factory=list)
 

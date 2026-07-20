@@ -34,9 +34,10 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 - `ResumeOptimizer` creates a `TailoringPlan` from profile, posting, and template constraints. Its algorithm is replaceable.
 - `ResumeEvidenceRetriever` returns a typed, bounded view over the complete
   current reviewed profile. The in-process implementation combines normalized
-  lexical features, structured evidence, intrinsic strength, and credible
-  technical adjacency. A future lexical-plus-embedding or external RAG adapter
-  can implement the same contract without changing the planner or writer.
+  lexical features, structured requirement authority, evidence relationships,
+  intrinsic strength, short-token corroboration, and credible technical
+  adjacency. A future lexical-plus-embedding or external RAG adapter can
+  implement the same contract without changing the planner or writer.
 - The optimizer's `OpportunityAnalyzer` dependency is the single role-classification boundary for resume tailoring. When explicitly enabled, the hybrid analyzer may resolve a validated Gemini primary family over deterministic posting signals; default and fallback behavior remains the deterministic analyzer.
 - `ResumeLanguageModel` exposes typed profile extraction, role classification, opportunity analysis, composition recommendation, bullet rewriting, shortening, and cover-letter drafting. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
 - `ResumeRenderer` maps structured resume content to a versioned template; it owns all styling.
@@ -52,9 +53,13 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 - `DeterministicResumeComposer` selects exact reviewed profile atoms after plan
   integrity validation. It depends on a page-fit evaluation port; the
   Template V1 infrastructure adapter renders and measures candidate documents.
-  Entry and bullet admission remain separate marginal decisions. Legacy flat
-  reviewed skills may be regrouped into bounded display-only rows with exact
-  source-index provenance; canonical profile data is unchanged.
+  Posting requirements and evidence relationships are typed domain models.
+  Entry and bullet admission remain separate marginal decisions, and project
+  and experience candidates share the same evidence-quality search. Legacy
+  flat reviewed skills may be regrouped into bounded display-only semantic,
+  non-contiguous groups with exact per-skill source-index provenance. Template
+  V1 row width is estimated before adding a value; canonical profile data is
+  unchanged.
 - `CompanyResearcher` returns sourced company facts, never candidate claims.
 
 ## Data flow

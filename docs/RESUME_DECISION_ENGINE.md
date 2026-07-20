@@ -47,14 +47,21 @@ text, claim spans, provider/model identity, policy version, and line-fit class
 remain attached. Rejected or unapproved wording falls back to exact reviewed
 source text.
 
-Candidate admission extracts comparison-only features from every current
-reviewed entry, bullet, skill category, and structured evidence record on each
-run. Generic action words do not independently establish relevance. Technical
-punctuation is preserved during normalization, and the implementation contains
-no profile-specific or role-family-specific admission rules. Exact reviewed
-uppercase acronyms may bridge retrieval and composition when they also occur
-in primary posting context, without admitting arbitrary short words. New
-reviewed profile content is therefore evaluated without a code change.
+Candidate admission first extracts typed posting requirements. Responsibilities
+and required qualifications receive core or important authority; preferred
+language is complementary; incidental context remains low authority. Repetition,
+technical specificity, title purpose, and source section affect importance.
+Every reviewed bullet is then assessed independently as direct, adjacent,
+complementary, incidental, or rejected evidence. Generic action words and entry
+labels do not independently establish bullet relevance, and selected entries do
+not transfer their strongest bullet's authority to weaker internal bullets.
+
+Technical punctuation is preserved during normalization. Short alphabetic
+acronyms contribute only when a specific phrase, compatible responsibility,
+structured evidence, reviewed-skill context, or multiple corroborating concepts
+support them. Symbolic and alphanumeric identifiers such as language names,
+buses, and device families remain matchable. A single broad acronym cannot
+admit an otherwise unrelated entry.
 
 Verified declared skills may support role-fit assessment and the skills
 section, but never create experience or project bullets without linked
@@ -66,8 +73,10 @@ selected blocks before a weak new entry. A substantially stronger new entry can
 still win.
 
 Planning separates contextual relevance from intrinsic evidence strength.
-Marginal portfolio contribution rewards new requirement and capability
-coverage. Generic dominance suppresses weaker overlapping evidence only when a
+Marginal portfolio contribution rewards new direct requirement coverage before
+repeated adjacent or complementary coverage, while quantified outcomes and
+technical depth retain independent value. Entry-depth penalties apply only
+after novel direct coverage is exhausted. Generic dominance suppresses weaker overlapping evidence only when a
 stronger selected entry provides greater intrinsic proof and comparable
 contextual relevance without losing a unique capability. A weaker item remains
 eligible when it adds unique required or complementary evidence. Dominance
@@ -83,8 +92,14 @@ coverage. Fewer remain valid when the categories are absent, irrelevant,
 redundant, or would displace substantially stronger evidence. Sparse one-skill
 rows require a typed exception. Category labels and skill text remain reviewed
 source data. A legacy profile containing only flat reviewed declared skills may
-be regrouped into bounded generic display tiers with source-index provenance;
-the display transform cannot invent values or mutate the canonical profile.
+be regrouped into bounded, non-contiguous display-only semantic groups with
+per-skill source-index provenance. Shared typed requirements are primary and
+source order is a deterministic secondary preference. Template V1 row-width
+estimation includes the label, separator, punctuation, and values, so compatible
+reviewed skills fill an existing row before a sparse row is created. Labels
+derive from reviewed requirement or evidence context rather than ranking tiers.
+The display transform cannot invent values, persist a
+generated category, or mutate the canonical profile.
 
 Bullet line fit is secondary to truth and evidence quality. Template-aware
 estimated line count, trailing-fragment risk, and three-line risk can break
@@ -103,4 +118,8 @@ approval the layout search uses the reviewed source bullet instead.
 
 ## Explanation contract
 
-The `DecisionReport` records included and excluded items, score factors, space tradeoffs, rewritten bullets, reordered skills, assumptions, and warnings. Explanations are concise user-facing summaries, not hidden model chain-of-thought.
+The composition diagnostic records requirement authority, evidence
+relationships, selected-entry coverage, bullet marginal contribution,
+short-token corroboration, direct-evidence tradeoffs, skill-row provenance,
+omitted direct skills, and portfolio gaps. Explanations are concise typed
+summaries, not hidden model chain-of-thought.

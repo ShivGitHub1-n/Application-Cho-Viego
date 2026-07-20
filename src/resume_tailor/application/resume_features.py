@@ -36,6 +36,7 @@ _STOPWORDS = frozenset(
         "the",
         "their",
         "this",
+        "through",
         "to",
         "using",
         "we",
@@ -56,14 +57,21 @@ _GENERIC_ACTIONS = frozenset(
         "designed",
         "develop",
         "developed",
+        "execute",
+        "executed",
         "implement",
         "implemented",
         "improve",
         "improved",
+        "perform",
+        "performed",
         "support",
         "supported",
         "test",
         "tested",
+        "tests",
+        "validate",
+        "validated",
         "work",
         "worked",
     }
@@ -80,19 +88,25 @@ _LOW_INFORMATION = frozenset(
         "experience",
         "failure",
         "health",
+        "hardware",
         "integration",
         "monitoring",
         "project",
         "responsible",
         "role",
+        "software",
         "solution",
         "system",
         "systems",
         "task",
+        "tasks",
         "technical",
         "technology",
         "testing",
+        "tests",
         "tool",
+        "engineer",
+        "engineering",
         "validation",
         "various",
     }
@@ -115,8 +129,10 @@ _RESPONSIBILITY_TERMS: dict[str, frozenset[str]] = {
             "inspected",
             "test",
             "tested",
+            "testing",
             "validate",
             "validated",
+            "validation",
         }
     ),
     "debugging": frozenset(
@@ -147,6 +163,15 @@ _RESPONSIBILITY_TERMS: dict[str, frozenset[str]] = {
             "operate",
             "operated",
         }
+    ),
+    "documentation": frozenset(
+        {"document", "documented", "record", "recorded", "specify", "specified"}
+    ),
+    "improvement": frozenset(
+        {"improve", "improved", "optimize", "optimized", "reduce", "reduced"}
+    ),
+    "automation": frozenset(
+        {"automate", "automated", "script", "scripted"}
     ),
 }
 _OUTCOME_TERMS = frozenset(
@@ -292,7 +317,7 @@ def match_reviewed_features(
         phrase
         for phrase in meaningful_overlap
         if len(phrase.split()) >= 2
-        or len(phrase) >= 8
+        or len(phrase) >= 7
         or any(character.isdigit() for character in phrase)
         or any(character in phrase for character in "+#./-")
     )
@@ -394,6 +419,49 @@ class TemplateV1BulletLineEstimator:
         )
 
 
+@dataclass(frozen=True)
+class SkillRowWidthEstimate:
+    """Estimated single-line occupancy for Template V1's skill-row prototype."""
+
+    available_width_points: float
+    used_width_points: float
+    remaining_width_points: float
+    used_width_ratio: float
+    wraps: bool
+
+
+class TemplateV1SkillRowWidthEstimator:
+    """Measure the populated Template V1 skill prototype without mutating it.
+
+    The packaged row begins at the page's 0.5-inch left margin and ends at the
+    0.25-inch right margin, then applies 108 and 113 twips of row indentation.
+    Its label run is bold 10-point Times New Roman and its values run is normal
+    10-point Times New Roman.  This estimator deliberately includes the exact
+    colon, comma, and space characters written by ``StaticTemplateDocxRenderer``.
+    """
+
+    available_width_points = (11160 - 720 - 108 - 113) / 20
+    label_font_size_points = 10.0
+    value_font_size_points = 10.0
+    bold_width_multiplier = 1.07
+
+    def estimate(self, label: str, values: list[str] | tuple[str, ...]) -> SkillRowWidthEstimate:
+        value_text = ", ".join(values)
+        used = (
+            _estimated_word_width(label, self.label_font_size_points) * self.bold_width_multiplier
+            + _estimated_word_width(": ", self.value_font_size_points)
+            + _estimated_word_width(value_text, self.value_font_size_points)
+        )
+        available = self.available_width_points
+        return SkillRowWidthEstimate(
+            available_width_points=round(available, 2),
+            used_width_points=round(used, 2),
+            remaining_width_points=round(max(0.0, available - used), 2),
+            used_width_ratio=round(min(1.0, used / available), 4),
+            wraps=used > available,
+        )
+
+
 def _is_specific_singleton(token: str) -> bool:
     if token in _STOPWORDS or token in _GENERIC_ACTIONS or token in _LOW_INFORMATION:
         return False
@@ -406,7 +474,24 @@ def _is_specific_singleton(token: str) -> bool:
 
 def _comparison_parts(token: str) -> tuple[str, ...]:
     parts = tuple(part for part in re.split(r"[-/]", token) if part)
-    return tuple(dict.fromkeys((token, *parts)))
+    stems = tuple(
+        stem
+        for part in (token, *parts)
+        if (stem := _comparison_stem(part)) != part
+    )
+    return tuple(dict.fromkeys((token, *parts, *stems)))
+
+
+def _comparison_stem(token: str) -> str:
+    if len(token) > 5 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 5 and token.endswith("ated"):
+        return token[:-1]
+    if len(token) > 5 and token.endswith("ed"):
+        return token[:-2]
+    if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
 
 
 def _maximal_phrases(phrases: list[str]) -> list[str]:
@@ -450,6 +535,8 @@ __all__ = [
     "FeatureMatch",
     "ReviewedTextFeatures",
     "TemplateV1BulletLineEstimator",
+    "TemplateV1SkillRowWidthEstimator",
+    "SkillRowWidthEstimate",
     "extract_reviewed_text_features",
     "match_reviewed_features",
     "normalize_reviewed_text",

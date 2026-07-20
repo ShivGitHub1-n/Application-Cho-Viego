@@ -424,7 +424,7 @@ class TemplateConstraints(BaseModel):
     max_total_lines: Annotated[int, Field(gt=0)] = 42
     max_experience_lines: Annotated[int, Field(gt=0)] = 24
     max_project_lines: Annotated[int, Field(gt=0)] = 12
-    max_skill_lines: Annotated[int, Field(gt=0)] = 4
+    max_skill_lines: Annotated[int, Field(gt=0)] = 5
     max_coursework_lines: Annotated[int, Field(gt=0)] = 2
     experience_entry_overhead_lines: Annotated[int, Field(ge=0)] = 2
     project_entry_overhead_lines: Annotated[int, Field(ge=0)] = 2

@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from typing import cast
 
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
+from resume_tailor.application.requirement_ranking import (
+    assess_evidence_relationship,
+    extract_posting_requirements,
+)
 from resume_tailor.application.resume_features import (
     FeatureMatch,
     ReviewedTextFeatures,
     TemplateV1BulletLineEstimator,
+    TemplateV1SkillRowWidthEstimator,
     extract_reviewed_text_features,
     match_reviewed_features,
     normalize_reviewed_text,
@@ -31,6 +36,15 @@ from resume_tailor.domain.models import (
     StructuredResume,
     TechnicalSkillCategory,
     TemplateConstraints,
+)
+from resume_tailor.domain.requirement_ranking import (
+    DirectCandidateTradeoffDiagnostic,
+    EvidenceRelationship,
+    EvidenceRelationshipAssessment,
+    PostingRequirementModel,
+    RequirementAuthority,
+    RequirementCoverageDiagnostic,
+    ShortTokenContribution,
 )
 from resume_tailor.domain.resume_composition import (
     TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR,
@@ -130,6 +144,7 @@ class _PostingContext:
     title_tokens: frozenset[str]
     weighted_segments: tuple[tuple[str, float], ...]
     features: ReviewedTextFeatures
+    requirements: PostingRequirementModel
 
 
 @dataclass(frozen=True)
@@ -151,6 +166,12 @@ class _BulletCandidate:
     generic_only_rejected: bool
     admitted: bool
     admission_reason: str
+    relationship: EvidenceRelationship
+    direct_requirement_ids: tuple[str, ...]
+    adjacent_requirement_ids: tuple[str, ...]
+    complementary_requirement_ids: tuple[str, ...]
+    incidental_requirement_ids: tuple[str, ...]
+    short_token_contributions: tuple[ShortTokenContribution, ...]
     provenance: tuple[str, ...]
     entry_order: int
     evidence_order: int
@@ -173,7 +194,15 @@ class _SkillCandidate:
     provenance: tuple[str, ...]
     source_category_ids: tuple[str, ...]
     one_skill_exception_reason: str | None
+    grouping_reason: str
+    relationship: EvidenceRelationship
     original_order: int
+    estimated_available_width_points: float
+    estimated_used_width_points: float
+    estimated_remaining_width_points: float
+    estimated_used_width_ratio: float
+    compatible_omitted_skill_values: tuple[str, ...]
+    underfill_exception_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -194,6 +223,7 @@ class _EvaluatedState:
     quality: float
     coverage_count: int
     three_line_bullet_count: int
+    substantive_project_count: int
 
 
 @dataclass(frozen=True)
@@ -212,6 +242,7 @@ class _Expansion:
 class _CandidatePool:
     ranked_bullets: list[_BulletCandidate]
     relevance_excluded_bullets: list[_BulletCandidate]
+    redundancy_excluded_bullets: list[_BulletCandidate]
     ranking_bound_excluded_bullets: list[_BulletCandidate]
 
 
@@ -222,7 +253,7 @@ class DeterministicResumeComposer:
     _minimum_skill_score = 12.0
     _minimum_marginal_score = 7.0
     _near_duplicate_threshold = 0.72
-    _maximum_skills_per_display_row = 5
+    _maximum_skills_per_display_row = 8
 
     def __init__(
         self,
@@ -230,11 +261,13 @@ class DeterministicResumeComposer:
         *,
         bounds: CompositionSearchBounds | None = None,
         line_estimator: TemplateV1BulletLineEstimator | None = None,
+        skill_row_estimator: TemplateV1SkillRowWidthEstimator | None = None,
         telemetry: GenerationTelemetry | None = None,
     ) -> None:
         self._page_fit_evaluator = page_fit_evaluator
         self._bounds = bounds or CompositionSearchBounds()
         self._line_estimator = line_estimator or TemplateV1BulletLineEstimator()
+        self._skill_row_estimator = skill_row_estimator or TemplateV1SkillRowWidthEstimator()
         self._telemetry = telemetry or GenerationTelemetry()
 
     def compose(
@@ -274,8 +307,8 @@ class DeterministicResumeComposer:
         best_estimated_utilization = 0.0
         best_exact_utilization: float | None = None
         completion_reserve = min(
-            48,
-            max(24, self._bounds.maximum_estimated_page_evaluations // 3),
+            64,
+            max(24, self._bounds.maximum_estimated_page_evaluations // 2),
         )
         exploration_evaluation_limit = max(
             1,
@@ -362,11 +395,47 @@ class DeterministicResumeComposer:
                     bullet_by_id[evidence_id].line_fit.three_line_risk
                     for evidence_id in state.bullet_ids
                 ),
+                substantive_project_count=sum(
+                    count >= 2
+                    for count in Counter(
+                        bullet_by_id[evidence_id].entry_id
+                        for evidence_id in state.bullet_ids
+                        if bullet_by_id[evidence_id].entry_kind is EntityKind.PROJECT
+                    ).values()
+                ),
             )
 
         seed_states: list[tuple[_State, str]] = []
         if bullets:
-            for bullet in bullets[: self._bounds.beam_width]:
+            seed_bullets = list(bullets[: self._bounds.beam_width])
+            for requirement in context.requirements.requirements:
+                if requirement.authority not in {
+                    RequirementAuthority.CORE,
+                    RequirementAuthority.IMPORTANT,
+                }:
+                    continue
+                requirement_bullet = next(
+                    (
+                        candidate
+                        for candidate in bullets
+                        if requirement.id in candidate.direct_requirement_ids
+                    ),
+                    None,
+                )
+                if requirement_bullet is None:
+                    continue
+                if requirement_bullet not in seed_bullets:
+                    seed_bullets.append(requirement_bullet)
+            seeded_project_entries: set[str] = set()
+            for project_bullet in bullets:
+                if project_bullet.entry_kind is not EntityKind.PROJECT:
+                    continue
+                if project_bullet.entry_id in seeded_project_entries:
+                    continue
+                seeded_project_entries.add(project_bullet.entry_id)
+                if project_bullet not in seed_bullets:
+                    seed_bullets.append(project_bullet)
+            for bullet in seed_bullets:
                 supported_skills = [
                     candidate.category_id
                     for candidate in skills
@@ -378,7 +447,14 @@ class DeterministicResumeComposer:
                 credible_skill_ids = [
                     item.category_id
                     for item in skills
-                    if item.category_id in supported_skills or item.supported_skill_ids
+                    if item.relationship
+                    in {
+                        EvidenceRelationship.DIRECT,
+                        EvidenceRelationship.ADJACENT,
+                        EvidenceRelationship.COMPLEMENTARY,
+                    }
+                    or item.category_id in supported_skills
+                    or item.supported_skill_ids
                 ][: min(3, constraints.max_skill_lines)]
                 seed_skill_counts = list(dict.fromkeys([len(credible_skill_ids), 0]))
                 for skill_count in seed_skill_counts:
@@ -422,6 +498,56 @@ class DeterministicResumeComposer:
             evaluated_states.append(fallback)
 
         frontier = self._search_states(evaluated_states)
+        project_seed_by_entry: dict[str, _EvaluatedState] = {}
+        requirement_seed_by_id: dict[str, _EvaluatedState] = {}
+        for item in evaluated_states:
+            selected_candidates = [
+                bullet_by_id[evidence_id] for evidence_id in item.state.bullet_ids
+            ]
+            for requirement_id in {
+                requirement_id
+                for candidate in selected_candidates
+                for requirement_id in candidate.direct_requirement_ids
+            }:
+                previous = requirement_seed_by_id.get(requirement_id)
+                if previous is None or item.quality > previous.quality:
+                    requirement_seed_by_id[requirement_id] = item
+            project_entry_ids = {
+                bullet_by_id[evidence_id].entry_id
+                for evidence_id in item.state.bullet_ids
+                if bullet_by_id[evidence_id].entry_kind is EntityKind.PROJECT
+            }
+            for entry_id in project_entry_ids:
+                previous = project_seed_by_entry.get(entry_id)
+                if previous is None or item.quality > previous.quality:
+                    project_seed_by_entry[entry_id] = item
+        reserved_project_frontier = sorted(
+            project_seed_by_entry.values(),
+            key=lambda item: (-item.quality, item.state.key),
+        )[: self._bounds.maximum_project_entries]
+        reserved_requirement_frontier = [
+            requirement_seed_by_id[requirement.id]
+            for requirement in context.requirements.requirements
+            if requirement.id in requirement_seed_by_id
+            and requirement.authority
+            in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
+        ]
+        reserved_frontier: list[_EvaluatedState] = []
+        reserved_state_keys: set[
+            tuple[tuple[str, ...], tuple[str, ...]]
+        ] = set()
+        for item in [
+            *reserved_requirement_frontier,
+            *reserved_project_frontier,
+        ]:
+            if item.state.key in reserved_state_keys:
+                continue
+            reserved_state_keys.add(item.state.key)
+            reserved_frontier.append(item)
+        frontier = [
+            *reserved_frontier,
+            *[item for item in frontier if item not in reserved_frontier],
+        ][: self._bounds.beam_width]
         all_fitting = list(evaluated_states)
         expanded: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
         termination_reason = (
@@ -435,7 +561,17 @@ class DeterministicResumeComposer:
                 for item in all_fitting
                 if self._in_preferred_density_band(item.evaluation.utilization_ratio)
             ]
-            if len(target_states) >= self._bounds.target_finalist_count:
+            target_has_substantive_project = any(
+                self._state_has_substantive_project(item.state, bullet_by_id)
+                for item in target_states
+            )
+            if (
+                len(target_states) >= self._bounds.target_finalist_count
+                and (
+                    not self._credible_project_ids(bullets)
+                    or target_has_substantive_project
+                )
+            ):
                 termination_reason = CompositionTerminationReason.TARGET_FINALISTS_FOUND
                 break
             if estimated_evaluations >= exploration_evaluation_limit:
@@ -526,10 +662,18 @@ class DeterministicResumeComposer:
                 for item in all_fitting
                 if self._in_preferred_density_band(item.evaluation.utilization_ratio)
             ]
-            if preferred_states:
+            substantive_preferred_states = [
+                item
+                for item in preferred_states
+                if self._state_has_substantive_project(item.state, bullet_by_id)
+            ]
+            if preferred_states and (
+                not self._credible_project_ids(bullets)
+                or substantive_preferred_states
+            ):
                 completion_current = self._best_states(
-                    preferred_states,
-                    limit=len(preferred_states),
+                    substantive_preferred_states or preferred_states,
+                    limit=len(substantive_preferred_states or preferred_states),
                 )[0]
                 break
             completion_options: list[_Expansion] = []
@@ -647,6 +791,30 @@ class DeterministicResumeComposer:
             max(1, self._bounds.maximum_exact_finalist_evaluations // 4),
         )
         finalists = target_finalists[:preferred_target_count]
+        substantive_project_states = [
+            item
+            for item in ordered_fitting
+            if any(
+                count >= 2
+                for count in Counter(
+                    bullet_by_id[evidence_id].entry_id
+                    for evidence_id in item.state.bullet_ids
+                    if bullet_by_id[evidence_id].entry_kind is EntityKind.PROJECT
+                ).values()
+            )
+        ]
+        if substantive_project_states:
+            for density_target in (0.90, 0.82, 0.74):
+                substantive_project_finalist = min(
+                    substantive_project_states,
+                    key=lambda item: (
+                        abs(item.evaluation.utilization_ratio - density_target),
+                        -item.quality,
+                        item.state.key,
+                    ),
+                )
+                if substantive_project_finalist not in finalists:
+                    finalists.append(substantive_project_finalist)
         # Exact pagination can place the fit boundary below the estimator's
         # preferred band. Preserve deterministic density diversity so deep
         # completion states do not crowd every lower-density rollback candidate
@@ -862,16 +1030,38 @@ class DeterministicResumeComposer:
             variants or {},
             advisory_evidence_ids or set(),
         )
-        relevant = [
+        preliminary_relevant = [
             candidate
             for candidate in candidates
             if candidate.admitted
             if candidate.score >= self._minimum_bullet_score and candidate.coverage_keys
         ]
-        relevance_excluded = [candidate for candidate in candidates if candidate not in relevant]
+        relevant: list[_BulletCandidate] = []
+        redundancy_excluded: list[_BulletCandidate] = []
+        for candidate in preliminary_relevant:
+            stronger_duplicate = next(
+                (
+                    retained
+                    for retained in relevant
+                    if retained.entry_id == candidate.entry_id
+                    and _near_duplicate(retained.text, candidate.text)
+                    >= self._near_duplicate_threshold
+                ),
+                None,
+            )
+            if stronger_duplicate is not None:
+                redundancy_excluded.append(candidate)
+                continue
+            relevant.append(candidate)
+        relevance_excluded = [
+            candidate
+            for candidate in candidates
+            if candidate not in preliminary_relevant
+        ]
         return _CandidatePool(
             ranked_bullets=relevant[: self._bounds.maximum_ranked_bullets],
             relevance_excluded_bullets=relevance_excluded,
+            redundancy_excluded_bullets=redundancy_excluded,
             ranking_bound_excluded_bullets=relevant[self._bounds.maximum_ranked_bullets :],
         )
 
@@ -937,6 +1127,12 @@ class DeterministicResumeComposer:
                 generic_only,
                 admitted,
                 admission_reason,
+                relationship,
+                direct_requirement_ids,
+                adjacent_requirement_ids,
+                complementary_requirement_ids,
+                incidental_requirement_ids,
+                short_token_contributions,
             ) = _evidence_score(
                 evidence,
                 entry,
@@ -969,6 +1165,14 @@ class DeterministicResumeComposer:
                     generic_only_rejected=generic_only,
                     admitted=admitted,
                     admission_reason=admission_reason,
+                    relationship=relationship,
+                    direct_requirement_ids=tuple(direct_requirement_ids),
+                    adjacent_requirement_ids=tuple(adjacent_requirement_ids),
+                    complementary_requirement_ids=tuple(
+                        complementary_requirement_ids
+                    ),
+                    incidental_requirement_ids=tuple(incidental_requirement_ids),
+                    short_token_contributions=tuple(short_token_contributions),
                     provenance=(
                         f"profile.evidence[{evidence.id}]",
                         f"profile.{entry.kind.value}s[{entry.id}]",
@@ -1027,6 +1231,14 @@ class DeterministicResumeComposer:
                 category_match,
                 context,
             )
+            category_assessment = assess_evidence_relationship(
+                bullet_text=category.category,
+                bullet_features=extract_reviewed_text_features(category.category),
+                entry_features=extract_reviewed_text_features(""),
+                structured_values=[category.category],
+                requirements=context.requirements,
+                reviewed_skill=True,
+            )
             scored: list[
                 tuple[
                     ReviewedTechnicalSkill,
@@ -1035,6 +1247,7 @@ class DeterministicResumeComposer:
                     bool,
                     FeatureMatch,
                     ReviewedTextFeatures,
+                    EvidenceRelationshipAssessment,
                 ]
             ] = []
             for skill in category.skills:
@@ -1043,19 +1256,43 @@ class DeterministicResumeComposer:
                     continue
                 features = extract_reviewed_text_features(skill.value)
                 match = match_reviewed_features(features, context.features)
-                match_is_primary = _match_has_primary_posting_context(match, context)
+                assessment = assess_evidence_relationship(
+                    bullet_text=skill.value,
+                    bullet_features=features,
+                    entry_features=extract_reviewed_text_features(category.category),
+                    structured_values=[skill.value],
+                    requirements=context.requirements,
+                    reviewed_skill=True,
+                )
                 supported = _contains_phrase(confirmed_evidence_text, normalized)
                 supported_by_relevant_evidence = _contains_phrase(
                     relevant_evidence_text,
                     normalized,
                 )
+                relationship_base = {
+                    EvidenceRelationship.DIRECT: 80.0,
+                    EvidenceRelationship.ADJACENT: 52.0,
+                    EvidenceRelationship.COMPLEMENTARY: 28.0,
+                    EvidenceRelationship.INCIDENTAL: 0.0,
+                    EvidenceRelationship.REJECTED: 0.0,
+                }[assessment.relationship]
+                if (
+                    assessment.relationship is EvidenceRelationship.REJECTED
+                    and supported_by_relevant_evidence
+                ):
+                    relationship_base = 20.0
                 score = (
-                    (match.relevance_score * 1.5)
-                    + (category_match.relevance_score * 0.35)
+                    relationship_base
+                    + min(30.0, assessment.contextual_relevance)
+                    + (category_assessment.contextual_relevance * 0.15)
                     + (12.0 if supported else -4.0)
                 )
                 anchor = (
-                    match_is_primary
+                    assessment.relationship in {
+                        EvidenceRelationship.DIRECT,
+                        EvidenceRelationship.ADJACENT,
+                        EvidenceRelationship.COMPLEMENTARY,
+                    }
                     or (
                         supported_by_relevant_evidence
                         and (
@@ -1064,7 +1301,11 @@ class DeterministicResumeComposer:
                         )
                     )
                     or (
-                        category_match_is_primary
+                        category_assessment.relationship
+                        in {
+                            EvidenceRelationship.DIRECT,
+                            EvidenceRelationship.ADJACENT,
+                        }
                         and features.technical_specificity >= 0.12
                     )
                 )
@@ -1083,6 +1324,7 @@ class DeterministicResumeComposer:
                         complementary,
                         match,
                         features,
+                        assessment,
                     )
                 )
             anchors = [item for item in scored if item[2]]
@@ -1094,31 +1336,35 @@ class DeterministicResumeComposer:
                     category.skills.index(item[0]),
                 )
             )
-            selected_records = anchors[: self._maximum_skills_per_display_row]
-            if len(selected_records) < 2:
-                complements = [
-                    item
-                    for item in scored
-                    if item not in selected_records and item[3]
-                ]
-                complements.sort(
-                    key=lambda item: (
-                        -int(_contains_phrase(confirmed_evidence_text, _normalize(item[0].value))),
-                        -item[1],
-                        category.skills.index(item[0]),
-                    )
+            complements = [item for item in scored if item not in anchors and item[3]]
+            complements.sort(
+                key=lambda item: (
+                    -int(_contains_phrase(confirmed_evidence_text, _normalize(item[0].value))),
+                    -item[1],
+                    category.skills.index(item[0]),
                 )
-                selected_records.extend(complements[: 2 - len(selected_records)])
-            if len(selected_records) < self._maximum_skills_per_display_row:
-                additional_anchors = [
-                    item
-                    for item in anchors
-                    if item not in selected_records
+            )
+            selection_pool = [*anchors, *complements]
+            selected_records: list[
+                tuple[
+                    ReviewedTechnicalSkill,
+                    float,
+                    bool,
+                    bool,
+                    FeatureMatch,
+                    ReviewedTextFeatures,
+                    EvidenceRelationshipAssessment,
                 ]
-                selected_records.extend(
-                    additional_anchors[
-                        : self._maximum_skills_per_display_row - len(selected_records)
-                    ]
+            ] = []
+            for record in selection_pool:
+                if len(selected_records) >= self._maximum_skills_per_display_row:
+                    break
+                proposed_values = [item[0].value for item in [*selected_records, record]]
+                if not self._skill_row_estimator.estimate(category.category, proposed_values).wraps:
+                    selected_records.append(record)
+            if is_display_regrouped:
+                selected_records.sort(
+                    key=lambda item: category.skills.index(item[0])
                 )
             selected = [item[0] for item in selected_records]
             skill_scores = [item[1] for item in selected_records]
@@ -1142,20 +1388,51 @@ class DeterministicResumeComposer:
             meaningful_overlap: list[str] = []
             supported_ids: list[str] = []
             declared_only_ids: list[str] = []
-            for skill, _score, _anchor, _complementary, match, features in selected_records:
+            selected_relationships: list[EvidenceRelationship] = []
+            requirement_by_id = {
+                item.id: item for item in context.requirements.requirements
+            }
+            for (
+                skill,
+                _score,
+                _anchor,
+                _complementary,
+                _match,
+                features,
+                assessment,
+            ) in selected_records:
                 normalized = _normalize(skill.value)
                 seen_normalized_skills.add(normalized)
                 normalized_features.extend(features.specific_phrases)
-                meaningful_overlap.extend(match.meaningful_overlap)
+                meaningful_overlap.extend(assessment.meaningful_overlap)
                 supported = _contains_phrase(confirmed_evidence_text, normalized)
+                supported_by_relevant_evidence = _contains_phrase(
+                    relevant_evidence_text,
+                    normalized,
+                )
+                effective_relationship = assessment.relationship
+                if (
+                    effective_relationship is EvidenceRelationship.REJECTED
+                    and is_display_regrouped
+                    and supported_by_relevant_evidence
+                ):
+                    effective_relationship = EvidenceRelationship.COMPLEMENTARY
+                selected_relationships.append(effective_relationship)
                 if supported:
                     supported_ids.append(skill.id or normalized)
                 else:
                     declared_only_ids.append(skill.id or normalized)
-                for label in match.meaningful_overlap:
-                    coverage.append((f"term:{label}", label))
-                for label in match.responsibility_overlap:
-                    coverage.append((f"responsibility:{label}", label.replace("_", " ")))
+                requirement_ids = [
+                    *assessment.direct_requirement_ids,
+                    *assessment.adjacent_requirement_ids,
+                    *assessment.complementary_requirement_ids,
+                ]
+                for requirement_id in requirement_ids:
+                    requirement = requirement_by_id.get(requirement_id)
+                    if requirement is not None:
+                        coverage.append(
+                            (f"requirement:{requirement_id}", requirement.text)
+                        )
             score = round(
                 max(skill_scores)
                 + (sum(skill_scores[1:]) * 0.24)
@@ -1164,6 +1441,48 @@ class DeterministicResumeComposer:
                 2,
             )
             category_id = category.id or ""
+            width_estimate = self._skill_row_estimator.estimate(
+                category.category,
+                [skill.value for skill in selected],
+            )
+            # A credible row that remains visibly sparse is less valuable than
+            # an equally credible row that uses the Template V1 line well. The
+            # bonus is deliberately bounded: it never admits an unrelated row,
+            # but lets a fuller fourth/fifth reviewed row compete with a weak
+            # bullet through the normal page-fit search.
+            if (
+                len(selected) >= 2
+                and any(
+                    relationship
+                    in {
+                        EvidenceRelationship.DIRECT,
+                        EvidenceRelationship.ADJACENT,
+                        EvidenceRelationship.COMPLEMENTARY,
+                    }
+                    for relationship in selected_relationships
+                )
+            ):
+                score = round(
+                    score + max(0.0, 0.65 - width_estimate.used_width_ratio) * 28.0,
+                    2,
+                )
+            compatible_omitted = tuple(
+                item[0].value
+                for item in selection_pool
+                if item not in selected_records
+            )
+            underfill_exception_reason: str | None = None
+            if width_estimate.used_width_ratio < 0.75:
+                if compatible_omitted:
+                    underfill_exception_reason = (
+                        "Compatible reviewed skills remain, but each would wrap the measured "
+                        "Template V1 row or lose the normal page-fit comparison."
+                    )
+                else:
+                    underfill_exception_reason = (
+                        "No additional reviewed skill met the row's requirement and evidence "
+                        "compatibility threshold without creating a misleading category."
+                    )
             normalized_coverage = _deduplicated_coverage(coverage)
             ranked.append(
                 _SkillCandidate(
@@ -1187,16 +1506,50 @@ class DeterministicResumeComposer:
                         "of demonstrated or category-compatible reviewed complements; "
                         "declared-only skills retained a measured penalty."
                     ),
-                    provenance=(
-                        category.source_reference
-                        or f"profile.technical_skills[{category_id}]",
+                    provenance=tuple(
+                        skill.source_reference
+                        or category.source_reference
+                        or f"profile.technical_skills[{category_id}]"
+                        for skill in selected
                     ),
                     source_category_ids=(category_id,),
                     one_skill_exception_reason=one_skill_exception_reason,
+                    grouping_reason=(
+                        "Display-only row joins reviewed flat skills through shared posting "
+                        "requirements or evidence-backed compatibility; original source order "
+                        "is only a deterministic secondary preference."
+                        if is_display_regrouped
+                        else "Preserved the reviewed canonical skill category."
+                    ),
+                    relationship=min(
+                        selected_relationships,
+                        key=_relationship_order,
+                        default=EvidenceRelationship.REJECTED,
+                    ),
                     original_order=original_order,
+                    estimated_available_width_points=width_estimate.available_width_points,
+                    estimated_used_width_points=width_estimate.used_width_points,
+                    estimated_remaining_width_points=width_estimate.remaining_width_points,
+                    estimated_used_width_ratio=width_estimate.used_width_ratio,
+                    compatible_omitted_skill_values=compatible_omitted,
+                    underfill_exception_reason=underfill_exception_reason,
                 )
             )
         ranked.sort(key=lambda item: (-item.score, item.original_order, item.category_id))
+        related_count = sum(
+            item.relationship is not EvidenceRelationship.REJECTED
+            for item in ranked
+        )
+        if related_count < 2:
+            ranked = [
+                item
+                for item in ranked
+                if item.relationship is not EvidenceRelationship.REJECTED
+                or (
+                    len(source_categories) <= 3
+                    and item.supported_skill_ids
+                )
+            ]
         return ranked
 
     def _expansions(
@@ -1214,11 +1567,10 @@ class DeterministicResumeComposer:
         selected_entry_counts = Counter(
             bullet_by_id[item].entry_id for item in state.bullet_ids
         )
-        credible_project_ids = self._credible_project_ids(bullets)
-        selected_project_ids = {
-            bullet_by_id[item].entry_id
+        selected_direct_requirements = {
+            requirement_id
             for item in state.bullet_ids
-            if bullet_by_id[item].entry_kind is EntityKind.PROJECT
+            for requirement_id in bullet_by_id[item].direct_requirement_ids
         }
         options: list[_Expansion] = []
         for candidate in bullets:
@@ -1242,6 +1594,28 @@ class DeterministicResumeComposer:
             if duplicate or dominated:
                 continue
             opens_entry = candidate.entry_id not in selected_entries
+            depth = selected_entry_counts.get(candidate.entry_id, 0)
+            if (
+                opens_entry
+                and candidate.intrinsic_evidence_strength < 20.0
+                and not (
+                    set(candidate.direct_requirement_ids)
+                    - selected_direct_requirements
+                )
+            ):
+                continue
+            containment_penalty = (
+                max(0, depth - 1) * 10.0
+                if candidate.entry_kind is EntityKind.PROJECT
+                else depth * 10.0
+            )
+            if set(candidate.direct_requirement_ids) - selected_direct_requirements:
+                containment_penalty = 0.0
+            penalty += containment_penalty
+            redundancy_by_source[candidate.evidence_id] = max(
+                redundancy_by_source.get(candidate.evidence_id, 0),
+                penalty,
+            )
             kind = (
                 CompositionCandidateKind.EXPERIENCE_ENTRY
                 if opens_entry and candidate.entry_kind == EntityKind.EXPERIENCE
@@ -1266,7 +1640,6 @@ class DeterministicResumeComposer:
                 constraints,
             ):
                 continue
-            depth = selected_entry_counts.get(candidate.entry_id, 0)
             coherence_bonus = (
                 5.0
                 if not opens_entry and depth == 1
@@ -1274,23 +1647,21 @@ class DeterministicResumeComposer:
                 if not opens_entry and depth == 2
                 else 0.0
             )
-            project_bonus = (
-                9.0
-                if (
-                    candidate.entry_kind is EntityKind.PROJECT
-                    and not opens_entry
-                    and depth == 1
-                    and candidate.entry_id in credible_project_ids
+            if (
+                candidate.entry_kind is EntityKind.PROJECT
+                and not opens_entry
+                and depth == 1
+            ):
+                coherence_bonus += 9.0
+            if (
+                candidate.entry_kind is EntityKind.PROJECT
+                and opens_entry
+                and not any(
+                    bullet_by_id[item].entry_kind is EntityKind.PROJECT
+                    for item in state.bullet_ids
                 )
-                else 5.0
-                if (
-                    candidate.entry_kind is EntityKind.PROJECT
-                    and opens_entry
-                    and not selected_project_ids
-                    and candidate.entry_id in credible_project_ids
-                )
-                else 0.0
-            )
+            ):
+                coherence_bonus += 5.0
             options.append(
                 _Expansion(
                     candidate_id=f"{kind.value}:{candidate.evidence_id}",
@@ -1299,7 +1670,7 @@ class DeterministicResumeComposer:
                     state=proposal,
                     marginal_score=marginal,
                     redundancy_penalty=penalty,
-                    preference_bonus=coherence_bonus + project_bonus,
+                    preference_bonus=coherence_bonus,
                     line_cost=(
                         candidate.line_fit.total_vertical_line_cost
                         + (2.0 if opens_entry else 0.0)
@@ -1321,7 +1692,21 @@ class DeterministicResumeComposer:
             }
             repeated = len(set(skill_candidate.coverage_keys) & selected_coverage)
             distinct_coverage = set(skill_candidate.coverage_keys) - selected_coverage
-            if len(state.skill_category_ids) >= 3 and not distinct_coverage:
+            if (
+                len(state.skill_category_ids) >= 3
+                and (
+                    skill_candidate.relationship
+                    not in {
+                        EvidenceRelationship.DIRECT,
+                        EvidenceRelationship.ADJACENT,
+                        EvidenceRelationship.COMPLEMENTARY,
+                    }
+                    or (
+                        not distinct_coverage
+                        and not skill_candidate.supported_skill_ids
+                    )
+                )
+            ):
                 # Three meaningful rows are the normal soft target. A fourth
                 # row must add a direct, distinct posting signal instead of
                 # repeating selected evidence through another display label.
@@ -1471,6 +1856,12 @@ class DeterministicResumeComposer:
             + candidate.score * feature_repeat_ratio * 0.20
             + depth_penalty
         )
+        if (
+            candidate.relationship is EvidenceRelationship.COMPLEMENTARY
+            and coverage_ratio >= 1.0
+            and not candidate.meaningful_overlap
+        ):
+            penalty += candidate.score * 0.40
         return round(min(candidate.score, penalty), 2), False
 
     @staticmethod
@@ -1483,6 +1874,18 @@ class DeterministicResumeComposer:
             if candidate.entry_kind is EntityKind.PROJECT
         )
         return {entry_id for entry_id, count in counts.items() if count >= 2}
+
+    @staticmethod
+    def _state_has_substantive_project(
+        state: _State,
+        bullet_by_id: dict[str, _BulletCandidate],
+    ) -> bool:
+        counts = Counter(
+            bullet_by_id[evidence_id].entry_id
+            for evidence_id in state.bullet_ids
+            if bullet_by_id[evidence_id].entry_kind is EntityKind.PROJECT
+        )
+        return any(count >= 2 for count in counts.values())
 
     @staticmethod
     def _dominance_penalty(
@@ -1503,6 +1906,38 @@ class DeterministicResumeComposer:
         ]
         candidate_coverage = set(candidate.coverage_keys)
         if not candidate_coverage:
+            return 0.0, False, None
+        selected_portfolio_coverage = {
+            key for item in selected for key in item.coverage_keys
+        }
+        entry_potential_coverage = {
+            key
+            for item in bullet_by_id.values()
+            if item.entry_id == candidate.entry_id
+            for key in item.coverage_keys
+        }
+        if _unique_coverage(
+            entry_potential_coverage,
+            selected_portfolio_coverage,
+        ):
+            return 0.0, False, None
+        entry_candidates = [
+            item
+            for item in bullet_by_id.values()
+            if item.entry_id == candidate.entry_id
+        ]
+        selected_portfolio_features = {
+            feature for item in selected for feature in item.normalized_features
+        }
+        entry_potential_features = {
+            feature
+            for item in entry_candidates
+            for feature in item.normalized_features
+        }
+        if (
+            len(entry_candidates) >= 2
+            and len(entry_potential_features - selected_portfolio_features) >= 2
+        ):
             return 0.0, False, None
         selected_by_entry: dict[str, list[_BulletCandidate]] = {}
         for item in selected:
@@ -1564,22 +1999,51 @@ class DeterministicResumeComposer:
         unique_coverage = len(coverage_counts)
         repeated_coverage = sum(max(0, count - 1) for count in coverage_counts.values())
         opened_entries = {bullet.entry_id for bullet in bullets}
-        experience_count = len(
-            {bullet.entry_id for bullet in bullets if bullet.entry_kind is EntityKind.EXPERIENCE}
+        direct_count = sum(
+            bullet.relationship is EvidenceRelationship.DIRECT for bullet in bullets
         )
-        project_count = len(
-            {bullet.entry_id for bullet in bullets if bullet.entry_kind is EntityKind.PROJECT}
+        adjacent_count = sum(
+            bullet.relationship is EvidenceRelationship.ADJACENT for bullet in bullets
+        )
+        complementary_count = sum(
+            bullet.relationship is EvidenceRelationship.COMPLEMENTARY
+            for bullet in bullets
+        )
+        relationship_adjustment = (
+            (direct_count * 10.0)
+            + (adjacent_count * 6.0)
+            + complementary_count
+            - (
+                max(
+                    0,
+                    complementary_count - max(1, direct_count + adjacent_count),
+                )
+                * 8.0
+            )
+        )
+        direct_requirement_counts = Counter(
+            requirement_id
+            for bullet in bullets
+            for requirement_id in bullet.direct_requirement_ids
+        )
+        direct_requirement_adjustment = (
+            len(direct_requirement_counts) * 18.0
+            - sum(max(0, count - 1) for count in direct_requirement_counts.values())
+            * 2.0
         )
         project_bullet_counts = Counter(
             bullet.entry_id
             for bullet in bullets
             if bullet.entry_kind is EntityKind.PROJECT
         )
-        credible_project_ids = self._credible_project_ids(list(bullet_by_id.values()))
+        credible_project_ids = self._credible_project_ids(
+            list(bullet_by_id.values())
+        )
+        project_count = len(project_bullet_counts)
         substantive_project_count = sum(
             count >= 2 for count in project_bullet_counts.values()
         )
-        project_representation_adjustment = (
+        project_depth_adjustment = (
             16.0 + max(0, substantive_project_count - 1) * 4.0
             if substantive_project_count
             else -14.0
@@ -1587,10 +2051,6 @@ class DeterministicResumeComposer:
             else -12.0
             if credible_project_ids
             else 0.0
-        )
-        portfolio_shape_bonus = (
-            (6.0 if 2 <= experience_count <= 3 else 0.0)
-            + project_representation_adjustment
         )
         sparse_skill_row_count = sum(
             len(skill_by_id[item].category.skills) == 1
@@ -1601,7 +2061,9 @@ class DeterministicResumeComposer:
             + sum(skill_by_id[item].score * 0.42 for item in state.skill_category_ids)
             + (min(3, len(state.skill_category_ids)) * 10.0)
             + (5.0 if len(state.skill_category_ids) >= 4 else 0.0)
-            + portfolio_shape_bonus
+            + relationship_adjustment
+            + direct_requirement_adjustment
+            + project_depth_adjustment
             + (unique_coverage * 7.0)
             - (repeated_coverage * 6.0)
             - (sparse_skill_row_count * 12.0)
@@ -1945,6 +2407,7 @@ class DeterministicResumeComposer:
                     admission_reason=skill_candidate.construction_reason,
                     expansion_type=CompositionCandidateKind.SKILL_CATEGORY.value,
                     skill_support_status=_skill_support_status(skill_candidate),
+                    evidence_relationship=skill_candidate.relationship,
                 )
             )
         for index, education in enumerate(profile.education):
@@ -2074,6 +2537,19 @@ class DeterministicResumeComposer:
             excluded.append(diagnostic)
             excluded_by_bounds.append(diagnostic)
 
+        for candidate in candidate_pool.redundancy_excluded_bullets:
+            diagnostic = self._candidate_diagnostic(
+                candidate,
+                selected=False,
+                redundancy_penalty=candidate.score,
+                exclusion_reason=(
+                    "Suppressed as duplicate or near-duplicate reviewed evidence."
+                ),
+                exclusion_category=CandidateExclusionCategory.REDUNDANCY_THRESHOLD,
+            )
+            excluded.append(diagnostic)
+            excluded_by_thresholds.append(diagnostic)
+
         for candidate in candidate_pool.relevance_excluded_bullets:
             diagnostic = self._candidate_diagnostic(
                 candidate,
@@ -2149,6 +2625,7 @@ class DeterministicResumeComposer:
                 admission_reason=skill_candidate.construction_reason,
                 expansion_type=CompositionCandidateKind.SKILL_CATEGORY.value,
                 skill_support_status=_skill_support_status(skill_candidate),
+                evidence_relationship=skill_candidate.relationship,
             )
             excluded.append(diagnostic)
             if category is CandidateExclusionCategory.SEARCH_BOUND:
@@ -2226,6 +2703,8 @@ class DeterministicResumeComposer:
                 if evidence_id in selected_source_evidence_ids
             ]
             distinct_contributions: dict[str, str] = {}
+            evidence_relationships: dict[str, EvidenceRelationship] = {}
+            marginal_contributions: dict[str, float] = {}
             for evidence_id in selected_ids:
                 selected_candidate = next(
                     (
@@ -2236,6 +2715,17 @@ class DeterministicResumeComposer:
                     None,
                 )
                 if selected_candidate is not None:
+                    evidence_relationships[evidence_id] = (
+                        selected_candidate.relationship
+                    )
+                    marginal_contributions[evidence_id] = round(
+                        selected_candidate.score
+                        - redundancy_by_source.get(
+                            selected_candidate.evidence_id,
+                            0,
+                        ),
+                        2,
+                    )
                     distinct_contributions[evidence_id] = self._distinct_contribution(
                         selected_candidate,
                         [
@@ -2262,6 +2752,8 @@ class DeterministicResumeComposer:
                         bool(available_ids) and len(selected_ids) == len(available_ids)
                     ),
                     distinct_contributions=distinct_contributions,
+                    evidence_relationships=evidence_relationships,
+                    marginal_contributions=marginal_contributions,
                 )
             )
         credible_project_ids = sorted(self._credible_project_ids(all_relevant_bullets))
@@ -2331,10 +2823,138 @@ class DeterministicResumeComposer:
                 ],
                 skill_values=[skill.value for skill in candidate.category.skills],
                 provenance=list(candidate.provenance),
+                relationship=candidate.relationship,
+                estimated_available_width_points=candidate.estimated_available_width_points,
+                estimated_used_width_points=candidate.estimated_used_width_points,
+                estimated_remaining_width_points=candidate.estimated_remaining_width_points,
+                estimated_used_width_ratio=candidate.estimated_used_width_ratio,
+                compatible_omitted_skill_values=list(
+                    candidate.compatible_omitted_skill_values
+                ),
+                underfill_exception_reason=candidate.underfill_exception_reason,
                 one_skill_exception_reason=candidate.one_skill_exception_reason,
+                grouping_reason=candidate.grouping_reason,
             )
             for candidate in selected_skill_candidates
         ]
+        requirement_coverage: list[RequirementCoverageDiagnostic] = []
+        for requirement in context.requirements.requirements:
+            matching_bullets = [
+                candidate
+                for candidate in selected_bullets.values()
+                if requirement.id
+                in {
+                    *candidate.direct_requirement_ids,
+                    *candidate.adjacent_requirement_ids,
+                    *candidate.complementary_requirement_ids,
+                    *candidate.incidental_requirement_ids,
+                }
+            ]
+            requirement_coverage.append(
+                RequirementCoverageDiagnostic(
+                    requirement_id=requirement.id,
+                    text=requirement.text,
+                    authority=requirement.authority,
+                    importance=requirement.importance,
+                    selected_entry_ids=list(
+                        dict.fromkeys(item.entry_id for item in matching_bullets)
+                    ),
+                    selected_bullet_ids=[
+                        item.evidence_id for item in matching_bullets
+                    ],
+                    relationships=list(
+                        dict.fromkeys(item.relationship for item in matching_bullets)
+                    ),
+                )
+            )
+        selected_skill_requirement_ids = {
+            coverage_key.removeprefix("requirement:")
+            for candidate in selected_skill_candidates
+            for coverage_key in candidate.coverage_keys
+            if coverage_key.startswith("requirement:")
+        }
+        portfolio_coverage_gaps = [
+            item.text
+            for item in requirement_coverage
+            if item.authority
+            in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
+            and not item.selected_bullet_ids
+            and item.requirement_id not in selected_skill_requirement_ids
+        ]
+        selected_complementary_ids = [
+            candidate.evidence_id
+            for candidate in selected_bullets.values()
+            if candidate.relationship is EvidenceRelationship.COMPLEMENTARY
+        ]
+        exclusion_by_candidate_id = {
+            item.candidate_id: item.exclusion_reason or "Lost the final portfolio comparison."
+            for item in excluded
+        }
+        direct_candidate_tradeoffs = [
+            DirectCandidateTradeoffDiagnostic(
+                omitted_candidate_id=candidate.evidence_id,
+                selected_complementary_candidate_ids=selected_complementary_ids,
+                reason=exclusion_by_candidate_id.get(
+                    f"bullet:{candidate.evidence_id}",
+                    "The direct candidate did not clear a bounded relevance, redundancy, "
+                    "cost, or page-fit comparison.",
+                ),
+            )
+            for candidate in all_relevant_bullets
+            if candidate.relationship is EvidenceRelationship.DIRECT
+            and candidate.evidence_id not in final.state.bullet_ids
+            and selected_complementary_ids
+        ]
+        selected_skill_values = {
+            skill.value.casefold()
+            for candidate in selected_skill_candidates
+            for skill in candidate.category.skills
+        }
+        source_skill_values = (
+            [
+                skill.value
+                for category in profile.technical_skills
+                for skill in category.skills
+            ]
+            if profile.technical_skills
+            else list(profile.declared_skills)
+        )
+        omitted_direct_skill_values: list[str] = []
+        omitted_direct_skill_reasons: dict[str, str] = {}
+        empty_features = extract_reviewed_text_features("")
+        for value in source_skill_values:
+            if value.casefold() in selected_skill_values:
+                continue
+            features = extract_reviewed_text_features(value)
+            assessment = assess_evidence_relationship(
+                bullet_text=value,
+                bullet_features=features,
+                entry_features=empty_features,
+                structured_values=[value],
+                requirements=context.requirements,
+                reviewed_skill=True,
+            )
+            if assessment.relationship is not EvidenceRelationship.DIRECT:
+                continue
+            omitted_direct_skill_values.append(value)
+            compatible_rows = [
+                candidate.label
+                for candidate in skills
+                if value in candidate.compatible_omitted_skill_values
+            ]
+            if compatible_rows:
+                omitted_direct_skill_reasons[value] = (
+                    "The direct reviewed skill was compatible with "
+                    + ", ".join(compatible_rows)
+                    + ", but adding it would exceed the measured Template V1 row width; "
+                    "the selected row retained higher-coverage skills at the same page cost."
+                )
+            else:
+                omitted_direct_skill_reasons[value] = (
+                    "The direct reviewed skill lost the normal page-fit comparison to selected "
+                    "bullets or skill rows; no truthful compatible row fit within Template V1's "
+                    "measured width."
+                )
         relevant_unused_entry_ids = {
             candidate.entry_id
             for candidate in all_relevant_bullets
@@ -2391,6 +3011,12 @@ class DeterministicResumeComposer:
             entry_bullet_selections=entry_bullet_selections,
             project_representation=project_representation,
             selected_skill_rows=selected_skill_rows,
+            posting_requirements=list(context.requirements.requirements),
+            requirement_coverage=requirement_coverage,
+            portfolio_coverage_gaps=portfolio_coverage_gaps,
+            direct_candidate_tradeoffs=direct_candidate_tradeoffs,
+            omitted_direct_skill_values=omitted_direct_skill_values,
+            omitted_direct_skill_reasons=omitted_direct_skill_reasons,
             selected_candidates=selected_candidates,
             excluded_high_ranking_candidates=excluded,
             unused_admissible_candidates=unused_admissible,
@@ -2507,6 +3133,18 @@ class DeterministicResumeComposer:
             ),
             dominance_relationship=dominance_relationship,
             unique_capability_retained=unique_capability_retained,
+            evidence_relationship=candidate.relationship,
+            direct_requirement_ids=list(candidate.direct_requirement_ids),
+            adjacent_requirement_ids=list(candidate.adjacent_requirement_ids),
+            complementary_requirement_ids=list(
+                candidate.complementary_requirement_ids
+            ),
+            incidental_requirement_ids=list(candidate.incidental_requirement_ids),
+            short_token_contributions=list(candidate.short_token_contributions),
+            marginal_contribution=round(
+                candidate.score - redundancy_penalty,
+                2,
+            ),
         )
 
     @staticmethod
@@ -2624,14 +3262,14 @@ def _posting_context(posting: JobPosting) -> _PostingContext:
         if not _meaningful_tokens(normalized):
             continue
         weight = 1.0
-        if re.search(r"\b(required|requirements|must|minimum)\b", normalized):
-            weight += 0.35
-        if re.search(r"\b(preferred|bonus|nice to have)\b", normalized):
-            weight += 0.15
-        if re.search(r"\b(responsibilities|what you will do|duties)\b", normalized):
-            weight += 0.20
         if re.search(r"\b(incidental(?:ly)?|optional(?:ly)?|helpful)\b", normalized):
-            weight *= 0.40
+            weight = 0.25
+        elif re.search(r"\b(preferred|bonus|nice to have)\b", normalized):
+            weight = 0.55
+        elif re.search(r"\b(required|requirements|must|minimum)\b", normalized):
+            weight = 1.35
+        elif re.search(r"\b(responsibilities|what you will do|duties)\b", normalized):
+            weight = 1.20
         segments.append((normalized, weight))
     return _PostingContext(
         normalized_text=f"{normalized_title} {normalized_description}".strip(),
@@ -2639,6 +3277,7 @@ def _posting_context(posting: JobPosting) -> _PostingContext:
         title_tokens=frozenset(_meaningful_tokens(normalized_title)),
         weighted_segments=tuple(segments),
         features=extract_reviewed_text_features(f"{posting.title}\n{posting.description}"),
+        requirements=extract_posting_requirements(posting),
     )
 
 
@@ -2649,15 +3288,25 @@ def _display_categories_from_declared_skills(
     confirmed_evidence_text: str,
     relevant_evidence_text: str,
 ) -> list[TechnicalSkillCategory]:
-    """Build bounded rank-tier display rows from exact reviewed flat skills.
+    """Build non-persistent semantic rows from flat reviewed skills.
 
-    The fallback creates no new skill values and does not change the canonical
-    profile. Generic tier labels avoid a technology dictionary while exact
-    source-index provenance keeps every displayed value auditable.
+    A shared typed posting requirement is the primary compatibility signal.  It
+    permits non-contiguous source values to form one row while retaining every
+    original source index.  Source proximity is only used for the safe fallback
+    where the posting cannot establish a stronger relationship.
     """
 
-    ranked: list[tuple[float, int, ReviewedTechnicalSkill]] = []
+    ranked: list[
+        tuple[
+            float,
+            int,
+            ReviewedTechnicalSkill,
+            EvidenceRelationship,
+            EvidenceRelationshipAssessment,
+        ]
+    ] = []
     seen: set[str] = set()
+    empty_entry_features = extract_reviewed_text_features("")
     for source_index, raw_value in enumerate(profile.declared_skills):
         value = raw_value.strip()
         normalized = _normalize(value)
@@ -2665,18 +3314,29 @@ def _display_categories_from_declared_skills(
             continue
         seen.add(normalized)
         features = extract_reviewed_text_features(value)
-        match = match_reviewed_features(features, context.features)
-        match_is_primary = _match_has_primary_posting_context(match, context)
+        assessment = assess_evidence_relationship(
+            bullet_text=value,
+            bullet_features=features,
+            entry_features=empty_entry_features,
+            structured_values=[value],
+            requirements=context.requirements,
+            reviewed_skill=True,
+        )
         supported = _contains_phrase(confirmed_evidence_text, normalized)
         supported_by_relevant_evidence = _contains_phrase(
             relevant_evidence_text,
             normalized,
         )
-        eligible = match_is_primary or supported_by_relevant_evidence
-        if not eligible:
-            continue
+        relationship_base = {
+            EvidenceRelationship.DIRECT: 80.0,
+            EvidenceRelationship.ADJACENT: 52.0,
+            EvidenceRelationship.COMPLEMENTARY: 28.0,
+            EvidenceRelationship.INCIDENTAL: 0.0,
+            EvidenceRelationship.REJECTED: 0.0,
+        }[assessment.relationship]
         score = (
-            (match.relevance_score * 1.5)
+            relationship_base
+            + min(30.0, assessment.contextual_relevance)
             + (12.0 if supported else -4.0)
             + (6.0 if supported_by_relevant_evidence else 0.0)
         )
@@ -2689,32 +3349,162 @@ def _display_categories_from_declared_skills(
                     value=value,
                     source_reference=f"profile.declared_skills[{source_index}]",
                 ),
+                assessment.relationship,
+                assessment,
             )
         )
-    ranked.sort(key=lambda item: (-item[0], item[1], item[2].value.casefold()))
-    selected = ranked[:20]
+    direct_or_adjacent_indexes = {
+        record[1]
+        for record in ranked
+        if record[3] in {
+            EvidenceRelationship.DIRECT,
+            EvidenceRelationship.ADJACENT,
+        }
+    }
+    ranked = [
+        record
+        for record in ranked
+        if (
+            record[3]
+            in {
+                EvidenceRelationship.DIRECT,
+                EvidenceRelationship.ADJACENT,
+                EvidenceRelationship.COMPLEMENTARY,
+            }
+            or _contains_phrase(confirmed_evidence_text, _normalize(record[2].value))
+            or _contains_phrase(relevant_evidence_text, _normalize(record[2].value))
+            or (
+                any(0 < record[1] - anchor <= 7 for anchor in direct_or_adjacent_indexes)
+                and extract_reviewed_text_features(record[2].value).technical_specificity >= 0.08
+            )
+        )
+    ]
+    ranked.sort(
+        key=lambda item: (
+            _relationship_order(item[3]),
+            -item[0],
+            item[1],
+            item[2].value.casefold(),
+        )
+    )
+    selected = ranked[:24]
+    selected_direct_indexes = {
+        record[1]
+        for record in selected
+        if record[3] in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
+    }
+    # Preserve nearby reviewed companions of authoritative requirements even
+    # when broad evidence-supported inventory would otherwise consume the
+    # bounded candidate slice first.
+    for record in ranked[24:]:
+        if len(selected) >= 32:
+            break
+        if any(abs(record[1] - index) <= 2 for index in selected_direct_indexes):
+            selected.append(record)
     if not selected:
         return []
-    row_count = max(1, min(4, len(selected) // 2))
-    labels = (
-        "Primary Technical Skills",
-        "Supporting Technical Skills",
-        "Complementary Technical Skills",
-        "Additional Reviewed Skills",
-    )
-    base_size, remainder = divmod(len(selected), row_count)
+    requirement_by_id = {item.id: item for item in context.requirements.requirements}
+    groups_by_requirement: dict[
+        str,
+        list[
+            tuple[
+                float,
+                int,
+                ReviewedTechnicalSkill,
+                EvidenceRelationship,
+                EvidenceRelationshipAssessment,
+            ]
+        ],
+    ] = {}
+    fallback: list[
+        tuple[
+            float,
+            int,
+            ReviewedTechnicalSkill,
+            EvidenceRelationship,
+            EvidenceRelationshipAssessment,
+        ]
+    ] = []
+    for record in selected:
+        assessment = record[4]
+        requirement_ids = (
+            *assessment.direct_requirement_ids,
+            *assessment.adjacent_requirement_ids,
+            *assessment.complementary_requirement_ids,
+        )
+        eligible_ids = [item for item in requirement_ids if item in requirement_by_id]
+        if not eligible_ids:
+            fallback.append(record)
+            continue
+        preferred_requirement_id = min(
+            eligible_ids,
+            key=lambda item: (
+                -requirement_by_id[item].importance,
+                _relationship_order(record[3]),
+                item,
+            ),
+        )
+        groups_by_requirement.setdefault(preferred_requirement_id, []).append(record)
+
+    grouped: list[
+        tuple[
+            str | None,
+            list[
+                tuple[
+                    float,
+                    int,
+                    ReviewedTechnicalSkill,
+                    EvidenceRelationship,
+                    EvidenceRelationshipAssessment,
+                ]
+            ],
+        ]
+    ] = [
+        (requirement_id, records)
+        for requirement_id, records in groups_by_requirement.items()
+    ]
+    fallback.sort(key=lambda item: item[1])
+    for record in fallback:
+        compatible_group = min(
+            (
+                records
+                for _requirement_id, records in grouped
+                if any(abs(record[1] - member[1]) <= 2 for member in records)
+                and (
+                    _requirement_id is not None
+                    or (
+                        record[3] is records[-1][3]
+                        and _flat_skill_capability_compatible(
+                            profile,
+                            record[2].value,
+                            [member[2].value for member in records],
+                        )
+                    )
+                )
+            ),
+            key=lambda records: min(abs(record[1] - member[1]) for member in records),
+            default=None,
+        )
+        if compatible_group is None or len(compatible_group) >= 8:
+            grouped.append((None, [record]))
+        else:
+            compatible_group.append(record)
+
     rows: list[TechnicalSkillCategory] = []
-    offset = 0
-    for row_index in range(row_count):
-        row_size = base_size + int(row_index < remainder)
-        records = selected[offset : offset + row_size]
-        offset += row_size
+    for row_index, (requirement_id, records) in enumerate(grouped):
+        records.sort(key=lambda item: (-item[0], item[1], item[2].value.casefold()))
         skills = [record[2] for record in records]
         source_indexes = [record[1] for record in records]
+        requirement = requirement_by_id.get(requirement_id or "")
+        label = _display_group_label(
+            requirement.text if requirement is not None else "",
+            [skill.value for skill in skills],
+            profile,
+        )
         rows.append(
             TechnicalSkillCategory(
                 id=f"display-skill-row:{row_index + 1}",
-                category=labels[row_index],
+                category=label,
                 values=[skill.value for skill in skills],
                 skills=skills,
                 source_reference=(
@@ -2727,6 +3517,127 @@ def _display_categories_from_declared_skills(
             )
         )
     return rows
+
+
+def _flat_skill_capability_compatible(
+    profile: MasterProfile,
+    value: str,
+    group_values: list[str],
+) -> bool:
+    """Require reviewed evidence context before joining fallback flat-skill rows."""
+
+    def capability_labels(skill_value: str) -> set[str]:
+        normalized_value = _normalize(skill_value)
+        return {
+            _normalize(capability)
+            for evidence in profile.evidence
+            if _contains_phrase(
+                _normalize(" ".join([evidence.source_text, *evidence.technologies])),
+                normalized_value,
+            )
+            for capability in evidence.capabilities
+        }
+
+    candidate_labels = capability_labels(value)
+    return bool(candidate_labels) and any(
+        candidate_labels & capability_labels(group_value)
+        for group_value in group_values
+    )
+
+
+_DISPLAY_LABEL_STOPWORDS = frozenset(
+    {
+        "a", "an", "and", "bonus", "build", "core", "develop", "experience", "for", "in", "or",
+        "preferred", "qualification", "qualifications", "related", "required",
+        "similar", "skills", "strong", "the", "timers", "use", "using", "validate", "with",
+    }
+)
+
+
+def _display_group_label(
+    requirement_text: str,
+    values: list[str],
+    profile: MasterProfile,
+) -> str:
+    """Derive a concise display label from reviewed requirements, never new skills."""
+
+    requirement_tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", _normalize(requirement_text))
+        if token not in _DISPLAY_LABEL_STOPWORDS and len(token) > 2
+    ]
+    remaining = _normalize(requirement_text)
+    for value in values:
+        normalized_value = _normalize(value)
+        if normalized_value:
+            remaining = re.sub(rf"(?<!\\w){re.escape(normalized_value)}(?!\\w)", " ", remaining)
+    # Standalone technical identifiers in a requirement are evidence terms, not
+    # useful category names when they are not themselves displayed in the row.
+    for identifier in re.findall(r"\b[A-Z][A-Z0-9+/#.-]{1,}\b", requirement_text):
+        remaining = re.sub(
+            rf"(?<!\\w){re.escape(_normalize(identifier))}(?!\\w)",
+            " ",
+            remaining,
+        )
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", remaining)
+        if token not in _DISPLAY_LABEL_STOPWORDS and len(token) > 2
+    ]
+    if tokens:
+        if tokens == ["peripherals"] and any(
+            "interfac" in _normalize(skill) for skill in profile.declared_skills
+        ):
+            return "Interfaces & Peripherals"
+        return _professional_display_case(" ".join(tokens[-3:]), requirement_text)
+    if requirement_tokens:
+        concept = requirement_tokens[-1]
+        singular = concept[:-1] if len(concept) > 4 and concept.endswith("s") else concept
+        return _professional_display_case(f"{singular} development", requirement_text)
+    capability_label = _display_capability_label(profile, values)
+    if capability_label:
+        return capability_label
+    if len(values) == 1:
+        return values[0]
+    return " / ".join(values[:2])
+
+
+def _display_capability_label(profile: MasterProfile, values: list[str]) -> str | None:
+    """Use reviewed evidence capabilities as a display-only fallback label."""
+
+    normalized_values = [_normalize(value) for value in values]
+    capability_counts: Counter[str] = Counter()
+    for evidence in profile.evidence:
+        evidence_text = _normalize(
+            " ".join([evidence.source_text, *evidence.technologies, *evidence.capabilities])
+        )
+        if not any(_contains_phrase(evidence_text, value) for value in normalized_values):
+            continue
+        capability_counts.update(
+            _normalize(capability) for capability in evidence.capabilities if capability.strip()
+        )
+    ranked_labels = capability_counts.most_common(2)
+    labels = [label for label, _count in ranked_labels]
+    if not labels:
+        return None
+    if len(values) <= 2 or (
+        len(ranked_labels) == 2 and ranked_labels[0][1] > ranked_labels[1][1]
+    ):
+        labels = labels[:1]
+    return " & ".join(_professional_display_case(label, label) for label in labels)
+
+
+def _professional_display_case(value: str, source: str) -> str:
+    """Title case ordinary words while retaining identifier capitalization from source."""
+
+    source_identifiers = {
+        _normalize(identifier): identifier
+        for identifier in re.findall(r"\b[A-Z][A-Z0-9+/#.-]{1,}\b", source)
+    }
+    return " ".join(
+        source_identifiers.get(token, token.title())
+        for token in value.split()
+    )
 
 
 def _evidence_score(
@@ -2746,14 +3657,18 @@ def _evidence_score(
     bool,
     bool,
     str,
+    EvidenceRelationship,
+    list[str],
+    list[str],
+    list[str],
+    list[str],
+    list[ShortTokenContribution],
 ]:
     source_parts = [
         evidence.source_text,
         *evidence.technologies,
         *evidence.capabilities,
         *evidence.outcomes,
-        *entry.technologies,
-        *entry.capabilities,
     ]
     bullet_features = extract_reviewed_text_features(" ".join(source_parts))
     entry_features = extract_reviewed_text_features(
@@ -2771,93 +3686,57 @@ def _evidence_score(
     combined_features = extract_reviewed_text_features(f"{' '.join(source_parts)} {entry.title}")
     bullet_match = match_reviewed_features(bullet_features, context.features)
     entry_match = match_reviewed_features(entry_features, context.features)
-    bullet_match_is_primary = _match_has_primary_posting_context(
-        bullet_match,
-        context,
+    assessment = assess_evidence_relationship(
+        bullet_text=evidence.source_text,
+        bullet_features=bullet_features,
+        entry_features=entry_features,
+        structured_values=[
+            *evidence.technologies,
+            *evidence.capabilities,
+            *evidence.outcomes,
+        ],
+        requirements=context.requirements,
     )
-    entry_match_is_primary = _match_has_primary_posting_context(
-        entry_match,
-        context,
-    )
-    lexical_matches = [
-        *bullet_match.meaningful_overlap,
-        *entry_match.meaningful_overlap,
-    ]
-    bullet_structured_matches = _novel_structured_matches(
-        _primary_structured_matches(
-            [
-                *evidence.technologies,
-                *evidence.capabilities,
-                *entry.technologies,
-                *entry.capabilities,
-            ],
-            context,
-        ),
-        lexical_matches,
-    )
-    entry_structured_matches = _novel_structured_matches(
-        _primary_structured_matches(
-            [
-                entry.title,
-                entry.subtitle or "",
-                entry.technology_label or "",
-                *entry.technologies,
-                *entry.capabilities,
-            ],
-            context,
-        ),
-        [*lexical_matches, *bullet_structured_matches],
-    )
-    admitted_by_entry_context = (
-        entry_match_is_primary
-        and bullet_features.technical_specificity >= 0.16
-        and not bullet_match.generic_only
-    )
-    admitted_by_structured_context = bool(bullet_structured_matches) or (
-        bool(entry_structured_matches)
-        and bullet_features.technical_specificity >= 0.16
-    )
-    admitted = (
-        bullet_match_is_primary
-        or admitted_by_entry_context
-        or admitted_by_structured_context
-    )
-    meaningful_overlap = _maximal_phrases(
-        [
-            *bullet_match.meaningful_overlap,
-            *entry_match.meaningful_overlap,
-            *bullet_structured_matches,
-            *entry_structured_matches,
-        ]
-    )
-    responsibility_overlap = tuple(
-        dict.fromkeys(
-            [
-                *bullet_match.responsibility_overlap,
-                *entry_match.responsibility_overlap,
-            ]
-        )
-    )
+    admitted = assessment.relationship in {
+        EvidenceRelationship.DIRECT,
+        EvidenceRelationship.ADJACENT,
+        EvidenceRelationship.COMPLEMENTARY,
+    }
+    meaningful_overlap = _maximal_phrases(list(assessment.meaningful_overlap))
+    relationship_bonus = {
+        EvidenceRelationship.DIRECT: 24.0,
+        EvidenceRelationship.ADJACENT: 16.0,
+        EvidenceRelationship.COMPLEMENTARY: 4.0,
+        EvidenceRelationship.INCIDENTAL: -6.0,
+        EvidenceRelationship.REJECTED: -20.0,
+    }[assessment.relationship]
     evidence_strength = (
         8.0
         + (bullet_features.technical_specificity * 20.0)
         + min(10.0, len(bullet_features.responsibility_signals) * 2.5)
         + min(10.0, len(bullet_features.outcome_signals) * 3.0)
         + min(8.0, len(evidence.outcomes) * 3.0)
+        + min(
+            8.0,
+            (
+                len(bullet_features.outcome_signals)
+                + len(evidence.outcomes)
+            )
+            * 4.0,
+        )
     )
-    entry_context_score = min(12.0, entry_match.relevance_score * 0.35)
-    structured_context_score = min(
-        12.0,
-        (len(bullet_structured_matches) * 8.0)
-        + (len(entry_structured_matches) * 4.0),
+    entry_context_score = (
+        min(4.0, entry_match.relevance_score * 0.12)
+        if assessment.relationship is not EvidenceRelationship.REJECTED
+        else 0.0
     )
     awkward_penalty = 5.0 if line_fit.awkward_wrap_risk else 0.0
     three_line_penalty = max(0, line_fit.expected_line_count - 2) * 20.0
     vertical_cost_penalty = line_fit.total_vertical_line_cost * 1.2
     score = round(
-        bullet_match.relevance_score
+        min(70.0, assessment.contextual_relevance)
+        + relationship_bonus
         + entry_context_score
-        + structured_context_score
         + evidence_strength
         + _recency_score(entry, latest_year)
         - awkward_penalty
@@ -2865,33 +3744,33 @@ def _evidence_score(
         - vertical_cost_penalty,
         2,
     )
-    coverage = [(f"term:{match}", match) for match in meaningful_overlap]
-    coverage.extend(
-        (f"responsibility:{signal}", signal.replace("_", " ")) for signal in responsibility_overlap
-    )
+    requirement_by_id = {
+        item.id: item for item in context.requirements.requirements
+    }
+    matched_requirement_ids = [
+        *assessment.direct_requirement_ids,
+        *assessment.adjacent_requirement_ids,
+        *assessment.complementary_requirement_ids,
+        *assessment.incidental_requirement_ids,
+    ]
+    coverage = [
+        (f"requirement:{requirement_id}", requirement_by_id[requirement_id].text)
+        for requirement_id in matched_requirement_ids
+        if requirement_id in requirement_by_id
+    ]
     deduplicated = _deduplicated_coverage(coverage)
-    if admitted_by_structured_context:
-        admission_reason = (
-            "Admitted through exact reviewed structured technology, capability, "
-            "or entry-title evidence in primary posting context."
+    admission_reason = (
+        "Admitted through specific reviewed-text overlap with posting requirements; "
+        "the matched requirement is complementary or bonus context."
+        if (
+            assessment.relationship is EvidenceRelationship.COMPLEMENTARY
+            and assessment.meaningful_overlap
         )
-    elif bullet_match_is_primary:
-        admission_reason = bullet_match.reason
-    elif bullet_match.admitted:
-        admission_reason = (
-            "Rejected because its specific overlap appeared only in an explicitly "
-            "incidental or optional posting segment."
-        )
-    elif admitted_by_entry_context:
-        admission_reason = (
-            "Admitted as specific reviewed evidence within a directly relevant entry; "
-            "generic title overlap alone was not sufficient."
-        )
-    else:
-        admission_reason = bullet_match.reason
+        else assessment.reason
+    )
     return (
         score,
-        bullet_match.relevance_score + entry_context_score + structured_context_score,
+        min(70.0, assessment.contextual_relevance) + entry_context_score,
         evidence_strength,
         [key for key, _ in deduplicated],
         [label for _, label in deduplicated],
@@ -2900,6 +3779,12 @@ def _evidence_score(
         bullet_match.generic_only,
         admitted,
         admission_reason,
+        assessment.relationship,
+        list(assessment.direct_requirement_ids),
+        list(assessment.adjacent_requirement_ids),
+        list(assessment.complementary_requirement_ids),
+        list(assessment.incidental_requirement_ids),
+        list(assessment.short_token_contributions),
     )
 
 
@@ -3060,6 +3945,16 @@ def _skill_support_status(candidate: _SkillCandidate) -> str:
     if candidate.supported_skill_ids:
         return "declared_and_supported"
     return "declared_only"
+
+
+def _relationship_order(relationship: EvidenceRelationship) -> int:
+    return {
+        EvidenceRelationship.DIRECT: 0,
+        EvidenceRelationship.ADJACENT: 1,
+        EvidenceRelationship.COMPLEMENTARY: 2,
+        EvidenceRelationship.INCIDENTAL: 3,
+        EvidenceRelationship.REJECTED: 4,
+    }[relationship]
 
 
 def _match_has_primary_posting_context(

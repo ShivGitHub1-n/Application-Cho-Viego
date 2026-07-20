@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from hashlib import sha256
 
+from resume_tailor.application.requirement_ranking import (
+    assess_evidence_relationship,
+    extract_posting_requirements,
+)
 from resume_tailor.application.resume_features import (
     ReviewedTextFeatures,
     extract_reviewed_text_features,
@@ -13,6 +17,7 @@ from resume_tailor.domain.hybrid_resume import (
     RetrievedEvidence,
 )
 from resume_tailor.domain.models import EvidenceItem, JobPosting, MasterProfile
+from resume_tailor.domain.requirement_ranking import EvidenceRelationship
 
 
 class InProcessResumeEvidenceRetriever:
@@ -24,6 +29,7 @@ class InProcessResumeEvidenceRetriever:
         posting: JobPosting,
     ) -> EvidenceRetrievalResult:
         posting_features = extract_reviewed_text_features(f"{posting.title}\n{posting.description}")
+        requirement_model = extract_posting_requirements(posting)
         entries = {item.id: item for item in [*profile.experiences, *profile.projects]}
         scored: list[tuple[int, RetrievedEvidence]] = []
         for source_order, evidence in enumerate(profile.evidence):
@@ -42,6 +48,12 @@ class InProcessResumeEvidenceRetriever:
                             *evidence.technologies,
                             *evidence.capabilities,
                             *evidence.outcomes,
+                        ]
+                    )
+                )
+                entry_features = extract_reviewed_text_features(
+                    " ".join(
+                        [
                             entry.title,
                             entry.subtitle or "",
                             *entry.technologies,
@@ -50,26 +62,38 @@ class InProcessResumeEvidenceRetriever:
                     )
                 )
                 match = match_reviewed_features(evidence_features, posting_features)
+                relationship = assess_evidence_relationship(
+                    bullet_text=evidence.source_text,
+                    bullet_features=evidence_features,
+                    entry_features=entry_features,
+                    structured_values=[
+                        *evidence.technologies,
+                        *evidence.capabilities,
+                        *evidence.outcomes,
+                    ],
+                    requirements=requirement_model,
+                )
                 intrinsic = _intrinsic_strength(evidence_features, evidence)
-                complementary = _complementary_value(
-                    evidence_features.responsibility_signals,
-                    posting_features.responsibility_signals,
-                    intrinsic,
+                complementary = round(
+                    min(
+                        12.0,
+                        (len(relationship.complementary_requirement_ids) * 4.0)
+                        + (len(relationship.adjacent_requirement_ids) * 2.0),
+                    ),
+                    2,
                 )
-                admitted_adjacent = (
-                    not match.generic_only
-                    and complementary >= 6.0
-                    and evidence_features.technical_specificity >= 0.22
-                )
-                if match.admitted:
+                if relationship.relationship is EvidenceRelationship.DIRECT:
                     status = RetrievalAdmissionStatus.ADMITTED_DIRECT
-                    reason = match.reason
-                elif admitted_adjacent:
+                    reason = relationship.reason
+                elif relationship.relationship is EvidenceRelationship.ADJACENT:
                     status = RetrievalAdmissionStatus.ADMITTED_ADJACENT
-                    reason = (
-                        "Admitted as strong, specific reviewed evidence with a credible "
-                        "shared technical responsibility; no role-family rule was used."
-                    )
+                    reason = relationship.reason
+                elif relationship.relationship is EvidenceRelationship.COMPLEMENTARY:
+                    status = RetrievalAdmissionStatus.ADMITTED_COMPLEMENTARY
+                    reason = relationship.reason
+                elif relationship.relationship is EvidenceRelationship.INCIDENTAL:
+                    status = RetrievalAdmissionStatus.REJECTED_INCIDENTAL
+                    reason = relationship.reason
                 elif match.generic_only:
                     status = RetrievalAdmissionStatus.REJECTED_GENERIC_ONLY
                     reason = match.reason
@@ -80,7 +104,7 @@ class InProcessResumeEvidenceRetriever:
                         "posting support."
                     )
                 total = round(
-                    match.relevance_score + intrinsic + complementary,
+                    relationship.contextual_relevance + intrinsic + complementary,
                     2,
                 )
                 scored.append(
@@ -92,16 +116,31 @@ class InProcessResumeEvidenceRetriever:
                             entry_kind=entry.kind.value,
                             source_text=evidence.source_text,
                             rank=1,
-                            contextual_relevance=match.relevance_score,
+                            contextual_relevance=relationship.contextual_relevance,
                             intrinsic_evidence_strength=intrinsic,
                             complementary_value=complementary,
                             total_score=total,
                             normalized_features=list(evidence_features.specific_phrases[:24]),
-                            meaningful_overlap=list(match.meaningful_overlap),
-                            matched_requirements=[
-                                *match.matched_requirements,
-                                *match.responsibility_overlap,
-                            ],
+                            meaningful_overlap=list(relationship.meaningful_overlap),
+                            matched_requirements=list(
+                                relationship.matched_requirement_labels
+                            ),
+                            relationship=relationship.relationship,
+                            direct_requirement_ids=list(
+                                relationship.direct_requirement_ids
+                            ),
+                            adjacent_requirement_ids=list(
+                                relationship.adjacent_requirement_ids
+                            ),
+                            complementary_requirement_ids=list(
+                                relationship.complementary_requirement_ids
+                            ),
+                            incidental_requirement_ids=list(
+                                relationship.incidental_requirement_ids
+                            ),
+                            short_token_contributions=list(
+                                relationship.short_token_contributions
+                            ),
                             admission_status=status,
                             admission_reason=reason,
                             provenance=[
@@ -144,12 +183,14 @@ class InProcessResumeEvidenceRetriever:
         admitted_statuses = {
             RetrievalAdmissionStatus.ADMITTED_DIRECT,
             RetrievalAdmissionStatus.ADMITTED_ADJACENT,
+            RetrievalAdmissionStatus.ADMITTED_COMPLEMENTARY,
         }
         return EvidenceRetrievalResult(
             profile_fingerprint=_fingerprint(profile.model_dump_json()),
             posting_fingerprint=_fingerprint(posting.model_dump_json()),
             complete_profile_evidence_count=len(profile.evidence),
             reviewed_evidence_count=sum(item.confirmed for item in profile.evidence),
+            posting_requirements=list(requirement_model.requirements),
             admitted=[item for item in ranked if item.admission_status in admitted_statuses],
             rejected=[item for item in ranked if item.admission_status not in admitted_statuses],
         )

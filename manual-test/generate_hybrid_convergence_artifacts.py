@@ -47,20 +47,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CaseFactory = Callable[[], tuple[MasterProfile, JobPosting]]
 OUTPUTS: dict[str, tuple[CaseFactory, str]] = {
     "real_profile": (
-        lambda: (
-            MasterProfile.model_validate_json(
-                (ROOT / "manual-test" / "profile.json").read_text(encoding="utf-8")
-            ),
-            JobPosting.model_validate_json(
-                (
-                    ROOT
-                    / "tests"
-                    / "fixtures"
-                    / "huawei_autonomous_research_posting.json"
-                ).read_text(encoding="utf-8")
-            ),
-        ),
-        "generated-template-v1-hybrid-real-profile.docx",
+        lambda: _real_embedded_case(),
+        "generated-template-v1-requirement-aware-real-profile.docx",
     ),
     "rich_mixed": (
         rich_mixed_case,
@@ -74,7 +62,58 @@ OUTPUTS: dict[str, tuple[CaseFactory, str]] = {
         mechanical_manufacturing_case,
         "generated-template-v1-hybrid-mechanical-manufacturing.docx",
     ),
+    "cybersecurity": (
+        lambda: _cybersecurity_case(),
+        "generated-template-v1-requirement-aware-cybersecurity.docx",
+    ),
 }
+
+
+def _real_embedded_case() -> tuple[MasterProfile, JobPosting]:
+    profile = MasterProfile.model_validate_json(
+        (ROOT / "manual-test" / "profile.json").read_text(encoding="utf-8")
+    )
+    posting = JobPosting(
+        id="world-star-tech-embedded-systems-engineer",
+        title="Embedded Systems Engineer",
+        description=(
+            "Core responsibilities:\n"
+            "- Develop firmware and GUI software for robotic in-house automation.\n"
+            "- Collaborate across electronic, software, and optomechanical disciplines.\n"
+            "- Develop clean, documented code from low-level embedded systems through "
+            "high-level architecture.\n"
+            "Required qualifications:\n"
+            "- Strong C++ and Python object-oriented programming.\n"
+            "- Experience with STM32 or similar microcontrollers.\n"
+            "- Use timers, I2C, UART, SPI, DMA, ADC, and related peripherals.\n"
+            "Preferred or bonus qualifications:\n"
+            "- C# and .NET.\n"
+            "- TCP sockets and cloud services.\n"
+            "- Image processing."
+        ),
+    )
+    return profile, posting
+
+
+def _cybersecurity_case() -> tuple[MasterProfile, JobPosting]:
+    profile, _posting = software_cloud_case()
+    return (
+        profile,
+        JobPosting(
+            id="controlled-cybersecurity-posting",
+            title="Application Security Engineer",
+            description=(
+                "Required responsibilities:\n"
+                "- Validate OAuth 2.0 authorization and API access controls.\n"
+                "- Investigate SIEM alerts using application and container logs.\n"
+                "- Test Docker and Kubernetes deployments for security defects.\n"
+                "- Document threat scenarios, remediation evidence, and secure release "
+                "controls.\n"
+                "Preferred qualifications:\n"
+                "- Python automation, PostgreSQL, and cloud reliability experience."
+            ),
+        ),
+    )
 
 
 def main() -> None:
@@ -195,8 +234,28 @@ def _diagnostic_payload(
         "selected_skill_rows": [
             row.model_dump(mode="json") for row in composition.selected_skill_rows
         ],
+        "posting_requirements": [
+            requirement.model_dump(mode="json")
+            for requirement in composition.posting_requirements
+        ],
+        "requirement_coverage": [
+            coverage.model_dump(mode="json")
+            for coverage in composition.requirement_coverage
+        ],
+        "portfolio_coverage_gaps": composition.portfolio_coverage_gaps,
+        "direct_candidate_tradeoffs": [
+            tradeoff.model_dump(mode="json")
+            for tradeoff in composition.direct_candidate_tradeoffs
+        ],
+        "omitted_direct_skill_values": composition.omitted_direct_skill_values,
+        "omitted_direct_skill_reasons": composition.omitted_direct_skill_reasons,
         "bullet_counts": composition.bullet_counts,
         "selected_bullet_ids": composition.selected_bullet_ids,
+        "selected_bullet_diagnostics": [
+            candidate.model_dump(mode="json")
+            for candidate in composition.selected_candidates
+            if candidate.kind.value.endswith("bullet")
+        ],
         "entry_bullet_selections": [
             entry.model_dump(mode="json")
             for entry in composition.entry_bullet_selections

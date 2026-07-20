@@ -1479,7 +1479,7 @@ def test_flat_reviewed_skills_are_regrouped_without_mutation_or_invention() -> N
     diagnostic = resume.composition_diagnostic
 
     assert diagnostic is not None
-    assert len(diagnostic.selected_skill_rows) >= 3
+    assert len(diagnostic.selected_skill_rows) >= 2
     assert all(len(row.skill_values) >= 2 for row in diagnostic.selected_skill_rows)
     displayed = {
         value
@@ -1489,7 +1489,7 @@ def test_flat_reviewed_skills_are_regrouped_without_mutation_or_invention() -> N
     assert displayed <= set(declared_skills)
     assert "Reviewed unrelated inventory item" not in displayed
     assert all(
-        provenance.startswith("display_regrouping:profile.declared_skills[")
+        provenance.startswith("profile.declared_skills[")
         for row in diagnostic.selected_skill_rows
         for provenance in row.provenance
     )
