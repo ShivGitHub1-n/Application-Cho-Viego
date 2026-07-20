@@ -127,7 +127,7 @@ class TailorResumeService:
         profile: MasterProfile,
         approved_claim_ids: set[str],
     ) -> StructuredResume:
-        with self._telemetry.measure(GenerationStage.CLAIM_VALIDATION):
+        with self._telemetry.measure(GenerationStage.PLAN_VALIDATION):
             self._telemetry.increment("claim_validations")
             self._plan_validator.validate(plan, profile)
         with self._telemetry.measure(GenerationStage.EVIDENCE_RETRIEVAL):
@@ -213,9 +213,13 @@ class TailorResumeService:
             for bullets in section.values()
             for bullet in bullets
         ]
-        rewritten_bullet_count = sum(
-            bullet.writing_variant is not None for bullet in final_bullets
-        )
+        rewritten_bullet_count = sum(bullet.writing_variant is not None for bullet in final_bullets)
+        selected_source_evidence_ids = {
+            evidence_id
+            for bullet in final_bullets
+            if bullet.writing_variant is None
+            for evidence_id in bullet.evidence_ids
+        }
         source_bullet_count = len(final_bullets) - rewritten_bullet_count
         writer_execution_status = hybrid.writer_execution_status
         writing_reason = hybrid.writing_reason
@@ -226,6 +230,18 @@ class TailorResumeService:
                 f"{rewritten_bullet_count} validated materially improved rewrite(s) "
                 "survived deterministic portfolio and page-fit selection."
             )
+        elif (
+            hybrid.rewrite_enabled
+            and hybrid.bullet_variants
+            and all(
+                item.validation_status.value == "review_required" for item in hybrid.bullet_variants
+            )
+        ):
+            writer_execution_status = WriterExecutionStatus.SOURCE_FALLBACK_USED
+            writing_reason = (
+                "Rewriting was enabled, but zero rewrites reached the document because "
+                "every grounded generated variant requires explicit human review."
+            )
         elif hybrid.rewrite_enabled and hybrid.bullet_variants:
             writer_execution_status = WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
             writing_reason = (
@@ -234,9 +250,7 @@ class TailorResumeService:
                 "better for material improvement, evidence value, readability, or fit."
             )
         elif hybrid.rewrite_enabled and hybrid.rejected_variants:
-            writer_execution_status = (
-                WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
-            )
+            writer_execution_status = WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
             writing_reason = (
                 "Rewriting was enabled, but every generated variant failed grounding "
                 "or writing-policy validation; reviewed source bullets were retained."
@@ -271,7 +285,23 @@ class TailorResumeService:
                         ),
                         "bullet_variants": [
                             item.model_copy(
-                                update={"selected": (item.variant_id in rendered_variant_ids)}
+                                update={
+                                    "selected": (item.variant_id in rendered_variant_ids),
+                                    "selection_reason": (
+                                        "Selected after validated source-versus-rewrite, "
+                                        "portfolio-value, readability, and page-fit comparison."
+                                        if item.variant_id in rendered_variant_ids
+                                        else "Reviewed source retained because it scored "
+                                        "better for relevance, technical clarity, readability, "
+                                        "or line fit."
+                                        if any(
+                                            evidence_id in selected_source_evidence_ids
+                                            for evidence_id in item.source_evidence_ids
+                                        )
+                                        else "The evidence bundle did not win the final "
+                                        "portfolio and page-fit comparison."
+                                    ),
+                                }
                             )
                             for item in hybrid.bullet_variants
                         ],
@@ -283,6 +313,10 @@ class TailorResumeService:
                             source_bullet_count if hybrid.rewrite_enabled else 0
                         ),
                         "rejected_variant_count": len(hybrid.rejected_variants),
+                        "review_required_variant_count": sum(
+                            item.validation_status.value == "review_required"
+                            for item in hybrid.bullet_variants
+                        ),
                         "deterministic_fallback_used": (
                             hybrid.rewrite_enabled and rewritten_bullet_count == 0
                         ),
@@ -342,10 +376,7 @@ class TailorResumeService:
             approved_claim_ids,
         )
         fingerprint = artifact_fingerprint(fingerprint_inputs)
-        if (
-            existing_artifact is not None
-            and existing_artifact.artifact_fingerprint == fingerprint
-        ):
+        if existing_artifact is not None and existing_artifact.artifact_fingerprint == fingerprint:
             return existing_artifact
         build_started = self._telemetry.clock()
         prior_elapsed = sum(
@@ -367,9 +398,7 @@ class TailorResumeService:
         writing = final_resume.hybrid_diagnostic
         counts = self._telemetry.call_counts()
         provider_status = (
-            writing.writer_execution_status.value
-            if writing is not None
-            else "provider_unavailable"
+            writing.writer_execution_status.value if writing is not None else "provider_unavailable"
         )
         provider_reason = (
             writing.writing_reason
@@ -386,6 +415,12 @@ class TailorResumeService:
             cache_hit_count=writing.provider_cache_hits if writing is not None else 0,
             request_timeout_seconds=configuration.provider_timeout_seconds,
             configured_retry_count=configuration.provider_retry_count,
+            retry_reason=(writing.provider_retry_reason if writing is not None else None),
+            provider_elapsed_seconds=self._telemetry.elapsed(GenerationStage.PROVIDER_REQUEST),
+            parsing_elapsed_seconds=self._telemetry.elapsed(
+                GenerationStage.PROVIDER_RESPONSE_PARSING
+            ),
+            validation_elapsed_seconds=self._telemetry.elapsed(GenerationStage.CLAIM_VALIDATION),
             deterministic_fallback_used=(
                 writing.deterministic_fallback_used if writing is not None else True
             ),
@@ -396,16 +431,10 @@ class TailorResumeService:
             status="exact" if exact else "pagination_unverified",
             attempt_count=counts.pagination_attempts,
             provider=(
-                composition.verification_provider
-                if composition is not None
-                else "not configured"
+                composition.verification_provider if composition is not None else "not configured"
             ),
-            elapsed_seconds=self._telemetry.elapsed(
-                GenerationStage.EXACT_WORD_PAGINATION
-            ),
-            failure_reason=(
-                composition.verification_failure if composition is not None else None
-            ),
+            elapsed_seconds=self._telemetry.elapsed(GenerationStage.EXACT_WORD_PAGINATION),
+            failure_reason=(composition.verification_failure if composition is not None else None),
         )
         selected_variants = (
             [item for item in writing.bullet_variants if item.selected]

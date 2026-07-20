@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import MutableMapping
 from hashlib import sha256
 from pathlib import Path
@@ -114,10 +115,13 @@ _PROGRESS_LABELS = {
     GenerationStage.EVIDENCE_RETRIEVAL: "Retrieving evidence",
     GenerationStage.DETERMINISTIC_PLANNING: "Planning resume",
     GenerationStage.SEMANTIC_PLANNING: "Planning resume",
-    GenerationStage.WRITER_CACHE_LOOKUP: "Tailoring bullets",
-    GenerationStage.PROVIDER_REQUEST: "Tailoring bullets",
-    GenerationStage.PROVIDER_RESPONSE_PARSING: "Tailoring bullets",
-    GenerationStage.CLAIM_VALIDATION: "Validating claims",
+    GenerationStage.PLAN_VALIDATION: "Validating plan integrity",
+    GenerationStage.WRITER_SHORTLIST: "Preparing writer shortlist",
+    GenerationStage.WRITER_CACHE_LOOKUP: "Checking writer cache",
+    GenerationStage.PROVIDER_REQUEST: "Waiting for Gemini",
+    GenerationStage.PROVIDER_RESPONSE_PARSING: "Parsing Gemini response",
+    GenerationStage.CLAIM_VALIDATION: "Validating generated claims",
+    GenerationStage.WRITER_VARIANT_SELECTION: "Selecting final variants",
     GenerationStage.COMPOSITION_CANDIDATE_CONSTRUCTION: "Fitting page",
     GenerationStage.PORTFOLIO_PAGE_FIT_SEARCH: "Fitting page",
     GenerationStage.DOCX_RENDERING: "Rendering document",
@@ -193,15 +197,40 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
     composition = artifact.composition_diagnostic
     provider = artifact.provider_diagnostic
     pagination = artifact.pagination_diagnostic
+    writing = artifact.writing_diagnostic
     utilization = (
         f"{composition.final_utilization_ratio:.0%}" if composition is not None else "unavailable"
     )
     st.success(f"Completed in {artifact.total_build_seconds:.2f} seconds.")
     st.caption(
-        f"Provider: {provider.status} · {provider.call_count} call(s) · "
+        f"Provider: {provider.provider} / {provider.model} · {provider.status} · "
+        f"{provider.call_count} request(s) · {provider.retry_count} repair(s) · "
         f"{provider.cache_hit_count} cache hit(s) · Pagination: {pagination.status} · "
         f"Utilization: {utilization}"
     )
+    st.caption(
+        f"Request timeout: {provider.request_timeout_seconds:g}s · "
+        f"provider: {provider.provider_elapsed_seconds:.3f}s · "
+        f"parsing: {provider.parsing_elapsed_seconds:.3f}s · "
+        f"validation: {provider.validation_elapsed_seconds:.3f}s"
+    )
+    if provider.retry_reason:
+        st.caption("Repair reason: " + provider.retry_reason)
+    if writing is not None:
+        st.caption(
+            f"Source bullets: {writing.source_bullet_count} · "
+            f"rewritten: {writing.rewritten_bullet_count} · "
+            f"fallback: {writing.fallback_bullet_count} · "
+            f"rejected: {writing.rejected_variant_count} · "
+            f"review required: {writing.review_required_variant_count}"
+        )
+        if writing.rewritten_bullet_count == 0:
+            st.info("Zero selected rewrites: " + writing.writing_reason)
+        if writing.estimated_remaining_lines is not None:
+            st.caption(
+                f"Page status: {pagination.status} · "
+                f"estimated remaining lines: {writing.estimated_remaining_lines}"
+            )
     if provider.deterministic_fallback_used:
         st.info(provider.reason)
     if pagination.failure_reason:
@@ -218,6 +247,46 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
                 f"{timing.elapsed_seconds:.3f}s · {timing.status.value}"
                 f" · {timing.invocation_count} invocation(s){detail}"
             )
+    if writing is not None and (
+        writing.writer_shortlist or writing.bullet_variants or writing.rejected_variants
+    ):
+        with st.expander("Writer evidence and source-to-rewrite report", expanded=False):
+            if writing.writer_shortlist:
+                st.markdown("**Bounded shortlist**")
+                for item in writing.writer_shortlist:
+                    st.caption(
+                        f"{item.entry_kind} · {item.entry_id} · {item.evidence_id} · "
+                        f"{item.relationship.value} · relevance "
+                        f"{item.contextual_relevance:.1f} · intrinsic strength "
+                        f"{item.intrinsic_evidence_strength:.1f}"
+                    )
+                    st.write(item.selection_reason)
+            for item in [*writing.bullet_variants, *writing.rejected_variants]:
+                st.markdown(f"**{item.variant_id}**")
+                st.caption(
+                    f"{item.validation_status.value.replace('_', ' ')} · "
+                    f"{item.intended_length_class.value.replace('_', ' ')} · "
+                    f"{item.relationship_tier.value} · "
+                    + ("selected" if item.selected else "not selected")
+                )
+                st.write("Source: " + " ".join(item.original_reviewed_text))
+                st.write("Rewrite: " + item.rewritten_text)
+                st.caption(
+                    "Claims: "
+                    + "; ".join(
+                        f"{claim.text} [{', '.join(claim.supporting_evidence_ids)}]"
+                        for claim in item.factual_claims
+                    )
+                )
+                if item.target_job_requirements:
+                    st.caption("Requirements: " + "; ".join(item.target_job_requirements))
+                reasons = [
+                    *item.improvement_reasons,
+                    *item.validation_reasons,
+                    *([item.selection_reason] if item.selection_reason else []),
+                ]
+                if reasons:
+                    st.caption("Decision: " + " ".join(dict.fromkeys(reasons)))
 
 
 def _comma_text(value: list[str]) -> str:
@@ -1079,16 +1148,11 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
                     )
                 )
         if diagnostic.portfolio_coverage_gaps:
-            st.write(
-                "Portfolio coverage gaps: "
-                + "; ".join(diagnostic.portfolio_coverage_gaps)
-            )
+            st.write("Portfolio coverage gaps: " + "; ".join(diagnostic.portfolio_coverage_gaps))
         if diagnostic.direct_candidate_tradeoffs:
             st.markdown("**Direct-evidence tradeoffs**")
             for tradeoff in diagnostic.direct_candidate_tradeoffs:
-                st.caption(
-                    f"{tradeoff.omitted_candidate_id}: {tradeoff.reason}"
-                )
+                st.caption(f"{tradeoff.omitted_candidate_id}: {tradeoff.reason}")
         st.write(
             "Selected experiences: " + (", ".join(diagnostic.selected_experience_ids) or "None")
         )
@@ -1141,8 +1205,7 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
             st.caption("Source provenance: " + ", ".join(row.provenance))
             if row.compatible_omitted_skill_values:
                 st.caption(
-                    "Compatible omitted skills: "
-                    + ", ".join(row.compatible_omitted_skill_values)
+                    "Compatible omitted skills: " + ", ".join(row.compatible_omitted_skill_values)
                 )
             if row.underfill_exception_reason:
                 st.caption("Underfill exception: " + row.underfill_exception_reason)
@@ -1172,10 +1235,7 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
         hybrid = resume.hybrid_diagnostic
         if hybrid is not None:
             st.markdown("**Hybrid evidence and writing**")
-            st.caption(
-                "Writing: "
-                + hybrid.writer_execution_status.value.replace("_", " ")
-            )
+            st.caption("Writing: " + hybrid.writer_execution_status.value.replace("_", " "))
             st.write(hybrid.writing_reason)
             st.caption(
                 f"Planning: {hybrid.planning_status.value.replace('_', ' ')} · "
@@ -1729,6 +1789,29 @@ def _render_settings_page(
         st.write(
             "Gemini role classification: "
             + ("Enabled" if settings.llm_enable_role_classification else "Disabled")
+        )
+    with st.container(border=True):
+        st.markdown("**Gemini resume writer**")
+        st.write(
+            "Bullet rewriting: " + ("Enabled" if settings.llm_enable_bullet_rewrite else "Disabled")
+        )
+        st.write(
+            "Credentials available: "
+            + (
+                "Yes"
+                if bool(settings.gemini_api_key or os.getenv(settings.llm_api_key_env_var))
+                else "No"
+            )
+        )
+        st.write("Model: " + (settings.gemini_model or "Not configured"))
+        st.caption(
+            f"Primary batch limit: 1 · malformed-output repair limit: 1 · "
+            f"request timeout: {settings.llm_timeout_seconds}s"
+        )
+        st.caption(
+            "Semantic opportunity and composition calls: "
+            f"{'enabled' if settings.llm_enable_opportunity_analysis else 'disabled'} / "
+            f"{'enabled' if settings.llm_enable_composition else 'disabled'}"
         )
     report = repository.migration_report
     if report is not None:

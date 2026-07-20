@@ -44,8 +44,9 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
         LlmOperation.REWRITE_BULLETS: (
             "Tailor the bounded same-entry evidence groups into genuinely job-specific, "
             "natural resume bullets. Return claim-level supporting evidence IDs. Provide a "
-            "concise alternative only when it is also fully grounded. Respect the supplied "
-            "versioned writing policy, length classes, and prohibited phrases."
+            "concise alternative only when it is distinct, useful, and fully grounded. Omit "
+            "groups whose source is already stronger than any truthful rewrite. Respect the "
+            "supplied versioned writing policy, length classes, and phrase preferences."
         ),
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (

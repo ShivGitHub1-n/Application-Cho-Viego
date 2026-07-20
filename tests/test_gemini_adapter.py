@@ -16,9 +16,36 @@ from resume_tailor.domain.llm_models import (
     SkillCompositionOutput,
 )
 from resume_tailor.domain.models import RoleFamily
+from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
 from resume_tailor.infrastructure.gemini_schema import gemini_response_schema
 from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
+
+
+def test_gemini_client_uses_interactive_timeout_and_disables_sdk_retries(
+    monkeypatch,
+) -> None:
+    from google import genai
+
+    captured: dict[str, object] = {}
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(genai, "Client", Client)
+    GeminiResumeLanguageModel(
+        Settings(
+            _env_file=None,
+            gemini_api_key="configured-secret",
+            gemini_model="configured-model",
+            llm_timeout_seconds=27,
+        )
+    )
+
+    http_options = captured["http_options"]
+    assert http_options.timeout == 27_000
+    assert http_options.retry_options.attempts == 1
 
 
 def test_gemini_error_mapping_is_provider_specific() -> None:

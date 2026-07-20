@@ -187,6 +187,58 @@ def test_rewrite_rejects_unsupported_confidence_and_new_metrics() -> None:
         validate_rewrites(output, [group])
 
 
+def test_rewrite_preserves_supported_metric_and_technology() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="entry-1",
+        evidence_ids=["evidence-1"],
+        source_texts=["Measured 30 FPS perception with OpenCV."],
+        technologies=["OpenCV"],
+        metrics=["30 FPS"],
+        max_rendered_lines=2,
+    )
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="entry-1",
+                final_bullet_text="Validated OpenCV perception at 30 FPS.",
+                source_evidence_ids=["evidence-1"],
+                preserved_technologies=["OpenCV"],
+                preserved_metrics=["30 FPS"],
+                evidence_combined=False,
+                concise_alternative="Validated OpenCV perception at 30 FPS.",
+                confidence=0.9,
+            )
+        ]
+    )
+
+    validate_rewrites(output, [group])
+
+
+def test_rewrite_rejects_unsupported_named_technology() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="entry-1",
+        evidence_ids=["evidence-1"],
+        source_texts=["Deployed a reviewed cloud service."],
+        technologies=["cloud service"],
+        max_rendered_lines=2,
+    )
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="entry-1",
+                final_bullet_text="Deployed a reviewed cloud service on AWS.",
+                source_evidence_ids=["evidence-1"],
+                preserved_technologies=["AWS"],
+                evidence_combined=False,
+                confidence=0.9,
+            )
+        ]
+    )
+
+    with pytest.raises(GroundingValidationError, match="unsupported"):
+        validate_rewrites(output, [group])
+
+
 def test_rewrite_rejects_unsupported_outcome() -> None:
     group = ApprovedEvidenceGroup(
         entry_id="entry-1",

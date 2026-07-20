@@ -281,7 +281,7 @@ def test_cached_all_rejected_writer_batch_keeps_explicit_rejection_status() -> N
         WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
     )
     assert second.hybrid_diagnostic.provider_cache_hits == 1
-    assert second.hybrid_diagnostic.rejected_variant_count == 2
+    assert second.hybrid_diagnostic.rejected_variant_count == 1
     assert fake.calls["rewrite_bullets"] == 1
 
 
@@ -335,7 +335,9 @@ def test_llm_disabled_uses_source_text_and_zero_provider_calls() -> None:
 
     resume = service.build_document(plan, profile, set())
 
-    assert resume.experience_bullets["embedded-entry"][0].text == (profile.evidence[0].source_text)
+    assert resume.experience_bullets["embedded-entry"][0].text == (
+        profile.evidence[0].source_text
+    )
     assert resume.hybrid_diagnostic is not None
     assert resume.hybrid_diagnostic.provider_call_count == 0
     assert resume.hybrid_diagnostic.planning_status is (HybridPlanningStatus.DETERMINISTIC_ONLY)
@@ -350,7 +352,7 @@ def test_provider_timeout_retries_are_bounded_and_use_safe_source_fallback() -> 
         "Controlled provider timeout.",
         retryable=True,
     )
-    fake = FakeResumeLanguageModel(rewrite_bullets=[timeout, timeout])
+    fake = FakeResumeLanguageModel(rewrite_bullets=[timeout])
     hybrid = HybridLlmServices(fake, 1, 8, False, False, True)
     service = TailorResumeService(
         DeterministicResumeOptimizer(),
@@ -362,17 +364,15 @@ def test_provider_timeout_retries_are_bounded_and_use_safe_source_fallback() -> 
 
     resume = service.build_document(plan, profile, set())
 
-    assert fake.calls["rewrite_bullets"] == 2
-    assert resume.experience_bullets["embedded-entry"][0].text == (
-        profile.evidence[0].source_text
-    )
+    assert fake.calls["rewrite_bullets"] == 1
+    assert resume.experience_bullets["embedded-entry"][0].text == (profile.evidence[0].source_text)
     assert resume.hybrid_diagnostic is not None
     assert resume.hybrid_diagnostic.deterministic_fallback_used is True
-    assert resume.hybrid_diagnostic.provider_call_count == 2
+    assert resume.hybrid_diagnostic.provider_call_count == 1
     assert resume.hybrid_diagnostic.writer_execution_status is (
         WriterExecutionStatus.PROVIDER_TIMEOUT
     )
-    assert service.telemetry.call_counts().provider_retries == 1
+    assert service.telemetry.call_counts().provider_retries == 0
 
 
 def test_semantic_planning_is_bounded_advice_and_counted_in_final_diagnostic() -> None:

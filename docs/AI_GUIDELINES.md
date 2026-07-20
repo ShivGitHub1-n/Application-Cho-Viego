@@ -4,7 +4,7 @@
 
 The model classifies postings, proposes a structured decision plan, rewrites approved evidence, and produces concise explanations. It must return machine-validated JSON matching application schemas.
 
-Each operation receives only the minimum relevant payload. Opportunity analysis receives a posting and coverage summary; composition receives eligible ID-linked evidence; skill composition receives reviewed categories plus confirmed evidence; writing receives selected same-entry evidence only; shortening receives an overflow-targeted bullet only.
+Each operation receives only the minimum relevant payload. Opportunity analysis receives a posting and coverage summary; composition receives eligible ID-linked evidence; skill composition receives reviewed categories plus confirmed evidence; writing receives a bounded entry-balanced shortlist of same-entry evidence bundles, including credible portfolio alternatives; shortening receives an overflow-targeted bullet only.
 
 ## Never do
 
@@ -18,9 +18,18 @@ Each operation receives only the minimum relevant payload. Opportunity analysis 
 
 ## Prompting strategy
 
-Provide evidence IDs, role signals, template budget, output schema, and explicit claim policy. Use a plan-before-prose workflow. Require every proposed bullet to include source evidence IDs and support classification. Reject and retry invalid structured outputs; deterministic validators remain the final authority.
+Provide evidence IDs, typed posting requirements, relationship tier, intrinsic
+evidence strength, output schema, length class, versioned writing policy, and
+explicit claim policy. Require every proposed bullet to include source evidence
+IDs, claim-level support IDs, and support classification. The writer receives
+one primary batch; only a malformed typed response may receive one repair
+request. Grounding or style failures reject individual variants without another
+provider loop. Deterministic validators remain the final authority.
 
-Provider failures, malformed output, safety blocks, and exhausted validation retries must fall back to deterministic selection and source-grounded wording. Never log API keys, raw prompts, raw model responses, or full resumes by default.
+Provider failures, malformed output after the single repair, safety blocks, and
+claim-validation failures must fall back to deterministic selection and
+source-grounded wording. Never log API keys, raw prompts, raw model responses,
+or full resumes by default.
 
 Composition recommendations may narrow or reorder candidates already produced by the deterministic optimizer. Evidence-linked bullet rewriting may combine or split same-entry evidence, materially change wording, and use accurate job terminology within the validated line and bullet budgets. Demonstrated skills may be proposed only for existing selected categories and must link to confirmed evidence. The application replays all recommendations through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged.
 

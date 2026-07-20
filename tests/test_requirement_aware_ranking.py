@@ -168,6 +168,53 @@ def test_direct_requirement_evidence_defeats_weaker_complementary_evidence() -> 
     assert ranked["direct-api"].score > ranked["bonus-dashboard"].score
 
 
+def test_direct_evidence_defeats_unrelated_entry_regardless_of_employer_label() -> None:
+    direct_entry = ResumeItem(
+        id="direct-controls",
+        title="Controls Developer",
+        kind=EntityKind.EXPERIENCE,
+        organization="Small Engineering Team",
+    )
+    unrelated_entry = ResumeItem(
+        id="unrelated-brand",
+        title="Operations Assistant",
+        kind=EntityKind.EXPERIENCE,
+        organization="Widely Recognized Enterprise",
+    )
+    profile = _profile(
+        experiences=[unrelated_entry, direct_entry],
+        evidence=[
+            EvidenceItem(
+                id="unrelated-notes",
+                entity_id=unrelated_entry.id,
+                source_text="Prepared weekly scheduling notes for office meetings.",
+            ),
+            EvidenceItem(
+                id="direct-firmware",
+                entity_id=direct_entry.id,
+                source_text="Developed STM32 firmware and validated SPI peripheral timing.",
+                technologies=["STM32", "SPI"],
+                capabilities=["firmware", "peripheral validation"],
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="embedded-controls-posting",
+        title="Embedded Controls Engineer",
+        description="Develop STM32 firmware and validate SPI peripheral timing.",
+    )
+    composer = DeterministicResumeComposer(_FixedPageFit())
+    pool = composer._candidate_pool(profile, _posting_context(posting))
+
+    assert [item.evidence_id for item in pool.ranked_bullets] == [
+        "direct-firmware"
+    ]
+    assert any(
+        item.evidence_id == "unrelated-notes"
+        for item in pool.relevance_excluded_bullets
+    )
+
+
 def test_strong_adjacent_evidence_can_beat_shallow_literal_overlap() -> None:
     adjacent_entry = ResumeItem(
         id="manufacturing-entry",

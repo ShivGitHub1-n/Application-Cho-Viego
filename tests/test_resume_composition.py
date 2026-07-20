@@ -1497,8 +1497,11 @@ def test_flat_reviewed_skills_are_regrouped_without_mutation_or_invention() -> N
 
 
 def test_density_above_preferred_is_never_reported_as_below_preferred() -> None:
-    assert DeterministicResumeComposer._preferred_density_status(0.96) is (
+    assert DeterministicResumeComposer._preferred_density_status(0.94) is (
         PreferredDensityStatus.ABOVE_PREFERRED
+    )
+    assert DeterministicResumeComposer._preferred_density_status(0.96) is (
+        PreferredDensityStatus.OVERFLOW_RISK
     )
     assert DeterministicResumeComposer._preferred_density_status(0.98) is (
         PreferredDensityStatus.OVERFLOW_RISK

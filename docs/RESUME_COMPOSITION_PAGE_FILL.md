@@ -170,10 +170,12 @@ without rewarding a search for 100% occupancy. Utilization above the floor is
 acceptable only when exact pagination confirms one page; estimated results
 remain typed `unverified`.
 
-The product-level preferred visual density is 90% through 95%, with 95% as the
-safe upper aim rather than a target to exceed. Search continues toward that range while admissible evidence adds
-quality. A truthful result may stop below 90% and remains acceptable at 85% to
-90%. A result below 85% requires investigation and a typed quality, evidence,
+The product-level preferred visual density is approximately 90% through 93%.
+Utilization above that range through approximately 95% remains acceptable and
+receives an above-preferred diagnostic; it is not a target to exceed. Search
+continues toward the preferred range while admissible evidence adds quality. A
+truthful result may stop below 90% and remains acceptable at 85% to 90%. A
+result below 85% requires investigation and a typed quality, evidence,
 profile-completeness, match, validation, retrieval, or search warning. Density never admits weak,
 redundant, unsupported, or unrelated content, and 100% is not a target.
 
@@ -259,10 +261,11 @@ the exact or estimated pagination provider. It contains concise typed reasons,
 not provider chain-of-thought, and is never exported into the DOCX.
 
 Production generation also records typed stage timings for profile loading,
-posting normalization, retrieval, deterministic and semantic planning, writer
-cache lookup, provider request and parsing, validation, candidate construction,
-page-fit search, DOCX rendering, exact pagination, estimated fallback, artifact
-storage, Streamlit rerun overhead, and download preparation. A completed
+posting normalization, retrieval, deterministic and semantic planning, plan
+validation, writer shortlisting, writer cache lookup, provider request and
+parsing, claim validation, final variant selection, candidate construction, page-fit search,
+DOCX rendering, exact pagination, estimated fallback, artifact storage,
+Streamlit rerun overhead, and download preparation. A completed
 artifact stores the final DOCX bytes; download returns those exact bytes and
 has zero generation call counts.
 

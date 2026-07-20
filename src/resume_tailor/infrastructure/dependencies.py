@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import httpx
@@ -87,6 +88,11 @@ def create_tailor_service(
     resolved_settings = settings or Settings()
     telemetry = GenerationTelemetry()
     language_model = _create_language_model(resolved_settings)
+    provider_unavailable_reason = (
+        _provider_unavailable_reason(resolved_settings)
+        if language_model is None and resolved_settings.llm_enable_bullet_rewrite
+        else None
+    )
     set_model_telemetry = getattr(language_model, "set_telemetry", None)
     if callable(set_model_telemetry):
         set_model_telemetry(telemetry)
@@ -127,6 +133,7 @@ def create_tailor_service(
         provider_name=resolved_settings.llm_provider,
         model_name=resolved_settings.gemini_model or "unconfigured",
         telemetry=telemetry,
+        provider_unavailable_reason=provider_unavailable_reason,
     )
     cover_letter_service = CoverLetterService(
         language_model=language_model if resolved_settings.llm_enable_cover_letter else None,
@@ -162,7 +169,7 @@ def create_tailor_service(
             provider=resolved_settings.llm_provider,
             model=resolved_settings.gemini_model or "unconfigured",
             provider_timeout_seconds=resolved_settings.llm_timeout_seconds,
-            provider_retry_count=resolved_settings.llm_retry_count,
+            provider_retry_count=min(resolved_settings.llm_retry_count, 1),
         ),
         telemetry=telemetry,
     )
@@ -296,6 +303,24 @@ def _create_language_model(
         if settings.llm_deterministic_fallback:
             return None
         raise
+
+
+def _provider_unavailable_reason(settings: Settings) -> str:
+    api_key = settings.gemini_api_key or os.getenv(settings.llm_api_key_env_var)
+    if not api_key:
+        return (
+            "Gemini bullet writing is enabled, but credentials are missing. Configure "
+            f"{settings.llm_api_key_env_var}; reviewed source bullets were retained."
+        )
+    if not settings.gemini_model:
+        return (
+            "Gemini bullet writing is enabled and credentials are present, but "
+            "GEMINI_MODEL is missing; reviewed source bullets were retained."
+        )
+    return (
+        "Gemini bullet writing is enabled and configured, but the provider adapter "
+        "could not initialize; reviewed source bullets were retained."
+    )
 
 
 def _legacy_database(

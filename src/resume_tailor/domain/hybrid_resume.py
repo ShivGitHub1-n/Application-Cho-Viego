@@ -12,8 +12,9 @@ from resume_tailor.domain.requirement_ranking import (
 from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 
 EVIDENCE_RETRIEVAL_CONTRACT_VERSION = "resume-evidence-retrieval-v1"
-RESUME_WRITING_CONTRACT_VERSION = "evidence-grounded-bullet-v2"
-RESUME_WRITING_POLICY_VERSION = "technical-resume-writing-v1"
+RESUME_WRITING_CONTRACT_VERSION = "evidence-grounded-bullet-v3"
+RESUME_WRITING_POLICY_VERSION = "technical-resume-writing-v2"
+RESUME_WRITING_PROMPT_VERSION = "gemini-batched-writer-v2"
 
 
 class RetrievalAdmissionStatus(StrEnum):
@@ -42,6 +43,7 @@ class WriterExecutionStatus(StrEnum):
     WRITER_SUCCEEDED = "writer_succeeded"
     MALFORMED_WRITER_OUTPUT = "malformed_writer_output"
     ALL_GENERATED_VARIANTS_REJECTED = "all_generated_variants_rejected"
+    NO_MATERIAL_IMPROVEMENT = "no_material_improvement"
     SOURCE_VARIANTS_SCORED_BETTER = "source_variants_scored_better"
     SOURCE_FALLBACK_USED = "source_fallback_used"
 
@@ -84,9 +86,7 @@ class RetrievedEvidence(BaseModel):
     adjacent_requirement_ids: list[str] = Field(default_factory=list)
     complementary_requirement_ids: list[str] = Field(default_factory=list)
     incidental_requirement_ids: list[str] = Field(default_factory=list)
-    short_token_contributions: list[ShortTokenContribution] = Field(
-        default_factory=list
-    )
+    short_token_contributions: list[ShortTokenContribution] = Field(default_factory=list)
     admission_status: RetrievalAdmissionStatus
     admission_reason: str
     provenance: list[str] = Field(default_factory=list)
@@ -113,6 +113,17 @@ class GroundedClaim(BaseModel):
     reason: str
 
 
+class WriterShortlistCandidate(BaseModel):
+    evidence_id: str
+    entry_id: str
+    entry_kind: str
+    relationship: EvidenceRelationship
+    contextual_relevance: float = Field(ge=0)
+    intrinsic_evidence_strength: float = Field(ge=0)
+    selected: bool
+    selection_reason: str
+
+
 class BulletVariantRecord(BaseModel):
     variant_id: str
     entry_id: str
@@ -121,9 +132,11 @@ class BulletVariantRecord(BaseModel):
     rewritten_text: str
     factual_claims: list[GroundedClaim] = Field(min_length=1)
     target_job_requirements: list[str] = Field(default_factory=list)
+    relationship_tier: EvidenceRelationship = EvidenceRelationship.REJECTED
     intended_length_class: BulletLengthClass
     writing_policy_version: str = RESUME_WRITING_POLICY_VERSION
     contract_version: str = RESUME_WRITING_CONTRACT_VERSION
+    prompt_version: str = RESUME_WRITING_PROMPT_VERSION
     provider: str
     model: str
     validation_status: BulletValidationStatus
@@ -132,6 +145,7 @@ class BulletVariantRecord(BaseModel):
     material_improvement: bool = False
     improvement_reasons: list[str] = Field(default_factory=list)
     selected: bool = False
+    selection_reason: str | None = None
     future_user_review: bool = False
 
 
@@ -140,16 +154,18 @@ class HybridResumeDiagnostic(BaseModel):
     planning_status: HybridPlanningStatus = HybridPlanningStatus.DETERMINISTIC_ONLY
     planning_reason: str = "Deterministic planning remained authoritative."
     writing_status: HybridPlanningStatus = HybridPlanningStatus.DETERMINISTIC_ONLY
-    writer_execution_status: WriterExecutionStatus = (
-        WriterExecutionStatus.REWRITING_DISABLED
-    )
+    writer_execution_status: WriterExecutionStatus = WriterExecutionStatus.REWRITING_DISABLED
     writing_reason: str = "Reviewed source bullets remained authoritative."
     source_writer_path: str = "reviewed_profile_evidence"
     layout_input: str = "reviewed_source_bullets"
+    writer_shortlist: list[WriterShortlistCandidate] = Field(default_factory=list)
+    shortlisted_entry_ids: list[str] = Field(default_factory=list)
+    shortlisted_evidence_ids: list[str] = Field(default_factory=list)
     bullet_variants: list[BulletVariantRecord] = Field(default_factory=list)
     rejected_variants: list[BulletVariantRecord] = Field(default_factory=list)
     validation_failures: list[str] = Field(default_factory=list)
     provider_call_count: int = Field(default=0, ge=0)
+    provider_retry_reason: str | None = None
     provider_cache_hits: int = Field(default=0, ge=0)
     rewrite_enabled: bool = False
     deterministic_fallback_used: bool = True
@@ -157,6 +173,7 @@ class HybridResumeDiagnostic(BaseModel):
     rewritten_bullet_count: int = Field(default=0, ge=0)
     fallback_bullet_count: int = Field(default=0, ge=0)
     rejected_variant_count: int = Field(default=0, ge=0)
+    review_required_variant_count: int = Field(default=0, ge=0)
     estimated_remaining_lines: int | None = Field(default=None, ge=0)
     exact_pagination: bool = False
     page_verification_provider: str | None = None
@@ -175,7 +192,9 @@ __all__ = [
     "HybridResumeDiagnostic",
     "RESUME_WRITING_CONTRACT_VERSION",
     "RESUME_WRITING_POLICY_VERSION",
+    "RESUME_WRITING_PROMPT_VERSION",
     "RetrievalAdmissionStatus",
     "RetrievedEvidence",
     "WriterExecutionStatus",
+    "WriterShortlistCandidate",
 ]

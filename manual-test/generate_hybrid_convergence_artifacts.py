@@ -77,19 +77,9 @@ def _real_embedded_case() -> tuple[MasterProfile, JobPosting]:
         id="world-star-tech-embedded-systems-engineer",
         title="Embedded Systems Engineer",
         description=(
-            "Core responsibilities:\n"
-            "- Develop firmware and GUI software for robotic in-house automation.\n"
-            "- Collaborate across electronic, software, and optomechanical disciplines.\n"
-            "- Develop clean, documented code from low-level embedded systems through "
-            "high-level architecture.\n"
-            "Required qualifications:\n"
-            "- Strong C++ and Python object-oriented programming.\n"
-            "- Experience with STM32 or similar microcontrollers.\n"
-            "- Use timers, I2C, UART, SPI, DMA, ADC, and related peripherals.\n"
-            "Preferred or bonus qualifications:\n"
-            "- C# and .NET.\n"
-            "- TCP sockets and cloud services.\n"
-            "- Image processing."
+            ROOT / "manual-test" / "embedded-systems-engineer-posting.txt"
+        ).read_text(
+            encoding="utf-8",
         ),
     )
     return profile, posting

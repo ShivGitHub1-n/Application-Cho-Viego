@@ -16,10 +16,13 @@ class GenerationStage(StrEnum):
     EVIDENCE_RETRIEVAL = "evidence_retrieval"
     DETERMINISTIC_PLANNING = "deterministic_planning"
     SEMANTIC_PLANNING = "semantic_planning"
+    PLAN_VALIDATION = "plan_validation"
+    WRITER_SHORTLIST = "writer_shortlist"
     WRITER_CACHE_LOOKUP = "writer_cache_lookup"
     PROVIDER_REQUEST = "provider_request"
     PROVIDER_RESPONSE_PARSING = "provider_response_parsing"
     CLAIM_VALIDATION = "claim_validation"
+    WRITER_VARIANT_SELECTION = "writer_variant_selection"
     COMPOSITION_CANDIDATE_CONSTRUCTION = "composition_candidate_construction"
     PORTFOLIO_PAGE_FIT_SEARCH = "portfolio_page_fit_search"
     DOCX_RENDERING = "docx_rendering"
@@ -68,6 +71,10 @@ class ProviderExecutionDiagnostic(BaseModel):
     cache_hit_count: int = Field(ge=0)
     request_timeout_seconds: float = Field(gt=0)
     configured_retry_count: int = Field(ge=0)
+    retry_reason: str | None = None
+    provider_elapsed_seconds: float = Field(default=0, ge=0)
+    parsing_elapsed_seconds: float = Field(default=0, ge=0)
+    validation_elapsed_seconds: float = Field(default=0, ge=0)
     deterministic_fallback_used: bool
     reason: str
 
@@ -123,9 +130,7 @@ class ArtifactDownload(BaseModel):
     artifact_fingerprint: str
     docx_bytes: bytes
     preparation_timing: StageTiming
-    generation_call_counts: GenerationCallCounts = Field(
-        default_factory=GenerationCallCounts
-    )
+    generation_call_counts: GenerationCallCounts = Field(default_factory=GenerationCallCounts)
 
 
 __all__ = [

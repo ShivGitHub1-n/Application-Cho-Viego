@@ -78,10 +78,14 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
 Gemini composition is advisory and evidence-grounded. The application may
-narrow or reorder optimizer-selected candidates. Resume writing now uses one
-bounded batch after deterministic retrieval and source-text composition; the
-validated variants are cached and reused during the final deterministic
-page-fit search. This corrects the former production handoff in which
+narrow or reorder optimizer-selected candidates. Resume writing now uses an
+entry-balanced shortlist after deterministic retrieval and an initial
+source-text composition. The shortlist retains selected direct evidence,
+strong adjacent evidence, intrinsically strong complementary evidence, and at
+least one credible alternative per admitted entry before applying the global
+24-evidence and four-per-entry bounds. One primary batch writes only that
+shortlist. Validated variants are cached and reused during the final
+deterministic page-fit search. This corrects the former production handoff in which
 `DeterministicResumeComposer` rebuilt selected bullets from
 `EvidenceItem.source_text` and therefore discarded validated rewrites produced
 earlier in the request.
@@ -98,16 +102,21 @@ The hybrid authority split is explicit:
   checks cannot prove is quarantined for bounded semantic review rather than
   rendered automatically;
 - the layout optimizer selects only validated or explicitly approved variants,
-  falls back to reviewed source text, and remains authoritative for structure,
-  duplication, page fit, and export;
+  compares them with reviewed source text, and remains authoritative for final
+  entry selection, structure, duplication, readability-adjusted page cost,
+  page fit, and export;
 - Template V1 alone owns DOCX formatting.
 
 Cache identity includes profile and posting fingerprints, evidence bundles,
-writing-policy and contract versions, provider, and model. Page-fit thresholds
-are deliberately excluded, so a validated wording variant is not regenerated
-merely because a layout budget changes. Provider calls and cache hits are
-typed diagnostics. With all LLM features disabled, no provider is constructed
-or called.
+ordered shortlist IDs, exact source text, prompt, writing-policy and contract
+versions, relevant writer flags, provider, and model. Page-fit thresholds are
+deliberately excluded, so a validated wording variant is not regenerated merely
+because a layout budget changes. The production writer makes one primary request
+and permits one additional request only when the typed provider response is
+malformed. Timeouts, network failures, grounding rejections, and safety failures
+do not enter a retry loop. The Gemini SDK retry count is explicitly one attempt.
+Provider, parsing, validation, request, repair, and cache diagnostics are typed.
+With all LLM features disabled, no provider is constructed or called.
 
 The Streamlit production flow completes generation through one typed immutable
 `GeneratedResumeArtifact`. Its identity covers the reviewed profile, normalized
@@ -126,10 +135,13 @@ composition, rendering, or pagination work.
 
 The versioned writing policy is centralized in
 `application/resume_writing_policy.py`. It establishes evidence, tone,
-ATS-readable text, prohibited-phrase, and one-to-two-line guidance without
-encoding a rigid sentence template. Generated three-line variants require
-review unless a clean grounded alternative is available. This version does
-not add a second semantic-provider call: uncertain entailment remains
+ATS-readable text, discouraged/prohibited phrase, semantic-equivalence, and
+one-to-two-line guidance without encoding a rigid sentence template. Generated
+three-line variants require review unless a clean grounded alternative is
+available. Deterministic validation accepts broad configured linguistic
+equivalents, rejects contradictions and protected-fact changes, and
+review-gates otherwise unprovable narrower terminology. This version does not
+add a second semantic-provider call: uncertain entailment remains
 review-required and falls back to reviewed source text.
 
 Gemini role classification is a separate opt-in tailoring concern. Production

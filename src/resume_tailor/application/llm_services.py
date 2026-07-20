@@ -37,6 +37,7 @@ from resume_tailor.application.skill_composition import (
     DeterministicSkillCompositionReconciler,
     SkillCompositionReconciliationError,
 )
+from resume_tailor.application.writer_shortlist import build_writer_shortlist
 from resume_tailor.domain.generated_artifact import GenerationStage
 from resume_tailor.domain.hybrid_resume import (
     BulletLengthClass,
@@ -52,7 +53,10 @@ from resume_tailor.domain.hybrid_resume import (
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
     BulletRewrite,
+    BulletRewriteClaim,
+    BulletRewriteOutput,
     BulletRewriteRequest,
+    BulletRewriteResult,
     BulletShorteningRequest,
     CompositionRecommendationRequest,
     EligibleEntry,
@@ -84,6 +88,7 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
+from resume_tailor.domain.requirement_ranking import EvidenceRelationship
 from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
@@ -106,6 +111,7 @@ class HybridLlmServices:
         model_name: str = "configured-model",
         writing_policy: ResumeWritingPolicy = DEFAULT_RESUME_WRITING_POLICY,
         telemetry: GenerationTelemetry | None = None,
+        provider_unavailable_reason: str | None = None,
     ) -> None:
         self._language_model = language_model
         self._retry_count = retry_count
@@ -124,7 +130,11 @@ class HybridLlmServices:
         self._rewrite_cache: dict[str, TailoringPlan] = {}
         self._resume_rewrite_cache: dict[
             str,
-            tuple[list[BulletVariantRecord], list[BulletVariantRecord]],
+            tuple[
+                list[BulletVariantRecord],
+                list[BulletVariantRecord],
+                str | None,
+            ],
         ] = {}
         self._provider_name = provider_name
         self._model_name = model_name
@@ -137,6 +147,7 @@ class HybridLlmServices:
         self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
         self._last_planning_reason = "Deterministic planning remained authoritative."
         self._last_retry_failure_kind: str | None = None
+        self._provider_unavailable_reason = provider_unavailable_reason
 
     def set_telemetry(self, telemetry: GenerationTelemetry) -> None:
         self._telemetry = telemetry
@@ -310,9 +321,7 @@ class HybridLlmServices:
                     "hybrid_diagnostic": diagnostic.model_copy(
                         update={
                             "writing_status": HybridPlanningStatus.DETERMINISTIC_ONLY,
-                            "writer_execution_status": (
-                                WriterExecutionStatus.REWRITING_DISABLED
-                            ),
+                            "writer_execution_status": (WriterExecutionStatus.REWRITING_DISABLED),
                             "writing_reason": "Rewriting is disabled by configuration.",
                             "rewrite_enabled": False,
                             "provider_call_count": self._last_planning_provider_calls,
@@ -323,17 +332,32 @@ class HybridLlmServices:
                     )
                 }
             )
+        with self._telemetry.measure(GenerationStage.WRITER_SHORTLIST):
+            if diagnostic.retrieval is not None:
+                groups, shortlist_diagnostics = build_writer_shortlist(
+                    resume,
+                    profile,
+                    diagnostic.retrieval,
+                    policy=self._writing_policy,
+                    line_estimator=self._line_estimator,
+                )
+            else:
+                groups = self._shortlisted_groups(resume, profile)
+                shortlist_diagnostics = []
+        shortlisted_entry_ids = list(dict.fromkeys(group.entry_id for group in groups))
+        shortlisted_evidence_ids = [
+            evidence_id for group in groups for evidence_id in group.evidence_ids
+        ]
         if self._language_model is None:
             return resume.model_copy(
                 update={
                     "hybrid_diagnostic": diagnostic.model_copy(
                         update={
                             "writing_status": HybridPlanningStatus.DETERMINISTIC_ONLY,
-                            "writer_execution_status": (
-                                WriterExecutionStatus.PROVIDER_UNAVAILABLE
-                            ),
+                            "writer_execution_status": (WriterExecutionStatus.PROVIDER_UNAVAILABLE),
                             "writing_reason": (
-                                "Rewriting is enabled, but the configured provider/model "
+                                self._provider_unavailable_reason
+                                or "Rewriting is enabled, but the configured provider/model "
                                 "is unavailable; reviewed source bullets were retained."
                             ),
                             "rewrite_enabled": True,
@@ -341,11 +365,13 @@ class HybridLlmServices:
                             "provider_cache_hits": self._last_planning_cache_hits,
                             "deterministic_fallback_used": True,
                             "layout_input": "reviewed_source_bullets",
+                            "writer_shortlist": shortlist_diagnostics,
+                            "shortlisted_entry_ids": shortlisted_entry_ids,
+                            "shortlisted_evidence_ids": shortlisted_evidence_ids,
                         }
                     )
                 }
             )
-        groups = self._shortlisted_groups(resume, profile)
         if not groups:
             return resume.model_copy(
                 update={
@@ -353,13 +379,14 @@ class HybridLlmServices:
                         update={
                             "rewrite_enabled": True,
                             "writing_status": HybridPlanningStatus.ADVISORY_REJECTED,
-                            "writer_execution_status": (
-                                WriterExecutionStatus.SOURCE_FALLBACK_USED
-                            ),
+                            "writer_execution_status": (WriterExecutionStatus.SOURCE_FALLBACK_USED),
                             "writing_reason": "No reviewed evidence was eligible for writing.",
                             "provider_call_count": self._last_planning_provider_calls,
                             "provider_cache_hits": self._last_planning_cache_hits,
                             "deterministic_fallback_used": True,
+                            "writer_shortlist": shortlist_diagnostics,
+                            "shortlisted_entry_ids": shortlisted_entry_ids,
+                            "shortlisted_evidence_ids": shortlisted_evidence_ids,
                         }
                     )
                 }
@@ -379,13 +406,18 @@ class HybridLlmServices:
             target_terms=sorted(
                 set(posting.title.casefold().split() + posting.description.casefold().split())
             )[:80],
-            target_requirements=[
-                item for item in re_split_requirements(posting.description) if item
-            ][:20],
+            target_requirements=(
+                [item.text for item in diagnostic.retrieval.posting_requirements[:20]]
+                if diagnostic.retrieval is not None
+                else [item for item in re_split_requirements(posting.description) if item][:20]
+            ),
             groups=groups,
             max_bullets_per_entry=max(
-                constraints.max_bullets_per_entry,
-                6,
+                1,
+                min(
+                    constraints.max_bullets_per_entry,
+                    self._writing_policy.maximum_shortlisted_evidence_per_entry,
+                ),
             ),
             max_total_lines=max(
                 constraints.max_total_lines,
@@ -401,8 +433,14 @@ class HybridLlmServices:
                 ),
             ),
             writing_policy_version=self._writing_policy.version,
+            relevant_feature_flags={
+                "bullet_rewrite": True,
+                "writer_aware_portfolio": True,
+                "claim_level_validation": True,
+            },
             writing_instructions=list(self._writing_policy.instructions),
             prohibited_phrases=list(self._writing_policy.prohibited_phrases),
+            discouraged_phrases=list(self._writing_policy.discouraged_phrases),
         )
         cache_key = self._variant_cache_key(request)
         with self._telemetry.measure(GenerationStage.WRITER_CACHE_LOOKUP):
@@ -411,29 +449,34 @@ class HybridLlmServices:
         provider_calls = 0
         cache_hits = 0
         rejected: list[BulletVariantRecord] = []
+        retry_reason: str | None = None
         if cached is None:
             self._generation_call_counts[generation_key] = 0
             self._last_validation_failures = []
             self._last_retry_failure_kind = None
-            result = self._retry(
+            result = self._execute_writer_batch(
                 generation_key,
                 self._language_model.rewrite_bullets,
                 request,
-                lambda output: validate_rewrites(
-                    output,
-                    groups,
-                    max_bullets_per_entry=request.max_bullets_per_entry,
-                    max_total_lines=request.max_total_lines,
-                ),
             )
             provider_calls = self._generation_call_counts.pop(generation_key, 0)
+            retry_reason = (
+                "The primary Gemini response was malformed, so the single "
+                "permitted typed-output repair request was used."
+                if provider_calls > 1
+                else None
+            )
             if result is None:
                 execution_status = (
                     WriterExecutionStatus.PROVIDER_TIMEOUT
                     if self._last_retry_failure_kind == LanguageModelErrorKind.TIMEOUT.value
                     else WriterExecutionStatus.MALFORMED_WRITER_OUTPUT
                     if self._last_validation_failures
-                    or self._last_retry_failure_kind == "malformed_output"
+                    or self._last_retry_failure_kind
+                    in {
+                        "malformed_output",
+                        LanguageModelErrorKind.MALFORMED_RESPONSE.value,
+                    }
                     else WriterExecutionStatus.SOURCE_FALLBACK_USED
                 )
                 return resume.model_copy(
@@ -446,33 +489,47 @@ class HybridLlmServices:
                                 "writing_reason": (
                                     "The provider timed out within the bounded retry policy; "
                                     "reviewed source bullets were retained."
-                                    if execution_status
-                                    is WriterExecutionStatus.PROVIDER_TIMEOUT
+                                    if execution_status is WriterExecutionStatus.PROVIDER_TIMEOUT
                                     else "Provider output failed schema or grounding "
                                     "validation; reviewed source bullets were retained."
                                 ),
                                 "provider_call_count": (
                                     self._last_planning_provider_calls + provider_calls
                                 ),
+                                "provider_retry_reason": (
+                                    "The primary Gemini response was malformed; the "
+                                    "single permitted typed-output repair also failed."
+                                    if provider_calls > 1
+                                    else None
+                                ),
                                 "provider_cache_hits": self._last_planning_cache_hits,
                                 "deterministic_fallback_used": True,
                                 "layout_input": "reviewed_source_bullets",
                                 "validation_failures": list(self._last_validation_failures),
+                                "writer_shortlist": shortlist_diagnostics,
+                                "shortlisted_entry_ids": shortlisted_entry_ids,
+                                "shortlisted_evidence_ids": shortlisted_evidence_ids,
                             }
                         )
                     }
                 )
             cache_hits = int(result.metadata.cache_hit)
-            variants, rejected = self._variant_records(
-                result.output.bullets,
-                groups,
-                provider=result.metadata.provider,
-                model=result.metadata.model,
-                posting=posting,
+            with self._telemetry.measure(GenerationStage.CLAIM_VALIDATION):
+                self._telemetry.increment("claim_validations")
+                variants, rejected = self._variant_records(
+                    result.output.bullets,
+                    groups,
+                    provider=result.metadata.provider,
+                    model=result.metadata.model,
+                    posting=posting,
+                )
+            self._resume_rewrite_cache[cache_key] = (
+                variants,
+                rejected,
+                retry_reason,
             )
-            self._resume_rewrite_cache[cache_key] = (variants, rejected)
         else:
-            cached_variants, cached_rejected = cached
+            cached_variants, cached_rejected, retry_reason = cached
             variants = [item.model_copy(deep=True) for item in cached_variants]
             rejected = [item.model_copy(deep=True) for item in cached_rejected]
             cache_hits = 1
@@ -500,7 +557,9 @@ class HybridLlmServices:
             for item in variants
         ]
         selected_count = len(selected_ids)
-        if cache_hits:
+        if not variants and not rejected:
+            execution_status = WriterExecutionStatus.NO_MATERIAL_IMPROVEMENT
+        elif cache_hits:
             execution_status = WriterExecutionStatus.CACHE_HIT
         elif selected_count:
             execution_status = WriterExecutionStatus.WRITER_SUCCEEDED
@@ -517,6 +576,9 @@ class HybridLlmServices:
                         "writing_reason": (
                             "A cached validated writer batch was reused."
                             if execution_status is WriterExecutionStatus.CACHE_HIT
+                            else "Gemini returned no variants because it found no "
+                            "materially stronger supported wording for the bounded shortlist."
+                            if execution_status is WriterExecutionStatus.NO_MATERIAL_IMPROVEMENT
                             else "A bounded validated writer batch supplied materially "
                             "improved reusable variants; deterministic layout search "
                             "retained final authority."
@@ -526,15 +588,23 @@ class HybridLlmServices:
                         ),
                         "source_writer_path": "bounded_evidence_rewrite_batch",
                         "layout_input": "validated_variants_with_source_fallbacks",
+                        "writer_shortlist": shortlist_diagnostics,
+                        "shortlisted_entry_ids": shortlisted_entry_ids,
+                        "shortlisted_evidence_ids": shortlisted_evidence_ids,
                         "bullet_variants": selected_variants,
                         "rejected_variants": rejected,
                         "provider_call_count": (
                             self._last_planning_provider_calls + provider_calls
                         ),
+                        "provider_retry_reason": retry_reason,
                         "provider_cache_hits": (self._last_planning_cache_hits + cache_hits),
                         "rewrite_enabled": True,
                         "deterministic_fallback_used": not bool(selected_ids),
                         "rejected_variant_count": len(rejected),
+                        "review_required_variant_count": sum(
+                            item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
+                            for item in selected_variants
+                        ),
                     }
                 )
             }
@@ -717,12 +787,27 @@ class HybridLlmServices:
         accepted: list[BulletVariantRecord] = []
         rejected: list[BulletVariantRecord] = []
         for rewrite in rewrites:
+            source_groups = [
+                group_by_evidence[evidence_id]
+                for evidence_id in rewrite.source_evidence_ids
+                if evidence_id in group_by_evidence
+            ]
             source_texts = [
                 source_text
                 for evidence_id in rewrite.source_evidence_ids
-                for source_text in group_by_evidence[evidence_id].source_texts
+                for source_text in (
+                    group_by_evidence[evidence_id].source_texts
+                    if evidence_id in group_by_evidence
+                    else []
+                )
             ]
-            variants = (
+            retained_source_texts = source_texts or [
+                "Provider output did not retain a known reviewed evidence reference."
+            ]
+            variants: tuple[
+                tuple[str | None, BulletLengthClass, str],
+                ...,
+            ] = (
                 (
                     rewrite.final_bullet_text,
                     rewrite.intended_length_class,
@@ -734,9 +819,16 @@ class HybridLlmServices:
                     "concise",
                 ),
             )
+            seen_variant_texts: set[str] = set()
             for text, length_class, suffix in variants[
                 : self._writing_policy.maximum_variants_per_evidence_group
             ]:
+                if text is None:
+                    continue
+                normalized_variant = " ".join(text.casefold().split())
+                if normalized_variant in seen_variant_texts:
+                    continue
+                seen_variant_texts.add(normalized_variant)
                 line_fit = self._line_estimator.estimate(text)
                 target_requirements = (
                     rewrite.target_requirements_addressed
@@ -744,20 +836,66 @@ class HybridLlmServices:
                 )
                 improvement_reasons = _material_improvement_reasons(
                     text,
-                    source_texts,
+                    retained_source_texts,
                     posting,
                     line_fit,
                     self._line_estimator,
                 )
-                reasons = _writing_style_failures(
-                    text,
-                    source_texts,
-                    posting.description,
-                    self._writing_policy,
+                claims_for_validation = (
+                    rewrite.claims
+                    if rewrite.claims and suffix == "standard"
+                    else [
+                        BulletRewriteClaim(
+                            text=text,
+                            supporting_evidence_ids=rewrite.source_evidence_ids,
+                        )
+                    ]
                 )
+                validation_failures: list[str] = []
+                try:
+                    validate_rewrites(
+                        BulletRewriteOutput(
+                            bullets=[
+                                rewrite.model_copy(
+                                    update={
+                                        "final_bullet_text": text,
+                                        "concise_alternative": text,
+                                        "claims": claims_for_validation,
+                                    }
+                                )
+                            ]
+                        ),
+                        groups,
+                        max_bullets_per_entry=1,
+                        max_total_lines=max(
+                            3,
+                            (len(text) + 89) // 90,
+                        ),
+                    )
+                except GroundingValidationError as error:
+                    validation_failures.extend(error.failures)
+                reasons = [
+                    *validation_failures,
+                    *_writing_style_failures(
+                        text,
+                        retained_source_texts,
+                        posting.description,
+                        self._writing_policy,
+                    ),
+                ]
                 semantic_review_required = _introduces_unverified_semantic_features(
                     text,
                     source_texts,
+                    [
+                        value
+                        for group in source_groups
+                        for value in [
+                            *group.technologies,
+                            *group.capabilities,
+                            *group.metrics,
+                        ]
+                    ],
+                    self._writing_policy,
                 )
                 review_required = (
                     rewrite.support == ClaimConfidence.STRONGLY_IMPLIED
@@ -783,40 +921,22 @@ class HybridLlmServices:
                     if review_required
                     else BulletValidationStatus.VALIDATED
                 )
-                claims = (
-                    [
-                        GroundedClaim(
-                            text=claim.text,
-                            supporting_evidence_ids=claim.supporting_evidence_ids,
-                            validation_status=(
-                                ClaimValidationStatus.REVIEW_REQUIRED
-                                if rewrite.support == ClaimConfidence.STRONGLY_IMPLIED
-                                else ClaimValidationStatus.SUPPORTED
-                            ),
-                            reason=(
-                                "Claim retained provider-supplied same-entry evidence "
-                                "references and passed deterministic checks."
-                            ),
-                        )
-                        for claim in rewrite.claims
-                    ]
-                    if rewrite.claims and suffix == "standard"
-                    else [
-                        GroundedClaim(
-                            text=text,
-                            supporting_evidence_ids=rewrite.source_evidence_ids,
-                            validation_status=(
-                                ClaimValidationStatus.REVIEW_REQUIRED
-                                if rewrite.support == ClaimConfidence.STRONGLY_IMPLIED
-                                else ClaimValidationStatus.SUPPORTED
-                            ),
-                            reason=(
-                                "The complete bullet is treated as one bounded factual "
-                                "claim when the provider omits finer claim spans."
-                            ),
-                        )
-                    ]
-                )
+                claims = [
+                    GroundedClaim(
+                        text=claim.text,
+                        supporting_evidence_ids=claim.supporting_evidence_ids,
+                        validation_status=(
+                            ClaimValidationStatus.REVIEW_REQUIRED
+                            if rewrite.support == ClaimConfidence.STRONGLY_IMPLIED
+                            else ClaimValidationStatus.SUPPORTED
+                        ),
+                        reason=(
+                            "Claim retained provider-supplied same-entry evidence "
+                            "references and passed deterministic checks."
+                        ),
+                    )
+                    for claim in claims_for_validation
+                ]
                 digest = sha256(
                     (
                         f"{rewrite.entry_id}\0{text}\0"
@@ -827,10 +947,13 @@ class HybridLlmServices:
                     variant_id=f"written-bullet:{digest}",
                     entry_id=rewrite.entry_id,
                     source_evidence_ids=rewrite.source_evidence_ids,
-                    original_reviewed_text=source_texts,
+                    original_reviewed_text=retained_source_texts,
                     rewritten_text=text,
                     factual_claims=claims,
                     target_job_requirements=target_requirements,
+                    relationship_tier=_strongest_relationship(
+                        [group.relationship_tier for group in source_groups]
+                    ),
                     intended_length_class=length_class,
                     writing_policy_version=self._writing_policy.version,
                     provider=provider,
@@ -843,6 +966,8 @@ class HybridLlmServices:
                     future_user_review=review_required,
                 )
                 (rejected if status is BulletValidationStatus.REJECTED else accepted).append(record)
+                if reasons:
+                    self._last_validation_failures.extend(reasons)
         accepted.sort(key=_variant_sort_key)
         rejected.sort(key=lambda item: item.variant_id)
         return accepted, rejected
@@ -966,6 +1091,11 @@ class HybridLlmServices:
             "target_requirements": request.target_requirements,
             "writing_policy_version": request.writing_policy_version,
             "contract_version": request.contract_version,
+            "prompt_version": request.prompt_version,
+            "relevant_feature_flags": request.relevant_feature_flags,
+            "writing_instructions": request.writing_instructions,
+            "prohibited_phrases": request.prohibited_phrases,
+            "discouraged_phrases": request.discouraged_phrases,
             "provider": self._provider_name,
             "model": self._model_name,
         }
@@ -1118,6 +1248,56 @@ class HybridLlmServices:
                 self._last_retry_failure_kind = "malformed_output"
                 current_request = current_request.model_copy(
                     update={"correction_notes": [str(error)]}
+                )
+        return None
+
+    def _execute_writer_batch(
+        self,
+        generation_key: str,
+        operation: Callable[[BulletRewriteRequest], BulletRewriteResult],
+        request: BulletRewriteRequest,
+    ) -> BulletRewriteResult | None:
+        """Execute one writer request and one repair only for malformed typed output."""
+
+        maximum_requests = min(
+            self._max_calls,
+            self._writing_policy.maximum_provider_batches
+            + self._writing_policy.maximum_malformed_repairs,
+        )
+        current_request = request
+        for attempt_index in range(maximum_requests):
+            self._telemetry.increment("provider_calls")
+            if attempt_index:
+                self._telemetry.increment("provider_retries")
+            self._generation_call_counts[generation_key] = (
+                self._generation_call_counts.get(generation_key, 0) + 1
+            )
+            try:
+                return operation(current_request)
+            except LanguageModelError as error:
+                self._last_retry_failure_kind = error.kind.value
+                repairable = error.kind is LanguageModelErrorKind.MALFORMED_RESPONSE
+                if not repairable or attempt_index + 1 >= maximum_requests:
+                    return None
+                current_request = current_request.model_copy(
+                    update={
+                        "correction_notes": [
+                            "The prior response was malformed. Return only valid JSON "
+                            "matching the supplied typed schema."
+                        ]
+                    }
+                )
+            except ValueError:
+                self._last_retry_failure_kind = "malformed_output"
+                if attempt_index + 1 >= maximum_requests:
+                    return None
+                current_request = current_request.model_copy(
+                    update={
+                        "correction_notes": [
+                            "The prior response was malformed. Return only valid JSON "
+                            "matching the supplied typed schema."
+                        ]
+                    }
                 )
         return None
 
@@ -1313,10 +1493,7 @@ def _material_improvement_reasons(
         return []
     source_words = source.casefold().split()
     written_words = written.casefold().split()
-    if (
-        len(source_words) == len(written_words)
-        and source_words[1:] == written_words[1:]
-    ):
+    if len(source_words) == len(written_words) and source_words[1:] == written_words[1:]:
         return []
     reasons: list[str] = []
     source_line_fit = estimator.estimate(source)
@@ -1324,10 +1501,7 @@ def _material_improvement_reasons(
         reasons.append("reduced expected line cost")
     if source_line_fit.awkward_wrap_risk and not line_fit.awkward_wrap_risk:
         reasons.append("removed an awkward trailing fragment")
-    if (
-        len(source_words) >= 8
-        and len(written_words) <= len(source_words) * 0.85
-    ):
+    if len(source_words) >= 8 and len(written_words) <= len(source_words) * 0.85:
         reasons.append("made the evidence materially more concise")
     similarity = SequenceMatcher(None, source_words, written_words).ratio()
     if similarity < 0.88 and len(written_words) >= 5:
@@ -1342,6 +1516,8 @@ def _material_improvement_reasons(
 def _introduces_unverified_semantic_features(
     text: str,
     source_texts: list[str],
+    structured_facts: list[str],
+    policy: ResumeWritingPolicy,
 ) -> bool:
     """Quarantine new content-bearing terminology for bounded semantic review.
 
@@ -1353,42 +1529,50 @@ def _introduces_unverified_semantic_features(
     """
 
     written = extract_reviewed_text_features(text)
-    reviewed = extract_reviewed_text_features(" ".join(source_texts))
+    reviewed_bundle = " ".join([*source_texts, *structured_facts])
+    reviewed = extract_reviewed_text_features(reviewed_bundle)
     reviewed_source_words = re.findall(
         r"[A-Za-z]+",
-        " ".join(source_texts).casefold(),
+        reviewed_bundle.casefold(),
     )
+    linguistic_canonical = {
+        token: min(group) for group in policy.semantic_equivalence_groups for token in group
+    }
     reviewed_tokens = {
-        _linguistic_token(token)
+        _linguistic_token(token, linguistic_canonical)
         for token in [*reviewed.meaningful_tokens, *reviewed_source_words]
     }
     introduced = {
         token
         for token in written.meaningful_tokens
-        if _linguistic_token(token) not in reviewed_tokens
+        if _linguistic_token(token, linguistic_canonical) not in reviewed_tokens
     }
     return bool(introduced)
 
 
-_LINGUISTIC_EQUIVALENTS: tuple[frozenset[str], ...] = (
-    frozenset({"build", "built", "construct", "constructed", "create", "created"}),
-    frozenset({"assess", "assessed", "evaluate", "evaluated", "verify", "verified"}),
-    frozenset({"test", "tested", "validate", "validated"}),
-    frozenset({"apply", "applied", "employ", "employed", "use", "used", "using"}),
-    frozenset({"record", "recorded", "document", "documented", "capture", "captured"}),
-    frozenset({"coordinate", "coordinated", "collaborate", "collaborated"}),
-    frozenset({"debug", "debugged", "diagnose", "diagnosed", "troubleshoot", "troubleshot"}),
-)
-_LINGUISTIC_CANONICAL = {
-    token: min(group)
-    for group in _LINGUISTIC_EQUIVALENTS
-    for token in group
-}
-
-
-def _linguistic_token(token: str) -> str:
+def _linguistic_token(
+    token: str,
+    canonical: dict[str, str],
+) -> str:
     normalized = token.casefold().strip()
-    return _LINGUISTIC_CANONICAL.get(normalized, normalized)
+    return canonical.get(normalized, normalized)
+
+
+def _strongest_relationship(
+    relationships: list[EvidenceRelationship],
+) -> EvidenceRelationship:
+    order = {
+        EvidenceRelationship.DIRECT: 0,
+        EvidenceRelationship.ADJACENT: 1,
+        EvidenceRelationship.COMPLEMENTARY: 2,
+        EvidenceRelationship.INCIDENTAL: 3,
+        EvidenceRelationship.REJECTED: 4,
+    }
+    return min(
+        relationships,
+        key=lambda item: order[item],
+        default=EvidenceRelationship.REJECTED,
+    )
 
 
 def _word_ngrams(value: str, size: int) -> set[str]:

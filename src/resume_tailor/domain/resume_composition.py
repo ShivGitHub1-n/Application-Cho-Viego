@@ -16,10 +16,11 @@ from resume_tailor.domain.requirement_ranking import (
 TEMPLATE_V1_UTILIZATION_TARGET_FLOOR = 0.72
 TEMPLATE_V1_UTILIZATION_TARGET_CEILING = 0.97
 TEMPLATE_V1_PREFERRED_DENSITY_FLOOR = 0.90
-TEMPLATE_V1_PREFERRED_DENSITY_CEILING = 0.95
-TEMPLATE_V1_IDEAL_DENSITY = 0.95
+TEMPLATE_V1_PREFERRED_DENSITY_CEILING = 0.93
+TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING = 0.95
+TEMPLATE_V1_IDEAL_DENSITY = 0.92
 TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR = 0.85
-RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v3"
+RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v4"
 
 
 class CompositionOutcome(StrEnum):
@@ -147,10 +148,9 @@ class CompositionCandidateDiagnostic(BaseModel):
     adjacent_requirement_ids: list[str] = Field(default_factory=list)
     complementary_requirement_ids: list[str] = Field(default_factory=list)
     incidental_requirement_ids: list[str] = Field(default_factory=list)
-    short_token_contributions: list[ShortTokenContribution] = Field(
-        default_factory=list
-    )
+    short_token_contributions: list[ShortTokenContribution] = Field(default_factory=list)
     marginal_contribution: float = 0
+    writing_variant_id: str | None = None
 
 
 class PageFillIterationDiagnostic(BaseModel):
@@ -171,9 +171,7 @@ class EntryBulletSelectionDiagnostic(BaseModel):
     omitted_bullet_reasons: dict[str, str] = Field(default_factory=dict)
     retained_all_available_bullets: bool = False
     distinct_contributions: dict[str, str] = Field(default_factory=dict)
-    evidence_relationships: dict[str, EvidenceRelationship] = Field(
-        default_factory=dict
-    )
+    evidence_relationships: dict[str, EvidenceRelationship] = Field(default_factory=dict)
     marginal_contributions: dict[str, float] = Field(default_factory=dict)
 
 
@@ -215,15 +213,11 @@ class ResumeCompositionDiagnostic(BaseModel):
     credible_skill_category_count: int = Field(default=0, ge=0)
     desired_skill_category_count: int = Field(default=0, ge=0)
     skill_category_shortfall_reason: str | None = None
-    entry_bullet_selections: list[EntryBulletSelectionDiagnostic] = Field(
-        default_factory=list
-    )
+    entry_bullet_selections: list[EntryBulletSelectionDiagnostic] = Field(default_factory=list)
     project_representation: ProjectRepresentationDiagnostic | None = None
     selected_skill_rows: list[SkillRowSelectionDiagnostic] = Field(default_factory=list)
     posting_requirements: list[PostingRequirement] = Field(default_factory=list)
-    requirement_coverage: list[RequirementCoverageDiagnostic] = Field(
-        default_factory=list
-    )
+    requirement_coverage: list[RequirementCoverageDiagnostic] = Field(default_factory=list)
     portfolio_coverage_gaps: list[str] = Field(default_factory=list)
     direct_candidate_tradeoffs: list[DirectCandidateTradeoffDiagnostic] = Field(
         default_factory=list
@@ -263,11 +257,14 @@ class ResumeCompositionDiagnostic(BaseModel):
         gt=0,
         le=1,
     )
+    acceptable_density_ceiling: float = Field(
+        default=TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING,
+        gt=0,
+        le=1,
+    )
     ideal_density: float = Field(default=TEMPLATE_V1_IDEAL_DENSITY, gt=0, le=1)
     preferred_density_reached: bool = False
-    preferred_density_status: PreferredDensityStatus = (
-        PreferredDensityStatus.BELOW_PREFERRED
-    )
+    preferred_density_status: PreferredDensityStatus = PreferredDensityStatus.BELOW_PREFERRED
     underfill_reasons: list[CompositionUnderfillReason] = Field(default_factory=list)
     profile_appears_incomplete: bool = False
     normalized_posting_features: list[str] = Field(default_factory=list)
@@ -310,6 +307,7 @@ __all__ = [
     "ResumeCompositionDiagnostic",
     "SkillRowSelectionDiagnostic",
     "TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR",
+    "TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING",
     "TEMPLATE_V1_IDEAL_DENSITY",
     "TEMPLATE_V1_PREFERRED_DENSITY_CEILING",
     "TEMPLATE_V1_PREFERRED_DENSITY_FLOOR",

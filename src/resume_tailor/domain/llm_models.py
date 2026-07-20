@@ -12,9 +12,11 @@ from resume_tailor.domain.cover_letter import (
 from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_CONTRACT_VERSION,
     RESUME_WRITING_POLICY_VERSION,
+    RESUME_WRITING_PROMPT_VERSION,
     BulletLengthClass,
 )
 from resume_tailor.domain.models import ClaimConfidence, MasterProfile, RoleFamily
+from resume_tailor.domain.requirement_ranking import EvidenceRelationship
 
 
 class StrictModel(BaseModel):
@@ -258,6 +260,11 @@ class ApprovedEvidenceGroup(StrictModel):
     technologies: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     metrics: list[str] = Field(default_factory=list)
+    relationship_tier: EvidenceRelationship = EvidenceRelationship.REJECTED
+    posting_requirement_ids: list[str] = Field(default_factory=list)
+    posting_requirements: list[str] = Field(default_factory=list)
+    intrinsic_evidence_strength: float = Field(default=0, ge=0)
+    shortlist_reason: str = ""
     max_rendered_lines: int = Field(gt=0)
 
 
@@ -272,8 +279,13 @@ class BulletRewriteRequest(StrictModel):
     max_total_lines: int = Field(gt=0)
     writing_policy_version: str = RESUME_WRITING_POLICY_VERSION
     contract_version: str = RESUME_WRITING_CONTRACT_VERSION
+    prompt_version: str = RESUME_WRITING_PROMPT_VERSION
+    relevant_feature_flags: dict[str, bool] = Field(
+        default_factory=lambda: {"bullet_rewrite": True}
+    )
     writing_instructions: list[str] = Field(default_factory=list)
     prohibited_phrases: list[str] = Field(default_factory=list)
+    discouraged_phrases: list[str] = Field(default_factory=list)
     correction_notes: list[str] = Field(default_factory=list)
 
 
@@ -290,7 +302,7 @@ class BulletRewrite(StrictModel):
     preserved_metrics: list[str] = Field(default_factory=list)
     emphasized_terms: list[str] = Field(default_factory=list)
     evidence_combined: bool
-    concise_alternative: str = Field(min_length=1, max_length=500)
+    concise_alternative: str | None = Field(default=None, min_length=1, max_length=500)
     confidence: float = Field(ge=0, le=1)
     support: ClaimConfidence = ClaimConfidence.EXPLICITLY_SUPPORTED
     support_rationale: str = Field(default="", max_length=400)
@@ -300,7 +312,7 @@ class BulletRewrite(StrictModel):
 
 
 class BulletRewriteOutput(StrictModel):
-    bullets: list[BulletRewrite] = Field(min_length=1)
+    bullets: list[BulletRewrite] = Field(default_factory=list, max_length=48)
 
 
 class BulletRewriteResult(ModelResult):

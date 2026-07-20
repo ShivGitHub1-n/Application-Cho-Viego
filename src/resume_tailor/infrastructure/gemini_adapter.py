@@ -81,11 +81,15 @@ class GeminiResumeLanguageModel:
         self._types = types
         self._client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=settings.llm_timeout_seconds * 1000),
+            http_options=types.HttpOptions(
+                timeout=settings.llm_timeout_seconds * 1000,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
         self._model = settings.gemini_model
         self._temperature = settings.llm_temperature
         self._max_output_tokens = settings.llm_max_output_tokens
+        self._bullet_rewrite_max_output_tokens = settings.llm_bullet_rewrite_max_output_tokens
         self._profile_extraction_max_output_tokens = (
             settings.llm_profile_extraction_max_output_tokens
         )
@@ -191,28 +195,38 @@ class GeminiResumeLanguageModel:
             return cached.model_copy(update={"metadata": metadata})
         started = time.monotonic()
         try:
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=task_prompt(operation, request),
-                config=self._types.GenerateContentConfig(
-                    system_instruction=system_prompt(),
-                    temperature=self._temperature,
-                    max_output_tokens=(
-                        self._profile_extraction_max_output_tokens
-                        if operation == LlmOperation.PROFILE_EXTRACTION
-                        else self._max_output_tokens
-                    ),
-                    response_mime_type="application/json",
-                    response_schema=gemini_response_schema(
-                        output_type,
-                        excluded_properties=(
-                            {"description", "bullets", "bullet_points"}
+
+            def generate() -> Any:
+                return self._client.models.generate_content(
+                    model=self._model,
+                    contents=task_prompt(operation, request),
+                    config=self._types.GenerateContentConfig(
+                        system_instruction=system_prompt(),
+                        temperature=self._temperature,
+                        max_output_tokens=(
+                            self._profile_extraction_max_output_tokens
                             if operation == LlmOperation.PROFILE_EXTRACTION
-                            else None
+                            else self._bullet_rewrite_max_output_tokens
+                            if operation == LlmOperation.REWRITE_BULLETS
+                            else self._max_output_tokens
+                        ),
+                        response_mime_type="application/json",
+                        response_schema=gemini_response_schema(
+                            output_type,
+                            excluded_properties=(
+                                {"description", "bullets", "bullet_points"}
+                                if operation == LlmOperation.PROFILE_EXTRACTION
+                                else None
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
+
+            if telemetry is not None and operation is LlmOperation.REWRITE_BULLETS:
+                with telemetry.measure(GenerationStage.PROVIDER_REQUEST):
+                    response = generate()
+            else:
+                response = generate()
             parsing_started = telemetry.clock() if telemetry is not None else 0.0
             finish_reason, finish_message = self._finish_diagnostics(response)
             usage = getattr(response, "usage_metadata", None)

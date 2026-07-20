@@ -1,0 +1,14 @@
+Core responsibilities:
+- Develop firmware and GUI software for robotic in-house automation.
+- Collaborate across electronic, software, and optomechanical disciplines.
+- Develop clean, documented code from low-level embedded systems through high-level architecture.
+
+Required qualifications:
+- Strong C++ and Python object-oriented programming.
+- Experience with STM32 or similar microcontrollers.
+- Use timers, I2C, UART, SPI, DMA, ADC, and related peripherals.
+
+Preferred or bonus qualifications:
+- C# and .NET.
+- TCP sockets and cloud services.
+- Image processing.

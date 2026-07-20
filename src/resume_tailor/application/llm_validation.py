@@ -253,7 +253,9 @@ def validate_rewrites(
             require_preserved_facts=False,
         )
         known_terms = {
-            term for item in groups_for_bullet for term in [*item.technologies, *item.metrics]
+            term
+            for item in groups_for_bullet
+            for term in [*item.technologies, *item.capabilities, *item.metrics]
         }
         unknown_terms = set(bullet.preserved_technologies + bullet.preserved_metrics) - known_terms
         if unknown_terms:
@@ -276,13 +278,14 @@ def validate_rewrites(
             [text for item in groups_for_bullet for text in item.source_texts],
             failures,
         )
-        _validate_variant_text(
-            bullet.concise_alternative,
-            groups_for_bullet,
-            bullet.support,
-            failures,
-            label="concise alternative",
-        )
+        if bullet.concise_alternative is not None:
+            _validate_variant_text(
+                bullet.concise_alternative,
+                groups_for_bullet,
+                bullet.support,
+                failures,
+                label="concise alternative",
+            )
         entry_bullet_counts[bullet.entry_id] = entry_bullet_counts.get(bullet.entry_id, 0) + 1
         total_lines += _estimated_lines(bullet.final_bullet_text)
     if any(count > max_bullets_per_entry for count in entry_bullet_counts.values()):
@@ -321,7 +324,9 @@ def _validate_claim_provenance(
         ]
         source_texts = [source_text for group in claim_groups for source_text in group.source_texts]
         claim_terms = [
-            term for group in claim_groups for term in [*group.technologies, *group.metrics]
+            term
+            for group in claim_groups
+            for term in [*group.technologies, *group.capabilities, *group.metrics]
         ]
         _validate_protected_facts(
             claim.text,
@@ -359,7 +364,11 @@ def _validate_variant_text(
 ) -> None:
     local_failures: list[str] = []
     source_texts = [source for group in groups for source in group.source_texts]
-    known_terms = {term for group in groups for term in [*group.technologies, *group.metrics]}
+    known_terms = {
+        term
+        for group in groups
+        for term in [*group.technologies, *group.capabilities, *group.metrics]
+    }
     _validate_protected_facts(
         text,
         list(known_terms),
@@ -460,17 +469,20 @@ def _validate_ownership(
         "architected": 2,
     }
     source_text = " ".join(source_texts).casefold()
+    source_tokens = set(re.findall(r"[a-z]+", source_text))
     source_level = max(
-        (level for verb, level in levels.items() if verb in source_text),
+        (level for verb, level in levels.items() if verb in source_tokens),
         default=0,
     )
     if allow_strong_inference and any(
-        verb in source_text
+        verb in source_tokens
         for verb in ("built", "developed", "implemented", "designed", "tested", "validated")
     ):
         source_level = max(source_level, 1)
+    result_tokens = set(re.findall(r"[a-z]+", text.casefold()))
     result_level = max(
-        (level for verb, level in levels.items() if verb in text.casefold()), default=0
+        (level for verb, level in levels.items() if verb in result_tokens),
+        default=0,
     )
     if result_level > source_level:
         failures.append("ownership or causality was strengthened beyond source evidence")

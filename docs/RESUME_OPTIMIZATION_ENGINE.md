@@ -22,6 +22,10 @@ The automatic composer operates on the complete confirmed evidence pool after
 plan validation. Candidate relevance comes from direct posting-to-evidence
 comparison, not the role-family classifier. Exact reviewed bullet wording is
 retained; composition does not invoke rewriting, shortening, or providers.
+When the application supplies prevalidated writer variants, the same composer
+compares them with their reviewed sources and may select a different entry in
+the final portfolio. It still makes no provider calls and never validates or
+generates prose during page-fit search.
 
 Internal alternatives are retained for tests, debugging, and counterfactual explanations. The MVP presents one recommendation rather than multiple complete resumes.
 

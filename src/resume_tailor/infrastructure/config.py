@@ -25,10 +25,11 @@ class Settings(BaseSettings):
     llm_api_key_env_var: str = "GEMINI_API_KEY"
     llm_temperature: float = 0.1
     llm_max_output_tokens: int = 2048
+    llm_bullet_rewrite_max_output_tokens: int = 8192
     llm_profile_extraction_max_output_tokens: int = 8192
     llm_timeout_seconds: int = 30
-    llm_retry_count: int = 2
-    llm_max_calls_per_generation: int = 12
+    llm_retry_count: int = 1
+    llm_max_calls_per_generation: int = 2
     llm_cache_ttl_seconds: int = 900
     word_pagination_timeout_seconds: float = Field(default=15.0, gt=0)
     llm_enable_role_classification: bool = False
@@ -38,8 +39,8 @@ class Settings(BaseSettings):
         le=1,
         allow_inf_nan=False,
     )
-    llm_enable_opportunity_analysis: bool = True
-    llm_enable_composition: bool = True
+    llm_enable_opportunity_analysis: bool = False
+    llm_enable_composition: bool = False
     llm_enable_bullet_rewrite: bool = True
     llm_enable_shortening: bool = False
     llm_enable_cover_letter: bool = True

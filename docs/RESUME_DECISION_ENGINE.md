@@ -47,6 +47,15 @@ text, claim spans, provider/model identity, policy version, and line-fit class
 remain attached. Rejected or unapproved wording falls back to exact reviewed
 source text.
 
+The initial source composition is not final portfolio authority when writing is
+enabled. An entry-balanced writer shortlist includes selected evidence and
+credible alternative experiences or projects before the provider call. After
+claim validation, final composition removes the initial-plan preference and
+compares source and written variants across those entries. Writing may therefore
+change which entry wins, but only through supported posting emphasis,
+intrinsic evidence strength, distinct portfolio contribution, readability, and
+page cost. Employer reputation and other external popularity signals are absent.
+
 Candidate admission first extracts typed posting requirements. Responsibilities
 and required qualifications receive core or important authority; preferred
 language is complementary; incidental context remains low authority. Repetition,
@@ -110,6 +119,12 @@ Generated variants use the same line-fit diagnostics. A balanced one- or
 two-line grounded variant normally wins over an equally strong awkward variant.
 Automatically generated three-line text is review-required; it is never
 silently selected merely to increase density.
+
+Source wording remains a first-class candidate. A generated variant receives a
+small bounded writing-value bonus only after it proves material improvement;
+additional line cost and awkward wrapping reduce its comparison score. Cosmetic,
+unclear, verbose, rejected, or review-required variants do not displace a
+stronger source. There is no rewrite quota.
 
 Protected facts, claim-level evidence IDs, ownership, outcomes, and cross-entry
 grouping are checked deterministically. Novel content-bearing terminology that

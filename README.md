@@ -17,7 +17,7 @@ Vertical-slice stage. Static Template V1 stabilization is committed; determinist
 1. Install Python 3.11 or newer.
 2. Create and activate a virtual environment.
 3. Install dependencies: `pip install -r requirements-dev.txt`
-4. Copy `.env.example` to `.env`, set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable LLM features, or keep deterministic fallback enabled. Validated Gemini role classification is separately opt-in with `LLM_ENABLE_ROLE_CLASSIFICATION=true`; it is disabled by default.
+4. Copy `.env.example` to `.env`, set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable the production Gemini writer, or keep deterministic fallback enabled. The default resume route disables semantic opportunity/composition calls, uses one batched writer request with at most one malformed-output repair, and never calls Gemini during page fit or download. Validated Gemini role classification is separately opt-in with `LLM_ENABLE_ROLE_CLASSIFICATION=true`; it is disabled by default.
 5. Run the API: `python -m uvicorn resume_tailor.api.main:app --reload --app-dir src`
 6. Run the UI in another terminal: `python -m streamlit run src/resume_tailor/frontend/app.py`
 
