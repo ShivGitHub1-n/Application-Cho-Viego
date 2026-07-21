@@ -54,8 +54,9 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   integrity validation. It depends on a page-fit evaluation port; the
   Template V1 infrastructure adapter renders and measures candidate documents.
   Posting requirements and evidence relationships are typed domain models.
-  Entry and bullet admission remain separate marginal decisions, and project
-  and experience candidates share the same evidence-quality search. Legacy
+  Professional experiences enter final search as bounded, coherent packages;
+  projects and later package depth remain marginal decisions in the same
+  evidence-quality search. Legacy
   flat reviewed skills may be regrouped into bounded display-only semantic,
   non-contiguous groups with exact per-skill source-index provenance. Template
   V1 row width is estimated before adding a value; canonical profile data is
@@ -93,8 +94,13 @@ earlier in the request.
 The hybrid authority split is explicit:
 
 - retrieval and semantic planning may rank evidence, but cannot create facts;
-- the writer may reframe same-entry evidence and return bounded length
-  variants with claim-level evidence IDs;
+- the Gemini writer may return only authorized source evidence IDs, rewritten
+  text, and a bounded length class through a shallow transport contract;
+- the adapter maps those IDs back to the shortlist and reconstructs the rich
+  internal variant, including entry ownership and claim provenance, locally;
+- evidence-ID mapping is per rewrite: an unknown, duplicate, cross-entry, or
+  internally invalid item is rejected without discarding safely reconstructed
+  siblings; only a top-level provider-contract failure invalidates the batch;
 - deterministic validation rejects unsupported identifiers, numbers,
   technologies, outcomes, ownership expansion, cross-entry claims, or
   provenance loss;
@@ -102,9 +108,10 @@ The hybrid authority split is explicit:
   checks cannot prove is quarantined for bounded semantic review rather than
   rendered automatically;
 - the layout optimizer selects only validated or explicitly approved variants,
-  compares them with reviewed source text, and remains authoritative for final
-  entry selection, structure, duplication, readability-adjusted page cost,
-  page fit, and export;
+  compares them with reviewed source text, builds two-to-four-bullet
+  professional package alternatives, and remains authoritative for final entry
+  selection, structure, duplication, readability-adjusted metadata-plus-bullet
+  page cost, page fit, and export;
 - Template V1 alone owns DOCX formatting.
 
 Cache identity includes profile and posting fingerprints, evidence bundles,
@@ -116,6 +123,12 @@ and permits one additional request only when the typed provider response is
 malformed. Timeouts, network failures, grounding rejections, and safety failures
 do not enter a retry loop. The Gemini SDK retry count is explicitly one attempt.
 Provider, parsing, validation, request, repair, and cache diagnostics are typed.
+Per-rewrite diagnostics retain only the authorized evidence IDs and reviewed
+source used by the smoke route, reconstructed claim, mapping outcome, typed
+grounding codes, normalized unsupported terms, ownership/metric/outcome/scope
+comparisons, final validation state, and aggregate batch effect. A mixed batch
+is reported as `writer_partially_succeeded` when a validated sibling reaches
+selection; complete source fallback requires zero usable validated rewrites.
 With all LLM features disabled, no provider is constructed or called.
 
 The Streamlit production flow completes generation through one typed immutable
@@ -136,7 +149,10 @@ composition, rendering, or pagination work.
 The versioned writing policy is centralized in
 `application/resume_writing_policy.py`. It establishes evidence, tone,
 ATS-readable text, discouraged/prohibited phrase, semantic-equivalence, and
-one-to-two-line guidance without encoding a rigid sentence template. Generated
+one-to-two-line guidance. It asks for recruiter-readable ownership, technical
+method, and supported result framing, and permits an XYZ-style structure only
+when all three parts are reviewed facts; it never requires or fabricates a
+metric. Generated
 three-line variants require review unless a clean grounded alternative is
 available. Deterministic validation accepts broad configured linguistic
 equivalents, rejects contradictions and protected-fact changes, and
@@ -205,6 +221,14 @@ Session state carries reviewed profile and generated-workflow objects across
 navigation. Structured profile controls are primary; raw JSON and long
 diagnostics are collapsed delivery affordances. Job Discovery dependencies are
 constructed only when Job Search is selected and a reviewed profile is loaded.
+
+Each generated artifact owns a fresh telemetry window even when Streamlit reuses
+the long-lived service and writer cache. Exact-pagination attempts therefore
+remain build-local (`0` or `1`); prior builds, reruns, deterministic estimates,
+and DOCX renders cannot accumulate into that diagnostic. Approved-wording
+rebuilds reuse validated writer variants, create a new immutable artifact, and
+replace the session artifact only after successful byte rendering. Download
+continues to return those exact stored bytes without generation work.
 
 User-owned SQLite state is rooted in the centrally configured application data
 directory documented in [APPLICATION_DATA.md](APPLICATION_DATA.md). Profile and

@@ -17,6 +17,9 @@ from resume_tailor.application.composition import (
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.llm_validation import (
     GroundingValidationError,
+    compare_rewrite_grounding,
+    grounding_failure_code,
+    numeric_semantics_preserved,
     validate_composition,
     validate_rewrites,
     validate_shortening,
@@ -25,6 +28,7 @@ from resume_tailor.application.profile_extraction import (
     audit_extracted_profile,
     normalize_extracted_profile,
 )
+from resume_tailor.application.requirement_ranking import extract_posting_requirements
 from resume_tailor.application.resume_features import (
     TemplateV1BulletLineEstimator,
     extract_reviewed_text_features,
@@ -46,9 +50,17 @@ from resume_tailor.domain.hybrid_resume import (
     ClaimValidationStatus,
     EvidenceRetrievalResult,
     GroundedClaim,
+    GroundingFailureCode,
     HybridPlanningStatus,
     HybridResumeDiagnostic,
+    ProviderRequestShapeDiagnostic,
+    ProviderRewriteMappingOutcome,
+    ProviderRewriteMappingStatus,
     WriterExecutionStatus,
+    WriterPipelineFailureCode,
+    WriterPipelineIssue,
+    WriterPipelineStage,
+    WriterRewriteDiagnostic,
 )
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
@@ -88,7 +100,7 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
-from resume_tailor.domain.requirement_ranking import EvidenceRelationship
+from resume_tailor.domain.requirement_ranking import EvidenceRelationship, RequirementAuthority
 from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 from resume_tailor.ports.interfaces import ResumeLanguageModel
 
@@ -133,7 +145,10 @@ class HybridLlmServices:
             tuple[
                 list[BulletVariantRecord],
                 list[BulletVariantRecord],
+                list[WriterRewriteDiagnostic],
                 str | None,
+                str | None,
+                ProviderRequestShapeDiagnostic | None,
             ],
         ] = {}
         self._provider_name = provider_name
@@ -147,6 +162,7 @@ class HybridLlmServices:
         self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
         self._last_planning_reason = "Deterministic planning remained authoritative."
         self._last_retry_failure_kind: str | None = None
+        self._last_writer_pipeline_issue: WriterPipelineIssue | None = None
         self._provider_unavailable_reason = provider_unavailable_reason
 
     def set_telemetry(self, telemetry: GenerationTelemetry) -> None:
@@ -404,12 +420,21 @@ class HybridLlmServices:
             ),
             primary_focus=posting.title,
             target_terms=sorted(
-                set(posting.title.casefold().split() + posting.description.casefold().split())
+                {
+                    token
+                    for requirement in _authoritative_posting_requirements(posting)
+                    for token in requirement.casefold().split()
+                }
+                | set(posting.title.casefold().split())
             )[:80],
             target_requirements=(
-                [item.text for item in diagnostic.retrieval.posting_requirements[:20]]
+                [
+                    item.text
+                    for item in diagnostic.retrieval.posting_requirements
+                    if item.authority is not RequirementAuthority.INCIDENTAL
+                ][:20]
                 if diagnostic.retrieval is not None
-                else [item for item in re_split_requirements(posting.description) if item][:20]
+                else _authoritative_posting_requirements(posting)[:20]
             ),
             groups=groups,
             max_bullets_per_entry=max(
@@ -449,11 +474,13 @@ class HybridLlmServices:
         provider_calls = 0
         cache_hits = 0
         rejected: list[BulletVariantRecord] = []
+        rewrite_diagnostics: list[WriterRewriteDiagnostic] = []
         retry_reason: str | None = None
         if cached is None:
             self._generation_call_counts[generation_key] = 0
             self._last_validation_failures = []
             self._last_retry_failure_kind = None
+            self._last_writer_pipeline_issue = None
             result = self._execute_writer_batch(
                 generation_key,
                 self._language_model.rewrite_bullets,
@@ -467,18 +494,12 @@ class HybridLlmServices:
                 else None
             )
             if result is None:
-                execution_status = (
-                    WriterExecutionStatus.PROVIDER_TIMEOUT
-                    if self._last_retry_failure_kind == LanguageModelErrorKind.TIMEOUT.value
-                    else WriterExecutionStatus.MALFORMED_WRITER_OUTPUT
-                    if self._last_validation_failures
-                    or self._last_retry_failure_kind
-                    in {
-                        "malformed_output",
-                        LanguageModelErrorKind.MALFORMED_RESPONSE.value,
-                    }
-                    else WriterExecutionStatus.SOURCE_FALLBACK_USED
+                issue = self._last_writer_pipeline_issue or WriterPipelineIssue(
+                    code=WriterPipelineFailureCode.PROVIDER_TRANSPORT_OR_SDK_ERROR,
+                    stage=WriterPipelineStage.PROVIDER_REQUEST,
+                    provider_error_kind=self._last_retry_failure_kind,
                 )
+                execution_status = self._execution_status_for_issue(issue)
                 return resume.model_copy(
                     update={
                         "hybrid_diagnostic": diagnostic.model_copy(
@@ -486,13 +507,9 @@ class HybridLlmServices:
                                 "rewrite_enabled": True,
                                 "writing_status": HybridPlanningStatus.ADVISORY_REJECTED,
                                 "writer_execution_status": execution_status,
-                                "writing_reason": (
-                                    "The provider timed out within the bounded retry policy; "
-                                    "reviewed source bullets were retained."
-                                    if execution_status is WriterExecutionStatus.PROVIDER_TIMEOUT
-                                    else "Provider output failed schema or grounding "
-                                    "validation; reviewed source bullets were retained."
-                                ),
+                                "writing_reason": self._writing_reason_for_issue(issue),
+                                "writer_pipeline_issue": issue,
+                                "provider_request_shape": issue.request_shape,
                                 "provider_call_count": (
                                     self._last_planning_provider_calls + provider_calls
                                 ),
@@ -514,24 +531,44 @@ class HybridLlmServices:
                     }
                 )
             cache_hits = int(result.metadata.cache_hit)
+            provider_finish_reason = result.metadata.finish_reason
+            provider_request_shape = result.metadata.request_shape
             with self._telemetry.measure(GenerationStage.CLAIM_VALIDATION):
                 self._telemetry.increment("claim_validations")
-                variants, rejected = self._variant_records(
+                variants, rejected, rewrite_diagnostics = self._variant_records(
                     result.output.bullets,
                     groups,
+                    result.mapping_outcomes,
                     provider=result.metadata.provider,
                     model=result.metadata.model,
                     posting=posting,
+                    entry_kinds={
+                        entry.id: entry.kind.value
+                        for entry in [*profile.experiences, *profile.projects]
+                    },
                 )
             self._resume_rewrite_cache[cache_key] = (
                 variants,
                 rejected,
+                rewrite_diagnostics,
                 retry_reason,
+                provider_finish_reason,
+                provider_request_shape,
             )
         else:
-            cached_variants, cached_rejected, retry_reason = cached
+            (
+                cached_variants,
+                cached_rejected,
+                cached_rewrite_diagnostics,
+                retry_reason,
+                provider_finish_reason,
+                provider_request_shape,
+            ) = cached
             variants = [item.model_copy(deep=True) for item in cached_variants]
             rejected = [item.model_copy(deep=True) for item in cached_rejected]
+            rewrite_diagnostics = [
+                item.model_copy(deep=True) for item in cached_rewrite_diagnostics
+            ]
             cache_hits = 1
         rewritten = self._apply_variants(
             resume,
@@ -552,21 +589,65 @@ class HybridLlmServices:
                         if item.variant_id in approved_claim_ids
                         else item.validation_status
                     ),
+                    "selection_reason": (
+                        "Explicitly approved by the user for this rebuilt artifact."
+                        if item.variant_id in approved_claim_ids
+                        else item.selection_reason
+                    ),
                 }
             )
             for item in variants
         ]
         selected_count = len(selected_ids)
-        if not variants and not rejected:
+        mapping_failure_count = sum(
+            item.provider_contract_mapping_result
+            is not ProviderRewriteMappingStatus.MAPPED
+            for item in rewrite_diagnostics
+        )
+        if not variants and not rejected and not mapping_failure_count:
             execution_status = WriterExecutionStatus.NO_MATERIAL_IMPROVEMENT
         elif cache_hits:
             execution_status = WriterExecutionStatus.CACHE_HIT
         elif selected_count:
-            execution_status = WriterExecutionStatus.WRITER_SUCCEEDED
-        elif rejected and not variants:
+            execution_status = (
+                WriterExecutionStatus.WRITER_PARTIALLY_SUCCEEDED
+                if rejected
+                or any(
+                    item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
+                    for item in selected_variants
+                )
+                or any(
+                    item.provider_contract_mapping_result
+                    is not ProviderRewriteMappingStatus.MAPPED
+                    for item in rewrite_diagnostics
+                )
+                else WriterExecutionStatus.WRITER_SUCCEEDED
+            )
+        elif (rejected or mapping_failure_count) and not variants:
             execution_status = WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
         else:
             execution_status = WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
+        pipeline_issue = (
+            WriterPipelineIssue(
+                code=WriterPipelineFailureCode.NO_MATERIAL_IMPROVEMENT,
+                stage=WriterPipelineStage.VARIANT_SELECTION,
+                finish_reason=provider_finish_reason,
+            )
+            if execution_status is WriterExecutionStatus.NO_MATERIAL_IMPROVEMENT
+            else WriterPipelineIssue(
+                code=WriterPipelineFailureCode.CLAIM_GROUNDING_REJECTION,
+                stage=WriterPipelineStage.CLAIM_VALIDATION,
+                finish_reason=provider_finish_reason,
+            )
+            if execution_status is WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
+            else WriterPipelineIssue(
+                code=WriterPipelineFailureCode.SOURCE_VARIANT_SELECTED,
+                stage=WriterPipelineStage.VARIANT_SELECTION,
+                finish_reason=provider_finish_reason,
+            )
+            if execution_status is WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
+            else None
+        )
         return rewritten.model_copy(
             update={
                 "hybrid_diagnostic": diagnostic.model_copy(
@@ -579,6 +660,11 @@ class HybridLlmServices:
                             else "Gemini returned no variants because it found no "
                             "materially stronger supported wording for the bounded shortlist."
                             if execution_status is WriterExecutionStatus.NO_MATERIAL_IMPROVEMENT
+                            else "Typed provider output parsed successfully, but every "
+                            "generated variant was rejected during claim grounding or "
+                            "writing-policy validation."
+                            if execution_status
+                            is WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
                             else "A bounded validated writer batch supplied materially "
                             "improved reusable variants; deterministic layout search "
                             "retained final authority."
@@ -593,17 +679,25 @@ class HybridLlmServices:
                         "shortlisted_evidence_ids": shortlisted_evidence_ids,
                         "bullet_variants": selected_variants,
                         "rejected_variants": rejected,
+                        "rewrite_diagnostics": rewrite_diagnostics,
+                        "validation_failures": list(self._last_validation_failures),
                         "provider_call_count": (
                             self._last_planning_provider_calls + provider_calls
                         ),
                         "provider_retry_reason": retry_reason,
+                        "provider_finish_reason": provider_finish_reason,
+                        "provider_request_shape": provider_request_shape,
+                        "writer_pipeline_issue": pipeline_issue,
                         "provider_cache_hits": (self._last_planning_cache_hits + cache_hits),
                         "rewrite_enabled": True,
                         "deterministic_fallback_used": not bool(selected_ids),
-                        "rejected_variant_count": len(rejected),
+                        "rejected_variant_count": sum(
+                            item.validation_status is BulletValidationStatus.REJECTED
+                            for item in rewrite_diagnostics
+                        ),
                         "review_required_variant_count": sum(
                             item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
-                            for item in selected_variants
+                            for item in rewrite_diagnostics
                         ),
                     }
                 )
@@ -776,17 +870,41 @@ class HybridLlmServices:
         self,
         rewrites: list[BulletRewrite],
         groups: list[ApprovedEvidenceGroup],
+        mapping_outcomes: list[ProviderRewriteMappingOutcome] | None = None,
         *,
         provider: str,
         model: str,
         posting: JobPosting,
-    ) -> tuple[list[BulletVariantRecord], list[BulletVariantRecord]]:
+        entry_kinds: dict[str, str] | None = None,
+    ) -> tuple[
+        list[BulletVariantRecord],
+        list[BulletVariantRecord],
+        list[WriterRewriteDiagnostic],
+    ]:
         group_by_evidence = {
             evidence_id: group for group in groups for evidence_id in group.evidence_ids
         }
         accepted: list[BulletVariantRecord] = []
         rejected: list[BulletVariantRecord] = []
-        for rewrite in rewrites:
+        resolved_mapping_outcomes = mapping_outcomes or []
+        rewrite_diagnostics = _mapping_rewrite_diagnostics(
+            resolved_mapping_outcomes,
+            group_by_evidence,
+            entry_kinds or {},
+        )
+        self._last_validation_failures.extend(
+            detail
+            for item in rewrite_diagnostics
+            for detail in item.validator_rejection_details
+        )
+        mapped_by_bullet_index = {
+            outcome.mapped_bullet_index: outcome
+            for outcome in resolved_mapping_outcomes
+            if outcome.mapping_status is ProviderRewriteMappingStatus.MAPPED
+            and outcome.mapped_bullet_index is not None
+        }
+        for rewrite_index, rewrite in enumerate(rewrites):
+            mapping = mapped_by_bullet_index.get(rewrite_index)
             source_groups = [
                 group_by_evidence[evidence_id]
                 for evidence_id in rewrite.source_evidence_ids
@@ -859,7 +977,7 @@ class HybridLlmServices:
                                 rewrite.model_copy(
                                     update={
                                         "final_bullet_text": text,
-                                        "concise_alternative": text,
+                                        "concise_alternative": None,
                                         "claims": claims_for_validation,
                                     }
                                 )
@@ -873,7 +991,7 @@ class HybridLlmServices:
                         ),
                     )
                 except GroundingValidationError as error:
-                    validation_failures.extend(error.failures)
+                    validation_failures.extend(dict.fromkeys(error.failures))
                 reasons = [
                     *validation_failures,
                     *_writing_style_failures(
@@ -883,20 +1001,22 @@ class HybridLlmServices:
                         self._writing_policy,
                     ),
                 ]
-                semantic_review_required = _introduces_unverified_semantic_features(
+                structured_facts = [
+                    value
+                    for group in source_groups
+                    for value in [
+                        *group.technologies,
+                        *group.capabilities,
+                        *group.metrics,
+                    ]
+                ]
+                introduced_semantic_features = _introduced_unverified_semantic_features(
                     text,
                     source_texts,
-                    [
-                        value
-                        for group in source_groups
-                        for value in [
-                            *group.technologies,
-                            *group.capabilities,
-                            *group.metrics,
-                        ]
-                    ],
+                    structured_facts,
                     self._writing_policy,
                 )
+                semantic_review_required = bool(introduced_semantic_features)
                 review_required = (
                     rewrite.support == ClaimConfidence.STRONGLY_IMPLIED
                     or line_fit.three_line_risk
@@ -905,7 +1025,7 @@ class HybridLlmServices:
                 validation_reasons = reasons or [
                     (
                         "New semantic terminology requires bounded entailment review "
-                        "before automatic rendering."
+                        f"before automatic rendering: {introduced_semantic_features}."
                         if semantic_review_required
                         else "Grounded output was valid but did not materially improve "
                         "structure, emphasis, clarity, relevance, or readability."
@@ -966,11 +1086,94 @@ class HybridLlmServices:
                     future_user_review=review_required,
                 )
                 (rejected if status is BulletValidationStatus.REJECTED else accepted).append(record)
+                comparison = compare_rewrite_grounding(
+                    text,
+                    retained_source_texts,
+                    structured_facts,
+                )
+                rejection_codes = list(
+                    dict.fromkeys(grounding_failure_code(reason) for reason in reasons)
+                )
+                if semantic_review_required:
+                    rejection_codes.append(GroundingFailureCode.SEMANTIC_EQUIVALENCE_REVIEW)
+                if not improvement_reasons:
+                    rejection_codes.append(GroundingFailureCode.NO_MATERIAL_IMPROVEMENT)
+                rewrite_diagnostics.append(
+                    WriterRewriteDiagnostic(
+                        rewrite_index=(
+                            mapping.rewrite_index if mapping is not None else rewrite_index
+                        ),
+                        evidence_ids=rewrite.source_evidence_ids,
+                        source_evidence_text=retained_source_texts,
+                        rewritten_text=text,
+                        reconstructed_claim=(
+                            claims_for_validation[0].text if claims_for_validation else text
+                        ),
+                        supporting_evidence_ids=list(
+                            dict.fromkeys(
+                                evidence_id
+                                for claim in claims_for_validation
+                                for evidence_id in claim.supporting_evidence_ids
+                            )
+                        ),
+                        entry_id=rewrite.entry_id,
+                        entry_type=(entry_kinds or {}).get(rewrite.entry_id),
+                        provider_contract_mapping_result=(
+                            mapping.mapping_status
+                            if mapping is not None
+                            else ProviderRewriteMappingStatus.MAPPED
+                        ),
+                        validator_rejection_codes=list(dict.fromkeys(rejection_codes)),
+                        validator_rejection_details=validation_reasons,
+                        normalized_unsupported_terms=sorted(
+                            set(comparison.normalized_unsupported_terms)
+                            | set(introduced_semantic_features)
+                        ),
+                        ownership_comparison=comparison.ownership_comparison,
+                        metric_comparison=comparison.metric_comparison,
+                        causal_outcome_comparison=comparison.causal_outcome_comparison,
+                        singular_plural_scope_comparison=(
+                            comparison.singular_plural_scope_comparison
+                        ),
+                        validation_status=status,
+                        batch_effect="pending_aggregate_result",
+                    )
+                )
                 if reasons:
                     self._last_validation_failures.extend(reasons)
         accepted.sort(key=_variant_sort_key)
         rejected.sort(key=lambda item: item.variant_id)
-        return accepted, rejected
+        usable_count = sum(
+            item.validation_status is BulletValidationStatus.VALIDATED
+            and item.material_improvement
+            for item in accepted
+        )
+        has_individual_failure = any(
+            item.validation_status is not BulletValidationStatus.VALIDATED
+            or item.provider_contract_mapping_result
+            is not ProviderRewriteMappingStatus.MAPPED
+            for item in rewrite_diagnostics
+        )
+        rewrite_diagnostics = [
+            item.model_copy(
+                update={
+                    "batch_effect": (
+                        "continued_to_variant_competition_with_rejected_siblings"
+                        if item.validation_status is BulletValidationStatus.VALIDATED
+                        and usable_count
+                        and has_individual_failure
+                        else "continued_to_variant_competition"
+                        if item.validation_status is BulletValidationStatus.VALIDATED
+                        and usable_count
+                        else "rewrite_rejected_or_review_gated; valid_sibling_retained"
+                        if usable_count
+                        else "batch_source_fallback_no_usable_validated_rewrites"
+                    )
+                }
+            )
+            for item in rewrite_diagnostics
+        ]
+        return accepted, rejected, rewrite_diagnostics
 
     @staticmethod
     def _apply_variants(
@@ -1273,9 +1476,14 @@ class HybridLlmServices:
                 self._generation_call_counts.get(generation_key, 0) + 1
             )
             try:
-                return operation(current_request)
+                result = operation(current_request)
+                self._last_writer_pipeline_issue = None
+                return result
             except LanguageModelError as error:
                 self._last_retry_failure_kind = error.kind.value
+                self._last_writer_pipeline_issue = (
+                    error.diagnostic or self._pipeline_issue_for_error(error)
+                )
                 repairable = error.kind is LanguageModelErrorKind.MALFORMED_RESPONSE
                 if not repairable or attempt_index + 1 >= maximum_requests:
                     return None
@@ -1287,8 +1495,14 @@ class HybridLlmServices:
                         ]
                     }
                 )
-            except ValueError:
+            except ValueError as error:
                 self._last_retry_failure_kind = "malformed_output"
+                self._last_writer_pipeline_issue = WriterPipelineIssue(
+                    code=WriterPipelineFailureCode.MALFORMED_JSON,
+                    stage=WriterPipelineStage.JSON_PARSING,
+                    provider_error_kind="malformed_output",
+                    exception_type=type(error).__name__,
+                )
                 if attempt_index + 1 >= maximum_requests:
                     return None
                 current_request = current_request.model_copy(
@@ -1300,6 +1514,115 @@ class HybridLlmServices:
                     }
                 )
         return None
+
+    @staticmethod
+    def _pipeline_issue_for_error(error: LanguageModelError) -> WriterPipelineIssue:
+        if error.kind is LanguageModelErrorKind.TIMEOUT:
+            code = WriterPipelineFailureCode.PROVIDER_TIMEOUT
+            stage = WriterPipelineStage.PROVIDER_REQUEST
+        elif error.kind is LanguageModelErrorKind.SAFETY_BLOCKED:
+            code = WriterPipelineFailureCode.SAFETY_BLOCKED_RESPONSE
+            stage = WriterPipelineStage.RESPONSE_EXTRACTION
+        elif error.kind is LanguageModelErrorKind.EMPTY_RESPONSE:
+            code = WriterPipelineFailureCode.EMPTY_PROVIDER_RESPONSE
+            stage = WriterPipelineStage.RESPONSE_EXTRACTION
+        elif error.kind in {
+            LanguageModelErrorKind.RESPONSE_EXTRACTION,
+            LanguageModelErrorKind.TRUNCATED_RESPONSE,
+        }:
+            code = WriterPipelineFailureCode.RESPONSE_EXTRACTION_FAILED
+            stage = WriterPipelineStage.RESPONSE_EXTRACTION
+        elif error.kind is LanguageModelErrorKind.MALFORMED_RESPONSE:
+            code = WriterPipelineFailureCode.TYPED_SCHEMA_MISMATCH
+            stage = WriterPipelineStage.TYPED_SCHEMA_VALIDATION
+        else:
+            code = WriterPipelineFailureCode.PROVIDER_TRANSPORT_OR_SDK_ERROR
+            stage = WriterPipelineStage.PROVIDER_REQUEST
+        return WriterPipelineIssue(
+            code=code,
+            stage=stage,
+            provider_error_kind=error.kind.value,
+            exception_type=type(error).__name__,
+        )
+
+    @staticmethod
+    def _execution_status_for_issue(
+        issue: WriterPipelineIssue,
+    ) -> WriterExecutionStatus:
+        if issue.code is WriterPipelineFailureCode.PROVIDER_TIMEOUT:
+            return WriterExecutionStatus.PROVIDER_TIMEOUT
+        if issue.code is WriterPipelineFailureCode.SAFETY_BLOCKED_RESPONSE:
+            return WriterExecutionStatus.PROVIDER_SAFETY_BLOCKED
+        if issue.code is WriterPipelineFailureCode.EMPTY_PROVIDER_RESPONSE:
+            return WriterExecutionStatus.PROVIDER_EMPTY_RESPONSE
+        if issue.code is WriterPipelineFailureCode.RESPONSE_EXTRACTION_FAILED:
+            return WriterExecutionStatus.RESPONSE_EXTRACTION_FAILED
+        if issue.code in {
+            WriterPipelineFailureCode.MALFORMED_JSON,
+            WriterPipelineFailureCode.TYPED_SCHEMA_MISMATCH,
+        }:
+            return WriterExecutionStatus.MALFORMED_WRITER_OUTPUT
+        return WriterExecutionStatus.PROVIDER_REQUEST_FAILED
+
+    @staticmethod
+    def _writing_reason_for_issue(issue: WriterPipelineIssue) -> str:
+        descriptions = {
+            WriterPipelineFailureCode.PROVIDER_TRANSPORT_OR_SDK_ERROR: (
+                "The Gemini transport or SDK request failed before a response was returned; "
+                "response parsing and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.INVALID_MODEL_OR_CONFIG: (
+                "Gemini rejected a model or generation-config field before returning a "
+                "response; parsing and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.UNSUPPORTED_SCHEMA_KEYWORD: (
+                "Gemini rejected an unsupported provider-facing JSON-Schema keyword; "
+                "parsing and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.SCHEMA_TOO_LARGE_OR_DEEP: (
+                "Gemini rejected a provider-facing schema that exceeded a supported "
+                "complexity boundary; parsing and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.INCOMPATIBLE_SDK_API_VERSION: (
+                "The installed google-genai SDK/API route is incompatible with the "
+                "configured Gemini model; no provider response was available to parse."
+            ),
+            WriterPipelineFailureCode.UNKNOWN_INVALID_ARGUMENT: (
+                "Gemini returned INVALID_ARGUMENT without a safe field violation; parsing "
+                "and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.PROVIDER_TIMEOUT: (
+                "The Gemini request exceeded the 30-second interactive timeout; response "
+                "parsing and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.SAFETY_BLOCKED_RESPONSE: (
+                "Gemini returned a safety-blocked response; no repair was attempted and "
+                "claim validation did not run."
+            ),
+            WriterPipelineFailureCode.EMPTY_PROVIDER_RESPONSE: (
+                "Gemini returned no candidate text; no malformed-output repair was "
+                "attempted and claim validation did not run."
+            ),
+            WriterPipelineFailureCode.RESPONSE_EXTRACTION_FAILED: (
+                "Gemini returned a response, but its candidate text could not be extracted; "
+                "claim validation did not run."
+            ),
+            WriterPipelineFailureCode.MALFORMED_JSON: (
+                "Gemini returned malformed JSON and the single permitted repair did not "
+                "produce valid typed output."
+            ),
+            WriterPipelineFailureCode.TYPED_SCHEMA_MISMATCH: (
+                "Gemini returned JSON that did not match the typed writer schema and the "
+                "single permitted repair did not produce valid typed output."
+            ),
+        }
+        return (
+            descriptions.get(
+                issue.code,
+                "Gemini writing failed before a validated variant was available.",
+            )
+            + " Reviewed source bullets were retained."
+        )
 
     @staticmethod
     def _generation_key(plan: TailoringPlan) -> str:
@@ -1513,12 +1836,67 @@ def _material_improvement_reasons(
     return list(dict.fromkeys(reasons))
 
 
-def _introduces_unverified_semantic_features(
+def _mapping_rewrite_diagnostics(
+    outcomes: list[ProviderRewriteMappingOutcome],
+    group_by_evidence: dict[str, ApprovedEvidenceGroup],
+    entry_kinds: dict[str, str],
+) -> list[WriterRewriteDiagnostic]:
+    diagnostics: list[WriterRewriteDiagnostic] = []
+    for outcome in outcomes:
+        if outcome.mapping_status is ProviderRewriteMappingStatus.MAPPED:
+            continue
+        groups = [
+            group_by_evidence[evidence_id]
+            for evidence_id in outcome.evidence_ids
+            if evidence_id in group_by_evidence
+        ]
+        source_texts = [text for group in groups for text in group.source_texts]
+        entry_ids = {group.entry_id for group in groups}
+        entry_id = outcome.entry_id or (next(iter(entry_ids)) if len(entry_ids) == 1 else None)
+        comparison = compare_rewrite_grounding(
+            outcome.rewritten_text,
+            source_texts,
+            [
+                value
+                for group in groups
+                for value in [*group.technologies, *group.capabilities, *group.metrics]
+            ],
+        )
+        diagnostics.append(
+            WriterRewriteDiagnostic(
+                rewrite_index=outcome.rewrite_index,
+                evidence_ids=outcome.evidence_ids,
+                source_evidence_text=source_texts,
+                rewritten_text=outcome.rewritten_text,
+                reconstructed_claim=None,
+                supporting_evidence_ids=[],
+                entry_id=entry_id,
+                entry_type=entry_kinds.get(entry_id) if entry_id is not None else None,
+                provider_contract_mapping_result=outcome.mapping_status,
+                validator_rejection_codes=outcome.failure_codes,
+                validator_rejection_details=outcome.failure_details,
+                normalized_unsupported_terms=list(
+                    comparison.normalized_unsupported_terms
+                ),
+                ownership_comparison=comparison.ownership_comparison,
+                metric_comparison=comparison.metric_comparison,
+                causal_outcome_comparison=comparison.causal_outcome_comparison,
+                singular_plural_scope_comparison=(
+                    comparison.singular_plural_scope_comparison
+                ),
+                validation_status=BulletValidationStatus.REJECTED,
+                batch_effect="pending_aggregate_result",
+            )
+        )
+    return diagnostics
+
+
+def _introduced_unverified_semantic_features(
     text: str,
     source_texts: list[str],
     structured_facts: list[str],
     policy: ResumeWritingPolicy,
-) -> bool:
+) -> list[str]:
     """Quarantine new content-bearing terminology for bounded semantic review.
 
     Deterministic validation can prove that protected names, numbers, and known
@@ -1546,8 +1924,54 @@ def _introduces_unverified_semantic_features(
         token
         for token in written.meaningful_tokens
         if _linguistic_token(token, linguistic_canonical) not in reviewed_tokens
+        and not _ordinary_semantic_connective(token, text, reviewed_bundle)
     }
-    return bool(introduced)
+    return sorted(introduced)
+
+
+def _ordinary_semantic_connective(token: str, text: str, source: str) -> bool:
+    normalized = token.casefold()
+    source_folded = source.casefold()
+    text_folded = text.casefold()
+    numeric_equivalent = numeric_semantics_preserved(text, source)
+    text_numbers = set(re.findall(r"\d+(?:\.\d+)?", text))
+    source_numbers = set(re.findall(r"\d+(?:\.\d+)?", source))
+    shared_metric = bool(text_numbers & source_numbers) or numeric_equivalent
+    if normalized.isdigit() and shared_metric:
+        return True
+    if normalized in {
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "over",
+        "under",
+        "percent",
+        "percentage",
+        "degrees",
+    }:
+        return numeric_equivalent
+    if normalized in {"achieve", "achieved", "achieving"}:
+        return shared_metric
+    if normalized == "within":
+        return numeric_equivalent and "within" in source_folded
+    if normalized == "facilitate":
+        return any(term in source_folded for term in ("enable", "enabled", "enabling"))
+    if normalized == "up":
+        return shared_metric and "up to" in text.casefold()
+    if normalized in {"cross", "unit", "units", "cross-unit"} and "cross-unit" in text_folded:
+        return "across business unit" in source_folded
+    if normalized == "same":
+        source_words = set(re.findall(r"[a-z]+", source_folded))
+        text_words = set(re.findall(r"[a-z]+", text_folded))
+        return len(source_words & text_words) >= 3
+    return False
 
 
 def _linguistic_token(
@@ -1587,6 +2011,14 @@ def _matched_target_requirements(
     normalized = text.casefold()
     return [
         requirement
-        for requirement in re_split_requirements(posting.description)
+        for requirement in _authoritative_posting_requirements(posting)
         if any(token in normalized for token in requirement.casefold().split() if len(token) >= 6)
     ][:6]
+
+
+def _authoritative_posting_requirements(posting: JobPosting) -> list[str]:
+    return [
+        item.text
+        for item in extract_posting_requirements(posting).requirements
+        if item.authority is not RequirementAuthority.INCIDENTAL
+    ]

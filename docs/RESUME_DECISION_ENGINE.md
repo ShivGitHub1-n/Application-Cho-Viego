@@ -47,6 +47,16 @@ text, claim spans, provider/model identity, policy version, and line-fit class
 remain attached. Rejected or unapproved wording falls back to exact reviewed
 source text.
 
+Generated artifacts use an explicit frontend review lifecycle. A wording
+approval change enters `WORDING_CHANGED_REBUILD_REQUIRED`; the rebuild callback
+transitions through `REBUILD_IN_PROGRESS` and atomically replaces the stored
+artifact, bytes, fingerprint, approval snapshot, and review flags. A successful
+rebuild enters `REBUILT_AWAITING_REVIEW`, resets the final-review widget before
+the next render, and keeps download disabled until the user explicitly checks
+the rebuilt artifact. Download preparation only reuses the stored bytes and
+does not run generation work. A failed rebuild leaves the prior valid artifact
+and its bytes available for retry.
+
 The initial source composition is not final portfolio authority when writing is
 enabled. An entry-balanced writer shortlist includes selected evidence and
 credible alternative experiences or projects before the provider call. After
@@ -56,6 +66,20 @@ change which entry wins, but only through supported posting emphasis,
 intrinsic evidence strength, distinct portfolio contribution, readability, and
 page cost. Employer reputation and other external popularity signals are absent.
 
+Professional experience admission is package-aware. Each credible experience
+receives a bounded set of deterministic two-to-four-bullet alternatives after
+validated writing variants are available. The search opens the metadata and
+bullets together, so an ordinary complementary bullet cannot create an isolated
+employer block. A one-bullet professional block requires a typed exception for
+user priority, uniquely important direct requirement coverage, or exceptional
+reviewed central value. Projects retain their supplemental one-bullet option.
+Package scores use direct and adjacent coverage, intrinsic technical evidence,
+validated writing quality, reviewed production/enterprise context, bounded
+duration and recency, seniority, distinctness, redundancy, and page cost.
+Organization names and external reputation are never scored. Reviewed
+production context is only a small tie-breaker between otherwise comparable
+supporting packages.
+
 Candidate admission first extracts typed posting requirements. Responsibilities
 and required qualifications receive core or important authority; preferred
 language is complementary; incidental context remains low authority. Repetition,
@@ -64,6 +88,16 @@ Every reviewed bullet is then assessed independently as direct, adjacent,
 complementary, incidental, or rejected evidence. Generic action words and entry
 labels do not independently establish bullet relevance, and selected entries do
 not transfer their strongest bullet's authority to weaker internal bullets.
+
+The posting role title remains retrieval and relevance context but is not
+itself a qualification or coverage row. Incidental-section authority cannot be
+overridden by words such as `must` inside company, location, culture, benefits,
+facilities, compensation, or generic personality copy. Compound requirements
+record material component matches separately. Firmware plus GUI is fully
+covered only when both components have exact reviewed support; generic
+software, interfaces, sensors, robotics, or architecture never prove GUI work.
+Each coverage diagnostic exposes supporting evidence IDs, component matches,
+profile-section support, and an explicit fully-covered result.
 
 Technical punctuation is preserved during normalization. Short alphabetic
 acronyms contribute only when a specific phrase, compatible responsibility,
@@ -126,10 +160,34 @@ additional line cost and awkward wrapping reduce its comparison score. Cosmetic,
 unclear, verbose, rejected, or review-required variants do not displace a
 stronger source. There is no rewrite quota.
 
+Visible technical-substance preservation is part of that comparison. Exact
+reviewed tool and platform names, protocols, mechanisms, constraints, testing
+methods, and quantitative results are scored as resume evidence, not disposable
+ornament. A rewrite that drops those facts pays more than ordinary concision can
+recover; a concise rewrite may win when it retains the important supported facts
+and fixes a real Template V1 line-fit problem.
+
+The versioned writer policy uses a senior technical recruiter/editor lens:
+clear contribution first, then supported technical method, then scope or impact,
+then role relevance and natural ATS-readable phrasing. An XYZ-style sentence is
+preferred only when a supported metric and causal method exist. Qualitative
+evidence is not forced into the formula, and absent metrics remain absent.
+
 Protected facts, claim-level evidence IDs, ownership, outcomes, and cross-entry
 grouping are checked deterministically. Novel content-bearing terminology that
 cannot be proven from the reviewed bundle is review-required; without explicit
 approval the layout search uses the reviewed source bullet instead.
+
+Explicitly approved review-gated wording is used on rebuild while the reviewed
+source remains authoritative for relevance and requirement attribution. The
+rebuild reuses the cached typed response and does not make a provider request.
+
+Numeric grounding canonicalizes safe surface equivalents such as digit/number
+words, `>90%`/`over 90 percent`, and `<2 cm`/`under 2 cm`. Comparator direction
+and boundary strength remain exact: a strict `<0.1°` fact is not equivalent to
+`within 0.1°`. Morphological policy permits reviewed normalization/normalize
+and defining/including-list wording, but ownership, technical scope, causal
+meaning, system breadth, technologies, and metric attachment remain guarded.
 
 ## Explanation contract
 
@@ -138,3 +196,10 @@ relationships, selected-entry coverage, bullet marginal contribution,
 short-token corroboration, direct-evidence tradeoffs, skill-row provenance,
 omitted direct skills, and portfolio gaps. Explanations are concise typed
 summaries, not hidden model chain-of-thought.
+
+Incidental posting sections such as company descriptions, location, culture,
+facilities, benefits, and `What We Offer` are excluded from evidence admission,
+writer terms, requirement coverage, and portfolio features. Global degree
+requirements are attributed to reviewed education rather than experience
+bullets or skill rows. Employer identity contributes zero package points;
+reviewed enterprise or production facts remain only a small bounded tie-breaker.

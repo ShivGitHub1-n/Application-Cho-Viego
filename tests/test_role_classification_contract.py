@@ -63,7 +63,7 @@ def test_role_classification_schema_is_provider_safe() -> None:
 
     rendered = str(schema)
     assert "$ref" not in rendered
-    assert "additionalProperties" not in rendered
+    assert schema["additionalProperties"] is False
     assert schema["properties"]["primary_family"]["anyOf"]
     assert "responsibility" in str(schema["properties"]["evidence_quotes"])
     for family in RoleFamily:
@@ -112,4 +112,4 @@ def test_gemini_adapter_classifies_role_through_mocked_boundary() -> None:
     config = captured["config"]
     assert isinstance(config, dict)
     assert config["response_mime_type"] == "application/json"
-    assert "additionalProperties" not in str(config["response_schema"])
+    assert config["response_json_schema"]["additionalProperties"] is False

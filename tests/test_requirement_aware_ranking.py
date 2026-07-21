@@ -16,6 +16,7 @@ from resume_tailor.application.resume_composition import (
 from resume_tailor.application.resume_features import extract_reviewed_text_features
 from resume_tailor.domain.layout import PageUtilizationStatus
 from resume_tailor.domain.models import (
+    EducationRecord,
     EntityKind,
     EvidenceItem,
     JobPosting,
@@ -119,6 +120,112 @@ def test_required_context_has_more_authority_than_bonus_context() -> None:
     assert required.authority is RequirementAuthority.CORE
     assert bonus.authority is RequirementAuthority.BONUS
     assert required.importance > bonus.importance
+
+
+def test_what_we_offer_and_company_context_are_incidental_not_candidate_requirements() -> None:
+    posting = JobPosting(
+        id="incidental-posting",
+        title="Embedded Engineer",
+        description=(
+            "Responsibilities:\nDevelop STM32 firmware and validate SPI peripherals.\n"
+            "What We Offer:\nA dynamic team in our Toronto office with modern facilities."
+        ),
+    )
+    requirements = extract_posting_requirements(posting)
+    offer = next(item for item in requirements.requirements if "dynamic team" in item.text)
+    profile = _profile(
+        experiences=[ResumeItem(id="culture-entry", title="Assistant", kind="experience")],
+        evidence=[
+            EvidenceItem(
+                id="culture-evidence",
+                entity_id="culture-entry",
+                source_text="Worked with a dynamic team in a Toronto office.",
+            )
+        ],
+    )
+
+    candidate = _rank(profile, posting)["culture-evidence"]
+
+    assert offer.authority is RequirementAuthority.INCIDENTAL
+    assert candidate.admitted is False
+    assert not candidate.coverage_keys
+
+
+def test_reviewed_engineering_education_satisfies_degree_requirement() -> None:
+    profile = _profile(
+        projects=[ResumeItem(id="firmware-project", title="Controller", kind="project")],
+        evidence=[
+            EvidenceItem(
+                id="firmware-proof",
+                entity_id="firmware-project",
+                source_text="Developed STM32 firmware and validated SPI timing.",
+                technologies=["STM32", "SPI"],
+            )
+        ],
+    ).model_copy(
+        update={
+            "education": [
+                EducationRecord(
+                    school="Reviewed University",
+                    program="Bachelor of Mechanical Engineering",
+                )
+            ]
+        }
+    )
+    posting = JobPosting(
+        id="degree-posting",
+        title="Embedded Engineer",
+        description=(
+            "Requirements:\nBachelor's degree in engineering.\n"
+            "Develop STM32 firmware and validate SPI timing."
+        ),
+    )
+    resume = DeterministicResumeComposer(_FixedPageFit()).compose(
+        _baseline(profile, posting),
+        profile,
+        posting,
+        TemplateConstraints(),
+    )
+    assert resume.composition_diagnostic is not None
+    degree = next(
+        item
+        for item in resume.composition_diagnostic.requirement_coverage
+        if "degree" in item.text.casefold()
+    )
+    assert degree.satisfied_by_profile_sections == ["education"]
+    assert degree.text not in resume.composition_diagnostic.portfolio_coverage_gaps
+
+
+def test_compound_firmware_and_gui_requirement_needs_both_components() -> None:
+    firmware_entry = ResumeItem(
+        id="firmware-entry",
+        title="Embedded Systems Engineer",
+        kind=EntityKind.EXPERIENCE,
+    )
+    profile = _profile(
+        experiences=[firmware_entry],
+        evidence=[
+            EvidenceItem(
+                id="firmware-only",
+                entity_id=firmware_entry.id,
+                source_text="Developed STM32 firmware for embedded controllers.",
+                technologies=["STM32"],
+            )
+        ],
+    )
+    posting = JobPosting(
+        id="compound-posting",
+        title="Embedded Systems Engineer",
+        description="Develop firmware and GUI software for robotic automation.",
+    )
+
+    requirements = extract_posting_requirements(posting)
+    compound = next(item for item in requirements.requirements if "firmware" in item.text)
+    assert compound.material_components == ["firmware", "gui"]
+    candidate = _rank(profile, posting)["firmware-only"]
+    assert compound.id not in candidate.direct_requirement_ids
+    assert compound.id not in candidate.adjacent_requirement_ids
+    assert compound.id not in candidate.complementary_requirement_ids
 
 
 def test_direct_requirement_evidence_defeats_weaker_complementary_evidence() -> None:

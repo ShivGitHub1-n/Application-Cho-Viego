@@ -43,16 +43,36 @@ class ResumeWritingPolicy:
         ("debug", "debugged", "diagnose", "diagnosed", "troubleshoot", "troubleshot"),
         ("automate", "automated", "automation"),
         ("integrate", "integrated", "integration"),
+        ("normalize", "normalized", "normalizing", "normalization"),
+        ("define", "defined", "defining", "include", "included", "including"),
     )
     instructions: tuple[str, ...] = (
-        "Write specific, natural, ATS-readable plain-text resume bullets.",
+        "Act as a senior technical recruiter and technical resume editor.",
+        "Write specific, natural, concise, ATS-readable plain-text resume bullets.",
         "Use only facts entailed by the supplied same-entry evidence bundle.",
         "Never invent names, dates, metrics, technologies, methods, outcomes, or ownership.",
+        "Prioritize clear ownership or contribution, then technical method or mechanism, "
+        "then supported scope, result, or measurable impact, then target-role relevance.",
+        "Use an Accomplished X, measured by Y, by doing Z structure only when the evidence "
+        "supports all included parts; never invent a metric or force the formula.",
         "Materially restructure weak source wording when supported emphasis can improve job fit.",
+        "Return no alternative when the source is already the strongest truthful wording; "
+        "synonym swaps, novelty, and shortening alone are not improvements.",
+        "Preserve relevant reviewed tools, exact platforms, protocols, engineering methods, "
+        "constraints, test conditions, tradeoffs, and metrics unless a real line-fit need makes "
+        "careful compression more valuable.",
+        "Prefer an exact supported platform term over a vague abstraction, but never import a "
+        "technology from the posting or from a different evidence entry.",
+        "Combine multiple authorized IDs only when they describe one tightly connected "
+        "engineering contribution; never fuse unrelated achievements into a super-bullet.",
         "Omit a group when neither standard nor concise wording materially improves its source.",
         "Use discouraged phrases only when they are more precise than a simpler conventional verb.",
         "Prefer one or two balanced lines; avoid one- or two-word trailing fragments.",
         "Do not copy long phrases from the job description or stuff keywords.",
+        "Before returning a rewrite, check for vague ownership, generic action, missing technical "
+        "specificity, unsupported impact, repeated structure, jargon, AI phrasing, awkward length, "
+        "and claims likely to trigger skeptical follow-up questions.",
+        "Keep the reviewed source unchanged when no materially stronger truthful rewrite exists.",
         "Return claim-level supporting evidence IDs for each factual claim.",
     )
 

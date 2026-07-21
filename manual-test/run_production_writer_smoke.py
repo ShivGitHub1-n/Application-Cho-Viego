@@ -102,14 +102,63 @@ def main() -> int:
                 "provider_requests": artifact.provider_diagnostic.call_count,
                 "repairs": artifact.provider_diagnostic.retry_count,
                 "cache_hits": artifact.provider_diagnostic.cache_hit_count,
+                "finish_reason": artifact.provider_diagnostic.finish_reason,
+                "failure_stage": (
+                    artifact.provider_diagnostic.pipeline_issue.stage.value
+                    if artifact.provider_diagnostic.pipeline_issue is not None
+                    else None
+                ),
+                "failure_code": (
+                    artifact.provider_diagnostic.pipeline_issue.code.value
+                    if artifact.provider_diagnostic.pipeline_issue is not None
+                    else None
+                ),
+                "request_shape": (
+                    artifact.provider_diagnostic.request_shape.model_dump(mode="json")
+                    if artifact.provider_diagnostic.request_shape is not None
+                    else None
+                ),
+                "parsing_result": _stage_result(
+                    artifact,
+                    "provider_response_parsing",
+                ),
+                "schema_result": _schema_result(artifact),
+                "grounding_result": _stage_result(artifact, "claim_validation"),
+                "selected_rewrites": (
+                    artifact.writing_diagnostic.rewritten_bullet_count
+                    if artifact.writing_diagnostic is not None
+                    else 0
+                ),
+                "provider_seconds": artifact.provider_diagnostic.provider_elapsed_seconds,
+                "validation_seconds": (
+                    artifact.provider_diagnostic.validation_elapsed_seconds
+                ),
+                "artifact_build_seconds": artifact.total_build_seconds,
                 "total_route_seconds": round(total_route_seconds, 4),
                 "download_seconds": round(download_seconds, 6),
+                "download_generation_calls": 0,
                 "docx": str(DOCX_PATH),
             },
             indent=2,
         )
     )
     return 0
+
+
+def _stage_result(artifact: GeneratedResumeArtifact, stage_value: str) -> str:
+    return next(
+        timing.status.value
+        for timing in artifact.stage_timings
+        if timing.stage.value == stage_value
+    )
+
+
+def _schema_result(artifact: GeneratedResumeArtifact) -> str:
+    issue = artifact.provider_diagnostic.pipeline_issue
+    if issue is not None and issue.stage.value == "typed_schema_validation":
+        return "failed"
+    parsing = _stage_result(artifact, "provider_response_parsing")
+    return "passed" if parsing == "completed" else "skipped"
 
 
 def _writer_payload(
@@ -171,7 +220,6 @@ def _portfolio_payload(
     composition = artifact.composition_diagnostic
     selected_experience_ids = composition.selected_experience_ids if composition is not None else []
     selected_project_ids = composition.selected_project_ids if composition is not None else []
-    comparison_ids = {"experience-exl", "experience-stush"}
     retrieval = writing.retrieval if writing is not None else None
     return {
         "selected_experiences": [
@@ -180,23 +228,14 @@ def _portfolio_payload(
         "selected_projects": [
             {"entry_id": entry_id, **entry_names[entry_id]} for entry_id in selected_project_ids
         ],
-        "exl_versus_stush": {
-            "retrieved": [
-                item.model_dump(mode="json")
-                for item in (retrieval.admitted if retrieval is not None else [])
-                if item.entry_id in comparison_ids
-            ],
-            "shortlisted": [
-                item.model_dump(mode="json")
-                for item in (writing.writer_shortlist if writing is not None else [])
-                if item.entry_id in comparison_ids
-            ],
-            "selected": [
-                entry_id
-                for entry_id in [*selected_experience_ids, *selected_project_ids]
-                if entry_id in comparison_ids
-            ],
-        },
+        "retrieved_candidates": [
+            item.model_dump(mode="json")
+            for item in (retrieval.admitted if retrieval is not None else [])
+        ],
+        "writer_shortlist": [
+            item.model_dump(mode="json")
+            for item in (writing.writer_shortlist if writing is not None else [])
+        ],
         "composition": (
             artifact.composition_diagnostic.model_dump(mode="json")
             if artifact.composition_diagnostic is not None
@@ -215,6 +254,9 @@ def _comparison_payload(artifact: GeneratedResumeArtifact) -> dict[str, Any]:
         "zero_rewrite_reason": (
             writing.writing_reason if writing.rewritten_bullet_count == 0 else None
         ),
+        "per_rewrite_diagnostics": [
+            item.model_dump(mode="json") for item in writing.rewrite_diagnostics
+        ],
         "variants": [
             {
                 "variant_id": item.variant_id,

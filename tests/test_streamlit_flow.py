@@ -5,6 +5,8 @@ from streamlit.testing.v1 import AppTest
 
 import resume_tailor.infrastructure.dependencies as dependencies
 from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
+from resume_tailor.application.generation_diagnostics import GenerationTelemetry
+from resume_tailor.application.job_intake import build_job_posting
 from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.services import TailorResumeService
@@ -19,11 +21,15 @@ from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_POLICY_VERSION,
 )
 from resume_tailor.domain.llm_models import (
+    BulletRewrite,
+    BulletRewriteOutput,
+    BulletRewriteResult,
+    ClaimConfidence,
     CompositionRecommendationOutput,
     CompositionRecommendationResult,
     LlmOperation,
 )
-from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.models import MasterProfile, TemplateConstraints
 from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
@@ -259,6 +265,154 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
     assert app.session_state["generated_content_reviewed"] is False
     assert any("Generated resume review" in element.value for element in app.subheader)
     assert app.session_state["generated_resume_artifact"].docx_bytes
+
+
+def test_streamlit_approved_wording_rebuild_resets_widget_state_and_reuses_artifact(
+    monkeypatch, tmp_path
+) -> None:
+    from io import BytesIO
+
+    from docx import Document
+
+    from resume_tailor.application.generated_artifact import prepare_artifact_download
+    from resume_tailor.frontend import app as frontend_app
+
+    class _SessionState(dict[str, object]):
+        widget_keys: set[str] = set()
+
+        def __setitem__(self, key: str, value: object) -> None:
+            if key in self.widget_keys:
+                raise AssertionError(f"illegal widget mutation: {key}")
+            super().__setitem__(key, value)
+
+    class _Status:
+        def __enter__(self) -> "_Status":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def update(self, **_kwargs: object) -> None:
+            return None
+
+        def write(self, _value: object) -> None:
+            return None
+
+    class _StreamlitStub:
+        def __init__(self, state: _SessionState) -> None:
+            self.session_state = state
+
+        def status(self, *_args: object, **_kwargs: object) -> _Status:
+            return _Status()
+
+    rewrites = BulletRewriteResult(
+        metadata=metadata(LlmOperation.REWRITE_BULLETS),
+        output=BulletRewriteOutput(
+            bullets=[
+                BulletRewrite(
+                    entry_id="streamlit-entry",
+                    final_bullet_text="Built STM32 embedded firmware, testing sensor interfaces.",
+                    source_evidence_ids=["streamlit-evidence-1"],
+                    evidence_combined=False,
+                    concise_alternative="Built STM32 embedded firmware, testing sensor interfaces.",
+                    confidence=0.9,
+                    support=ClaimConfidence.STRONGLY_IMPLIED,
+                ),
+                BulletRewrite(
+                    entry_id="streamlit-entry",
+                    final_bullet_text=(
+                        "Validated hardware sensor interfaces through SPI hardware checks."
+                    ),
+                    source_evidence_ids=["streamlit-evidence-2"],
+                    evidence_combined=False,
+                    concise_alternative=(
+                        "Validated hardware sensor interfaces through SPI hardware checks."
+                    ),
+                    confidence=0.9,
+                    support=ClaimConfidence.STRONGLY_IMPLIED,
+                ),
+            ]
+        ),
+    )
+    fake = FakeResumeLanguageModel(rewrite_bullets=rewrites)
+    telemetry = GenerationTelemetry()
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        hybrid_services=HybridLlmServices(fake, 0, 4, False, False, True),
+        resume_composer=DeterministicResumeComposer(
+            TemplateV1PageFitEvaluator(ParagraphLimitPageProvider(), telemetry=telemetry),
+            telemetry=telemetry,
+        ),
+        artifact_renderer=TemplateV1ArtifactRenderer(),
+        generation_configuration=_generation_configuration().model_copy(
+            update={"feature_flags": {"bullet_rewrite": True}}
+        ),
+        telemetry=telemetry,
+    )
+    profile = MasterProfile.model_validate(
+        {
+            "id": "streamlit-profile",
+            "user_id": "streamlit-user",
+            "display_name": "Candidate",
+            "experiences": [
+                {"id": "streamlit-entry", "title": "Firmware Intern", "kind": "experience"}
+            ],
+            "evidence": [
+                {
+                    "id": "streamlit-evidence-1",
+                    "entity_id": "streamlit-entry",
+                    "source_text": (
+                        "Developed STM32 embedded firmware and tested sensor interfaces."
+                    ),
+                    "technologies": ["STM32"],
+                },
+                {
+                    "id": "streamlit-evidence-2",
+                    "entity_id": "streamlit-entry",
+                    "source_text": (
+                        "Validated SPI hardware sensor interfaces through hardware checks."
+                    ),
+                    "technologies": ["SPI"],
+                },
+            ],
+        }
+    )
+    posting = build_job_posting(
+        "streamlit-posting",
+        "Embedded Firmware Intern",
+        "Develop STM32 firmware and validate SPI hardware sensor interfaces.",
+    )
+    service.start_generation()
+    plan = service.create_plan(profile, posting, TemplateConstraints())
+    state = _SessionState()
+    monkeypatch.setattr(frontend_app, "st", _StreamlitStub(state))
+    initial = frontend_app._build_and_store_resume_artifact(service, plan, profile, set())
+    review_ids = {
+        variant.variant_id
+        for variant in initial.writing_diagnostic.bullet_variants
+        if variant.validation_status.value == "review_required"
+    }
+    assert len(review_ids) == 2
+    state["generated_content_reviewed"] = True
+    state.widget_keys.add("generated_content_reviewed")
+    rebuilt = frontend_app._build_and_store_resume_artifact(
+        service, plan, profile, review_ids
+    )
+    assert fake.calls["rewrite_bullets"] == 1
+    assert rebuilt.pagination_diagnostic.attempt_count <= 1
+    rendered_text = "\n".join(
+        paragraph.text for paragraph in Document(BytesIO(rebuilt.docx_bytes)).paragraphs
+    )
+    assert "Built STM32 embedded firmware, testing sensor interfaces." in rendered_text
+    assert "Validated hardware sensor interfaces through SPI hardware checks." in rendered_text
+    state.widget_keys.clear()
+    frontend_app._apply_pending_generated_content_review_reset()
+    assert state["generated_content_reviewed"] is False
+    download = prepare_artifact_download(rebuilt, clock=telemetry.clock)
+    assert download.docx_bytes is rebuilt.docx_bytes
+    assert not any(download.generation_call_counts.model_dump().values())
+    assert fake.calls["rewrite_bullets"] == 1
 
 
 def test_streamlit_uses_persisted_profile_with_pasted_job_description(

@@ -20,7 +20,7 @@ TEMPLATE_V1_PREFERRED_DENSITY_CEILING = 0.93
 TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING = 0.95
 TEMPLATE_V1_IDEAL_DENSITY = 0.92
 TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR = 0.85
-RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v4"
+RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v6"
 
 
 class CompositionOutcome(StrEnum):
@@ -80,6 +80,7 @@ class CandidateExclusionCategory(StrEnum):
     SEARCH_BOUND = "search_bound"
     OVERFLOW = "overflow"
     FINAL_PLAN_OBJECTIVE = "final_plan_objective"
+    COHERENT_BLOCK_MINIMUM = "coherent_block_minimum"
 
 
 class PreferredDensityStatus(StrEnum):
@@ -94,6 +95,14 @@ class ProjectRepresentationStatus(StrEnum):
     SHALLOW_PROJECT_EXCEPTION = "shallow_project_exception"
     ZERO_PROJECT_EXCEPTION = "zero_project_exception"
     NO_CREDIBLE_PROJECT_EVIDENCE = "no_credible_project_evidence"
+
+
+class ExperienceSingleBulletExceptionReason(StrEnum):
+    USER_PINNED = "user_pinned"
+    UNIQUE_DIRECT_REQUIREMENT_COVERAGE = "unique_direct_requirement_coverage"
+    REVIEWED_CENTRAL_ROLE_EXCEPTIONAL_VALUE = (
+        "reviewed_central_role_exceptional_value"
+    )
 
 
 class PageFitEvaluation(BaseModel):
@@ -151,6 +160,11 @@ class CompositionCandidateDiagnostic(BaseModel):
     short_token_contributions: list[ShortTokenContribution] = Field(default_factory=list)
     marginal_contribution: float = 0
     writing_variant_id: str | None = None
+    package_id: str | None = None
+    package_bullet_count: int | None = Field(default=None, ge=1)
+    page_cost: float | None = Field(default=None, gt=0)
+    pruning_bound: str | None = None
+    would_improve_density: bool | None = None
 
 
 class PageFillIterationDiagnostic(BaseModel):
@@ -175,12 +189,70 @@ class EntryBulletSelectionDiagnostic(BaseModel):
     marginal_contributions: dict[str, float] = Field(default_factory=dict)
 
 
+class ExperiencePackageAlternativeDiagnostic(BaseModel):
+    package_id: str
+    bullet_ids: list[str] = Field(min_length=1, max_length=4)
+    source_evidence_ids: list[str] = Field(min_length=1)
+    bullet_count: int = Field(ge=1, le=4)
+    source_bullet_count: int = Field(ge=0)
+    rewritten_bullet_count: int = Field(ge=0)
+    package_relevance: float = Field(ge=0)
+    intrinsic_strength: float = Field(ge=0)
+    writing_quality: float = Field(ge=0)
+    duration_recency_contribution: float = Field(ge=0)
+    enterprise_production_contribution: float = Field(ge=0)
+    enterprise_production_evidence: list[str] = Field(default_factory=list)
+    distinct_coverage: list[str] = Field(default_factory=list)
+    page_cost: float = Field(gt=0)
+    redundancy_penalty: float = Field(ge=0)
+    total_score: float
+    single_bullet_exception_reason: ExperienceSingleBulletExceptionReason | None = None
+
+
+class ExperiencePackageSelectionDiagnostic(BaseModel):
+    entry_id: str
+    source_bullets_available: int = Field(ge=0)
+    validated_rewrites_available: int = Field(ge=0)
+    best_package_alternatives: list[ExperiencePackageAlternativeDiagnostic] = Field(
+        default_factory=list
+    )
+    selected_bullet_count: int = Field(ge=0)
+    selected_package_id: str | None = None
+    selected: bool
+    coherent_block_minimum_failed: bool = False
+    single_bullet_exception_reason: ExperienceSingleBulletExceptionReason | None = None
+    enterprise_production_tiebreaker_affected_result: bool = False
+    user_priority_signal: float | None = None
+    final_reason: str
+
+
 class ProjectRepresentationDiagnostic(BaseModel):
     status: ProjectRepresentationStatus
     selected_project_ids: list[str] = Field(default_factory=list)
     substantive_project_ids: list[str] = Field(default_factory=list)
     credible_project_ids: list[str] = Field(default_factory=list)
     reason: str
+
+
+class PortfolioMarginalComparisonDiagnostic(BaseModel):
+    selected_entry_id: str
+    selected_entry_kind: str
+    selected_package_score: float
+    selected_page_cost: float = Field(gt=0)
+    strongest_omitted_entry_id: str | None = None
+    strongest_omitted_entry_kind: str | None = None
+    strongest_omitted_package_score: float | None = None
+    strongest_omitted_professional_entry_id: str | None = None
+    strongest_omitted_professional_package_score: float | None = None
+    strongest_omitted_project_entry_id: str | None = None
+    strongest_omitted_project_package_score: float | None = None
+    marginal_gain: float | None = None
+    page_cost_difference: float | None = None
+    unique_requirements_contributed: list[str] = Field(default_factory=list)
+    redundancy_difference: float | None = None
+    choice_changed_after_validated_writing: bool = False
+    selected_reason: str
+    omitted_reason: str | None = None
 
 
 class SkillRowSelectionDiagnostic(BaseModel):
@@ -214,7 +286,13 @@ class ResumeCompositionDiagnostic(BaseModel):
     desired_skill_category_count: int = Field(default=0, ge=0)
     skill_category_shortfall_reason: str | None = None
     entry_bullet_selections: list[EntryBulletSelectionDiagnostic] = Field(default_factory=list)
+    experience_package_selections: list[ExperiencePackageSelectionDiagnostic] = Field(
+        default_factory=list
+    )
     project_representation: ProjectRepresentationDiagnostic | None = None
+    portfolio_marginal_comparisons: list[PortfolioMarginalComparisonDiagnostic] = Field(
+        default_factory=list
+    )
     selected_skill_rows: list[SkillRowSelectionDiagnostic] = Field(default_factory=list)
     posting_requirements: list[PostingRequirement] = Field(default_factory=list)
     requirement_coverage: list[RequirementCoverageDiagnostic] = Field(default_factory=list)
@@ -296,10 +374,14 @@ __all__ = [
     "CompositionTerminationReason",
     "CompositionUnderfillReason",
     "EntryBulletSelectionDiagnostic",
+    "ExperiencePackageAlternativeDiagnostic",
+    "ExperiencePackageSelectionDiagnostic",
+    "ExperienceSingleBulletExceptionReason",
     "LineFitVerificationStatus",
     "PageFillIterationDiagnostic",
     "PageFitEvaluation",
     "PageVerificationStatus",
+    "PortfolioMarginalComparisonDiagnostic",
     "PreferredDensityStatus",
     "ProjectRepresentationDiagnostic",
     "ProjectRepresentationStatus",

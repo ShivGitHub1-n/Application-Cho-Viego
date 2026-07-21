@@ -28,6 +28,7 @@ from resume_tailor.domain.llm_models import (
     BulletRewriteResult,
     CompositionRecommendationOutput,
     CompositionRecommendationResult,
+    EvidenceGrouping,
     LanguageModelError,
     LanguageModelErrorKind,
     LlmOperation,
@@ -94,7 +95,14 @@ def _profile(
                 source_text=evidence_text,
                 technologies=["STM32", "SPI"],
                 capabilities=["firmware", "sensor validation"],
-            )
+            ),
+            EvidenceItem(
+                id="embedded-debug-evidence",
+                entity_id="embedded-entry",
+                source_text="Debugged STM32 timing faults with reviewed SPI traces.",
+                technologies=["STM32", "SPI"],
+                capabilities=["firmware debugging", "timing validation"],
+            ),
         ],
     )
 
@@ -169,7 +177,7 @@ def test_production_page_fill_consumes_validated_rewrite_and_reuses_cache() -> N
         WriterExecutionStatus.WRITER_SUCCEEDED
     )
     assert first.hybrid_diagnostic.rewritten_bullet_count == 1
-    assert first.hybrid_diagnostic.source_bullet_count == 0
+    assert first.hybrid_diagnostic.source_bullet_count == 1
     assert second.hybrid_diagnostic is not None
     assert second.hybrid_diagnostic.provider_cache_hits == 1
     assert second.hybrid_diagnostic.writer_execution_status is (
@@ -311,7 +319,7 @@ def test_enabled_rewriting_reports_provider_unavailable_explicitly() -> None:
         WriterExecutionStatus.PROVIDER_UNAVAILABLE
     )
     assert resume.hybrid_diagnostic.provider_call_count == 0
-    assert resume.hybrid_diagnostic.fallback_bullet_count == 1
+    assert resume.hybrid_diagnostic.fallback_bullet_count == 2
 
 
 def test_llm_disabled_uses_source_text_and_zero_provider_calls() -> None:
@@ -376,14 +384,40 @@ def test_provider_timeout_retries_are_bounded_and_use_safe_source_fallback() -> 
 
 
 def test_semantic_planning_is_bounded_advice_and_counted_in_final_diagnostic() -> None:
-    profile = _profile()
+    source_profile = _profile()
+    profile = source_profile.model_copy(
+        update={
+            "evidence": [
+                *source_profile.evidence,
+                EvidenceItem(
+                    id="embedded-release-evidence",
+                    entity_id="embedded-entry",
+                    source_text="Documented STM32 firmware release checks.",
+                    technologies=["STM32"],
+                    capabilities=["firmware release validation"],
+                ),
+            ]
+        }
+    )
     posting = _posting()
     recommendation = CompositionRecommendationResult(
         metadata=metadata(LlmOperation.RECOMMEND_COMPOSITION),
         output=CompositionRecommendationOutput(
             selected_entry_ids=["embedded-entry"],
-            selected_evidence_ids=["embedded-evidence"],
-            rationale="Use the supplied firmware evidence.",
+            selected_evidence_ids=[
+                "embedded-debug-evidence",
+                "embedded-release-evidence",
+            ],
+            proposed_evidence_groupings=[
+                EvidenceGrouping(
+                    entry_id="embedded-entry",
+                    evidence_ids=[
+                        "embedded-debug-evidence",
+                        "embedded-release-evidence",
+                    ],
+                )
+            ],
+            rationale="Use the supplied firmware evidence package.",
         ),
     )
     fake = FakeResumeLanguageModel(recommend_composition=recommendation)
@@ -710,7 +744,7 @@ def test_clean_grounded_variant_beats_awkward_or_three_line_variant() -> None:
     )
     service = HybridLlmServices(None, 0, 1, False, False, False)
 
-    accepted, rejected = service._variant_records(
+    accepted, rejected, _diagnostics = service._variant_records(
         [rewrite],
         [group],
         provider="fake",
@@ -756,7 +790,7 @@ def test_unique_three_line_generated_variant_is_review_gated() -> None:
     )
     service = HybridLlmServices(None, 0, 1, False, False, False)
 
-    accepted, _rejected = service._variant_records(
+    accepted, _rejected, _diagnostics = service._variant_records(
         [rewrite],
         [group],
         provider="fake",
@@ -797,7 +831,7 @@ def test_ambiguous_new_mechanism_is_quarantined_for_semantic_review() -> None:
     )
     service = HybridLlmServices(None, 0, 1, False, False, False)
 
-    accepted, rejected = service._variant_records(
+    accepted, rejected, _diagnostics = service._variant_records(
         [rewrite],
         [group],
         provider="fake",
@@ -839,7 +873,7 @@ def test_legitimate_broad_semantic_equivalent_passes_without_factual_freedom() -
     )
     service = HybridLlmServices(None, 0, 1, False, False, False)
 
-    accepted, rejected = service._variant_records(
+    accepted, rejected, _diagnostics = service._variant_records(
         [rewrite],
         [group],
         provider="fake",
@@ -901,7 +935,7 @@ def test_ai_like_or_copied_writing_is_rejected_without_rigid_templates(
     )
     service = HybridLlmServices(None, 0, 1, False, False, False)
 
-    accepted, rejected = service._variant_records(
+    accepted, rejected, _diagnostics = service._variant_records(
         [rewrite],
         [group],
         provider="fake",

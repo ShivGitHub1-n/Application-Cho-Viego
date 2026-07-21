@@ -1,12 +1,42 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
+from enum import StrEnum
+
+
+class GeneratedResumeReviewState(StrEnum):
+    """Explicit lifecycle states for a generated resume artifact."""
+
+    GENERATED_AWAITING_REVIEW = "generated_awaiting_review"
+    WORDING_CHANGED_REBUILD_REQUIRED = "wording_changed_rebuild_required"
+    REBUILD_IN_PROGRESS = "rebuild_in_progress"
+    REBUILT_AWAITING_REVIEW = "rebuilt_awaiting_review"
+    REBUILT_APPROVED = "rebuilt_approved"
+    DOWNLOADED = "downloaded"
+
+
+GENERATED_RESUME_REVIEW_STATE_KEY = "generated_resume_review_state"
+GENERATED_RESUME_APPROVED_CLAIMS_KEY = "generated_resume_approved_claim_ids"
+GENERATED_RESUME_GENERATED_APPROVALS_KEY = "generated_resume_generated_approval_ids"
+GENERATED_RESUME_ARTIFACT_VERSION_KEY = "generated_resume_artifact_version"
+GENERATED_RESUME_REBUILD_REQUIRED_KEY = "generated_resume_rebuild_required"
+GENERATED_RESUME_WORDING_DIRTY_KEY = "generated_resume_wording_dirty"
+GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY = "generated_resume_rebuild_in_progress"
+GENERATED_RESUME_REBUILD_ERROR_KEY = "generated_resume_rebuild_error"
 
 DERIVED_WORKFLOW_KEYS = (
     "plan",
     "resume",
     "generated_resume_artifact",
     "generated_content_reviewed",
+    GENERATED_RESUME_REVIEW_STATE_KEY,
+    GENERATED_RESUME_APPROVED_CLAIMS_KEY,
+    GENERATED_RESUME_GENERATED_APPROVALS_KEY,
+    GENERATED_RESUME_ARTIFACT_VERSION_KEY,
+    GENERATED_RESUME_REBUILD_REQUIRED_KEY,
+    GENERATED_RESUME_WORDING_DIRTY_KEY,
+    GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY,
+    GENERATED_RESUME_REBUILD_ERROR_KEY,
     "workflow_profile_fingerprint",
     "workflow_posting_fingerprint",
     "cover_letter",
@@ -27,6 +57,14 @@ POSTING_DERIVED_WORKFLOW_KEYS = (
     "resume",
     "generated_resume_artifact",
     "generated_content_reviewed",
+    GENERATED_RESUME_REVIEW_STATE_KEY,
+    GENERATED_RESUME_APPROVED_CLAIMS_KEY,
+    GENERATED_RESUME_GENERATED_APPROVALS_KEY,
+    GENERATED_RESUME_ARTIFACT_VERSION_KEY,
+    GENERATED_RESUME_REBUILD_REQUIRED_KEY,
+    GENERATED_RESUME_WORDING_DIRTY_KEY,
+    GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY,
+    GENERATED_RESUME_REBUILD_ERROR_KEY,
     POSTING_FINGERPRINT_KEY,
     "cover_letter",
     "cover_letter_reviewed",
@@ -42,6 +80,14 @@ PROFILE_DERIVED_WORKFLOW_KEYS = (
     "resume",
     "generated_resume_artifact",
     "generated_content_reviewed",
+    GENERATED_RESUME_REVIEW_STATE_KEY,
+    GENERATED_RESUME_APPROVED_CLAIMS_KEY,
+    GENERATED_RESUME_GENERATED_APPROVALS_KEY,
+    GENERATED_RESUME_ARTIFACT_VERSION_KEY,
+    GENERATED_RESUME_REBUILD_REQUIRED_KEY,
+    GENERATED_RESUME_WORDING_DIRTY_KEY,
+    GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY,
+    GENERATED_RESUME_REBUILD_ERROR_KEY,
     PROFILE_FINGERPRINT_KEY,
     "cover_letter",
     "cover_letter_reviewed",

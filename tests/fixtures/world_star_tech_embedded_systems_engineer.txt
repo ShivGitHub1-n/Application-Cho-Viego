@@ -1,0 +1,36 @@
+Embedded Systems Engineer
+
+Company Overview
+
+World Star Tech is a leading manufacturer of laser systems for biomedical, instrumentation, and machine vision applications.
+
+Located in Markham, we operate out of a modern facility and are currently seeking a dynamic, high-performing Embedded Systems Engineer to join our team. The ideal candidate is an energetic self-starter with excellent technical and communication skills. They must have a proven track record of developing and deploying high-quality software/firmware. If you're a creative thinker with a passion for development and design, we'd love to hear from you.
+
+Key Responsibilities
+
+- Develop firmware and graphical user interfaces (GUIs) for new and existing products, including laser markers, spectrometers, analyzers, and medical devices.
+- Create software solutions for in-house automation using robotic systems.
+- Collaborate with a multidisciplinary engineering team (electronic, software, and optomechanical) at the forefront of innovation.
+
+Basic Qualifications
+
+- Degree in Engineering or a related technical field with 2+ years of industry experience.
+- Strong proficiency in C++ and Python, following object-oriented programming principles.
+- Experience developing firmware for STM32 microcontrollers or similar, including use of timers, I2C/UART/SPI, DMA, ADC, and other peripherals.
+- Experience in GUI design for desktop and/or embedded touchscreen applications.
+- Ability to write clean, readable, and well-documented code.
+
+Bonus Qualifications
+
+- Comfortable working across abstraction layers, from low-level embedded systems to high-level system architecture.
+- Experience with C# and .NET for desktop application development.
+- Familiarity with TCP socket programming and cloud-based services.
+- Experience with image processing.
+
+What We Offer
+
+- The opportunity to work with a dynamic, ambitious team.
+- Access to a state-of-the-art lab and engineering tools.
+- The ability to make a visible impact and contribute meaningfully to company growth.
+- Competitive compensation, health, and medical benefits.
+- An on-site basketball court and gym.

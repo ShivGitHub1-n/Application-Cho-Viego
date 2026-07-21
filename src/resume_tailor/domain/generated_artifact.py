@@ -5,7 +5,12 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from resume_tailor.domain.hybrid_resume import BulletVariantRecord, HybridResumeDiagnostic
+from resume_tailor.domain.hybrid_resume import (
+    BulletVariantRecord,
+    HybridResumeDiagnostic,
+    ProviderRequestShapeDiagnostic,
+    WriterPipelineIssue,
+)
 from resume_tailor.domain.models import StructuredResume, TailoringPlan
 from resume_tailor.domain.resume_composition import ResumeCompositionDiagnostic
 
@@ -72,6 +77,9 @@ class ProviderExecutionDiagnostic(BaseModel):
     request_timeout_seconds: float = Field(gt=0)
     configured_retry_count: int = Field(ge=0)
     retry_reason: str | None = None
+    finish_reason: str | None = None
+    pipeline_issue: WriterPipelineIssue | None = None
+    request_shape: ProviderRequestShapeDiagnostic | None = None
     provider_elapsed_seconds: float = Field(default=0, ge=0)
     parsing_elapsed_seconds: float = Field(default=0, ge=0)
     validation_elapsed_seconds: float = Field(default=0, ge=0)

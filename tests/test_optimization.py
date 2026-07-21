@@ -1,3 +1,6 @@
+# Controlled fixture prose is intentionally kept readable as complete evidence text.
+# ruff: noqa: E501
+
 import json
 from pathlib import Path
 
@@ -15,7 +18,10 @@ from resume_tailor.domain.models import (
     RoleFamily,
     TemplateConstraints,
 )
-from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer, EvidenceBoundResumeWriter
+from resume_tailor.infrastructure.optimization import (
+    DeterministicResumeOptimizer,
+    EvidenceBoundResumeWriter,
+)
 
 
 def _profile() -> MasterProfile:
@@ -77,7 +83,10 @@ def test_optimizer_prioritizes_relevant_evidence_with_entry_cost() -> None:
     assert plan.strategy.primary_focus == "embedded firmware development"
     assert "evidence-1" in plan.selected_claim_ids
     assert "project-1" not in plan.selected_entity_ids
-    assert any(decision.action == "removed" and decision.entity_id == "project-1" for decision in plan.report.decisions)
+    assert any(
+        decision.action == "removed" and decision.entity_id == "project-1"
+        for decision in plan.report.decisions
+    )
 
 
 def test_optimizer_returns_insufficient_fit_only_when_direct_evidence_is_missing() -> None:
@@ -85,7 +94,11 @@ def test_optimizer_returns_insufficient_fit_only_when_direct_evidence_is_missing
         id="profile-mismatch",
         user_id="user-1",
         display_name="Avery Engineer",
-        experiences=[ResumeItem(id="experience-circuit", title="Circuit Assistant", kind=EntityKind.EXPERIENCE)],
+        experiences=[
+            ResumeItem(
+                id="experience-circuit", title="Circuit Assistant", kind=EntityKind.EXPERIENCE
+            )
+        ],
         evidence=[
             EvidenceItem(
                 id="evidence-circuit",
@@ -95,7 +108,11 @@ def test_optimizer_returns_insufficient_fit_only_when_direct_evidence_is_missing
             )
         ],
     )
-    posting = JobPosting(id="posting-data", title="Data Engineering Intern", description="Build Python ETL pipelines.")
+    posting = JobPosting(
+        id="posting-data",
+        title="Data Engineering Intern",
+        description="Build Python ETL pipelines.",
+    )
 
     plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints())
 
@@ -117,19 +134,24 @@ def test_huawei_posting_is_accepted_with_limited_profile_fit() -> None:
     assert plan.report.profile_fit.status == ProfileFitStatus.LIMITED
     assert "evidence-perception" in plan.selected_claim_ids
     assert {"PyTorch", "Jupyter"}.issubset(plan.selected_skills)
-    assert all("PyTorch" not in claim.text and "Jupyter" not in claim.text for claim in plan.claim_candidates)
+    assert all(
+        "PyTorch" not in claim.text and "Jupyter" not in claim.text
+        for claim in plan.claim_candidates
+    )
     assert "deep learning and transformer research" in plan.report.profile_fit.material_gaps
-    assert "vision-language or vision-language-action models" in plan.report.profile_fit.material_gaps
+    assert (
+        "vision-language or vision-language-action models" in plan.report.profile_fit.material_gaps
+    )
 
 
-def test_entry_overhead_prefers_coherent_exl_package_over_marginal_telebotics_entry() -> None:
+def test_entry_overhead_prefers_coherent_package_over_marginal_fragment() -> None:
     profile = MasterProfile(
         id="profile-entry-cost",
         user_id="user-1",
         display_name="Candidate",
         experiences=[
             ResumeItem(id="telebotics", title="Telebotics", kind=EntityKind.EXPERIENCE),
-            ResumeItem(id="exl", title="EXL", kind=EntityKind.EXPERIENCE),
+            ResumeItem(id="coherent", title="Systems Developer", kind=EntityKind.EXPERIENCE),
         ],
         evidence=[
             EvidenceItem(
@@ -139,14 +161,14 @@ def test_entry_overhead_prefers_coherent_exl_package_over_marginal_telebotics_en
                 capabilities=["autonomous systems"],
             ),
             EvidenceItem(
-                id="exl-1",
-                entity_id="exl",
+                id="coherent-1",
+                entity_id="coherent",
                 source_text="Developed multi-agent AI workflows for enterprise generative AI systems.",
                 capabilities=["multi-agent systems"],
             ),
             EvidenceItem(
-                id="exl-2",
-                entity_id="exl",
+                id="coherent-2",
+                entity_id="coherent",
                 source_text="Implemented compliance auditing and AI governance evaluation controls.",
                 capabilities=["AI governance"],
             ),
@@ -164,8 +186,8 @@ def test_entry_overhead_prefers_coherent_exl_package_over_marginal_telebotics_en
         TemplateConstraints(max_total_lines=4, max_experience_lines=4, max_project_lines=1),
     )
 
-    assert plan.selected_entity_ids == ["exl"]
-    assert set(plan.selected_claim_ids) == {"exl-1", "exl-2"}
+    assert plan.selected_entity_ids == ["coherent"]
+    assert set(plan.selected_claim_ids) == {"coherent-1", "coherent-2"}
     assert "telebotics" not in plan.selected_entity_ids
 
 
@@ -174,7 +196,9 @@ def test_one_bullet_entry_is_selected_when_it_uniquely_covers_a_role_signal() ->
         id="profile-unique",
         user_id="user-1",
         display_name="Candidate",
-        experiences=[ResumeItem(id="perception", title="Perception Intern", kind=EntityKind.EXPERIENCE)],
+        experiences=[
+            ResumeItem(id="perception", title="Perception Intern", kind=EntityKind.EXPERIENCE)
+        ],
         evidence=[
             EvidenceItem(
                 id="lidar-evidence",
@@ -185,9 +209,15 @@ def test_one_bullet_entry_is_selected_when_it_uniquely_covers_a_role_signal() ->
             )
         ],
     )
-    posting = JobPosting(id="posting-perception", title="Perception Intern", description="Develop LiDAR perception systems.")
+    posting = JobPosting(
+        id="posting-perception",
+        title="Perception Intern",
+        description="Develop LiDAR perception systems.",
+    )
 
-    plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints(max_total_lines=3))
+    plan = DeterministicResumeOptimizer().create_plan(
+        profile, posting, TemplateConstraints(max_total_lines=3)
+    )
 
     assert plan.selected_entity_ids == ["perception"]
     assert plan.selected_claim_ids == ["lidar-evidence"]
@@ -200,7 +230,9 @@ def test_combined_candidate_keeps_same_entry_evidence_and_original_text() -> Non
         id="profile-combine",
         user_id="user-1",
         display_name="Candidate",
-        experiences=[ResumeItem(id="autonomy", title="Autonomy Intern", kind=EntityKind.EXPERIENCE)],
+        experiences=[
+            ResumeItem(id="autonomy", title="Autonomy Intern", kind=EntityKind.EXPERIENCE)
+        ],
         evidence=[
             EvidenceItem(
                 id="combine-1",
@@ -218,11 +250,21 @@ def test_combined_candidate_keeps_same_entry_evidence_and_original_text() -> Non
             ),
         ],
     )
-    posting = JobPosting(id="posting-combine", title="Autonomy Intern", description="Build ROS 2 teleoperation systems.")
+    posting = JobPosting(
+        id="posting-combine",
+        title="Autonomy Intern",
+        description="Build ROS 2 teleoperation systems.",
+    )
 
-    plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints(max_total_lines=3))
+    plan = DeterministicResumeOptimizer().create_plan(
+        profile, posting, TemplateConstraints(max_total_lines=3)
+    )
 
-    combined = next(candidate for candidate in plan.claim_candidates if candidate.composition == ClaimComposition.COMBINED)
+    combined = next(
+        candidate
+        for candidate in plan.claim_candidates
+        if candidate.composition == ClaimComposition.COMBINED
+    )
     assert combined.evidence_ids == ["combine-1", "combine-2"]
     assert first_text in combined.text
     assert second_text in combined.text
@@ -232,7 +274,9 @@ def test_combined_candidate_keeps_same_entry_evidence_and_original_text() -> Non
 def test_writer_excludes_unapproved_inferred_claims() -> None:
     profile = _profile()
     service = TailorResumeService(DeterministicResumeOptimizer(), EvidenceBoundResumeWriter())
-    plan = service.create_plan(profile, _posting(), TemplateConstraints(max_total_lines=5, max_experience_lines=4))
+    plan = service.create_plan(
+        profile, _posting(), TemplateConstraints(max_total_lines=5, max_experience_lines=4)
+    )
     inferred = ClaimCandidate(
         id="inference-1",
         entity_id="experience-1",

@@ -16,12 +16,44 @@ Vertical-slice stage. Static Template V1 stabilization is committed; determinist
 
 1. Install Python 3.11 or newer.
 2. Create and activate a virtual environment.
-3. Install dependencies: `pip install -r requirements-dev.txt`
+3. Install dependencies and this checkout: `pip install -r requirements-dev.txt`, then
+   `python -m pip install -e .`. This prevents another editable checkout from
+   supplying the `resume_tailor` package at runtime.
 4. Copy `.env.example` to `.env`, set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable the production Gemini writer, or keep deterministic fallback enabled. The default resume route disables semantic opportunity/composition calls, uses one batched writer request with at most one malformed-output repair, and never calls Gemini during page fit or download. Validated Gemini role classification is separately opt-in with `LLM_ENABLE_ROLE_CLASSIFICATION=true`; it is disabled by default.
 5. Run the API: `python -m uvicorn resume_tailor.api.main:app --reload --app-dir src`
 6. Run the UI in another terminal: `python -m streamlit run src/resume_tailor/frontend/app.py`
 
 The API health check is available at `http://localhost:8000/health`. Use `POST /optimization-plans` with a reviewed profile and a job posting to obtain a strategy and decision report.
+
+`gemini-3.1-*` models require `google-genai>=2.1`; the dependency constraint
+enforces that boundary. To isolate model/SDK/API compatibility from the resume
+schema, run the manual-only, one-request structured-output canary after loading
+the local `.env`:
+
+```powershell
+$env:PYTHONPATH=(Resolve-Path .\src).Path
+python manual-test\run_gemini_structured_output_canary.py
+```
+
+The default canary sends no profile or resume evidence. It uses the configured
+model, 30-second client timeout, one SDK attempt, and `application/json`.
+Normal resume generation never invokes it. The production writer now uses a
+separate shallow provider contract and reconstructs the rich internal response
+locally. Run its one-request neutral-evidence canary with:
+
+```powershell
+python manual-test\run_gemini_structured_output_canary.py --mode minimal-production-writer
+```
+
+Only run the full Streamlit route after this mode reports a candidate, response
+text, parsed JSON, a valid provider contract, successful evidence-ID mapping,
+an internal variant, and completed grounding validation. The historical
+`production-schema-only` and `production-config-only` modes remain available
+for manual request-axis isolation; none of the canaries run automatically.
+The writer canary uses synthetic evidence only, so its report intentionally
+includes the exact synthetic source, generated rewrite, reconstructed claims,
+supporting IDs, and typed grounding rejections. Production profile and prompt
+contents remain excluded from diagnostics.
 
 User profiles and Job Search state default to
 `%LOCALAPPDATA%\Application Viego` on Windows, independently of the current

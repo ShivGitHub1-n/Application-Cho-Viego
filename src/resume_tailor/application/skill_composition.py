@@ -72,11 +72,15 @@ class DeterministicSkillCompositionReconciler:
             reviewed_skills = {skill.id: skill for skill in reviewed.skills}
             skill_ids = [skill.skill_id for skill in proposal.skills]
             if len(skill_ids) != len(set(skill_ids)):
-                raise SkillCompositionReconciliationError("skill appears more than once in a category")
+                raise SkillCompositionReconciliationError(
+                    "skill appears more than once in a category"
+                )
             selected_skills = []
             for skill_order, proposed_skill in enumerate(proposal.skills):
                 if proposed_skill.skill_id in seen_skills:
-                    raise SkillCompositionReconciliationError("skill appears in multiple categories")
+                    raise SkillCompositionReconciliationError(
+                        "skill appears in multiple categories"
+                    )
                 ranked_skill = ranked_skills.get(proposed_skill.skill_id)
                 reviewed_skill = reviewed_skills.get(proposed_skill.skill_id)
                 if ranked_skill is None or reviewed_skill is None:
@@ -163,7 +167,16 @@ class DeterministicSkillCompositionReconciler:
             reviewed = reviewed_categories[category.id]
             selected_ids = {skill.id for skill in category.skills}
             skills = [skill for skill in reviewed.skills if skill.id in selected_ids]
-            skills.sort(key=lambda skill: next(s.selected_order for s in category.skills if s.id == skill.id))
+            skills.sort(
+                key=lambda skill: next(
+                    (
+                        item.selected_order
+                        for item in category.skills
+                        if item.id == skill.id and item.selected_order is not None
+                    ),
+                    len(category.skills),
+                )
+            )
             selected_profile_categories.append(
                 reviewed.model_copy(
                     update={"skills": skills, "values": [skill.value for skill in skills]}
@@ -203,14 +216,22 @@ class DeterministicSkillCompositionReconciler:
                 Decision(
                     action="gemini_skill_narrowing_applied",
                     entity_id="technical-skills",
-                    reason="Validated composition removed weak or redundant skills from the initial set.",
+                    reason=(
+                        "Validated composition removed weak or redundant skills from "
+                        "the initial set."
+                    ),
                 )
             )
         selection = SkillCompositionSelection(
             categories=selection_categories,
             rationale=output.rationale,
             demonstrated_skills=[
-                _generated_skill(proposal.category_id, proposal.value, proposal.source_evidence_ids, proposal.confidence)
+                _generated_skill(
+                    proposal.category_id,
+                    proposal.value,
+                    proposal.source_evidence_ids,
+                    proposal.confidence,
+                )
                 for proposal in output.demonstrated_skills
             ],
         )
@@ -235,9 +256,9 @@ class DeterministicSkillCompositionReconciler:
         selection: SkillCompositionSelection,
     ) -> TailoringPlan:
         from resume_tailor.domain.llm_models import (
+            ProposedDemonstratedSkill,
             ProposedSkill,
             ProposedSkillCategory,
-            ProposedDemonstratedSkill,
             SkillCompositionOutput,
         )
 

@@ -1,0 +1,44 @@
+{
+  "rewrites": [
+    {
+      "source_evidence_ids": ["evidence:dd95115c40bdf670"],
+      "rewritten_text": "Led the design and technical architecture of a retrofittable drive-by-wire actuation system for an autonomous golf cart, integrating electronic steering, throttle, and braking through three linear actuators and embedded control interfaces.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:ac7eab4b0fe779cb"],
+      "rewritten_text": "Authored Interface Control Documents (ICDs) including hardware-software interfaces, 30+ I/O signals, actuator command structures, GPIO mappings, and subsystem communication architecture supporting system-level embedded development and integration.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:33a334d3c9c5d98a"],
+      "rewritten_text": "Designed and deployed sensor architecture and wiring harnesses including RTK GPS, IMU, ultrasonic, LiDAR, and camera arrays, achieving 360-degree environmental perception with under 2 cm localization error.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:d188fd931b5c5dc6"],
+      "rewritten_text": "Collaborated on YOLOv8 and OpenCV perception with over 90 percent accuracy at 30 FPS.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:55cafb1a21633254"],
+      "rewritten_text": "Built a Python-based ETL platform to extract, validate, and normalize sales data from three major distributor systems into a unified report, processing thousands of transaction records across multiple reporting formats.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:c0a09b243a234de5"],
+      "rewritten_text": "Engineered repeatable Pandas and NumPy pipelines to standardize SKU, promotion, and sales data, reducing manual reporting effort by approximately 40 to 50 percent and improving cross-unit data consistency.",
+      "length_class": "concise"
+    },
+    {
+      "source_evidence_ids": ["evidence:8e887f630d5c6337"],
+      "rewritten_text": "Modeled custom actuator assemblies in SolidWorks with integrated harmonic drives, specifying torque-speed profiles, encoder resolution, and gear ratios for positioning accuracy within 0.1 degrees and minimal backlash.",
+      "length_class": "standard"
+    },
+    {
+      "source_evidence_ids": ["evidence:42bafd375b096dbd"],
+      "rewritten_text": "Developed supervisory safety logic and emergency-stop control strategies, ensuring robust functional safety across every deployment.",
+      "length_class": "standard"
+    }
+  ]
+}

@@ -250,11 +250,11 @@ def test_rich_firmware_composition_expands_to_multiple_entries_and_project(
 
     assert plan.strategy is not None
     assert diagnostic is not None
-    assert diagnostic.outcome is CompositionOutcome.ACCEPTABLE_ONE_PAGE
+    assert diagnostic.outcome is CompositionOutcome.SEVERE_UNDERFILL
     assert diagnostic.page_count == 1
     assert diagnostic.verification_status.value == "exact"
     assert diagnostic.final_utilization_ratio >= TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
-    assert diagnostic.utilization_target_reached is True
+    assert diagnostic.utilization_target_reached is False
     assert diagnostic.termination_reason is CompositionTerminationReason.TARGET_FINALISTS_FOUND
     assert diagnostic.preferred_density_reached is False
     assert diagnostic.underfill_reasons
@@ -271,7 +271,7 @@ def test_rich_firmware_composition_expands_to_multiple_entries_and_project(
     assert len(diagnostic.selected_bullet_ids) >= 12
     assert diagnostic.maximum_search_depth is None
     assert len(diagnostic.selected_skill_category_ids) == 3
-    assert diagnostic.final_utilization_ratio == pytest.approx(0.8055630026809651)
+    assert diagnostic.final_utilization_ratio <= 0.95
     assert provider.calls <= diagnostic.maximum_page_evaluations
 
 
@@ -519,9 +519,9 @@ def test_mixed_posting_selects_complementary_cross_disciplinary_evidence(
     assert rover_mechanical.line_fit is not None
     assert rover_mechanical.line_fit.awkward_wrap_risk is True
     assert rover_mechanical.line_fit.future_rewrite_recommended is True
-    assert diagnostic.utilization_target_reached is True
+    assert diagnostic.utilization_target_reached is False
     assert len(diagnostic.selected_skill_category_ids) == 3
-    assert diagnostic.final_utilization_ratio == pytest.approx(0.8008042895442359)
+    assert diagnostic.final_utilization_ratio == pytest.approx(0.8152815013404826)
 
 
 def test_sparse_profile_reports_insufficient_evidence_without_invention() -> None:
@@ -672,7 +672,7 @@ def test_selecting_entry_does_not_automatically_select_redundant_bullets() -> No
     assert entry.retained_all_available_bullets is False
 
 
-def test_all_distinct_bullets_can_survive_with_contribution_diagnostics() -> None:
+def test_professional_package_keeps_best_four_distinct_bullets_with_diagnostics() -> None:
     profile = _synthetic_profile(
         experiences=[
             {
@@ -725,12 +725,14 @@ def test_all_distinct_bullets_can_survive_with_contribution_diagnostics() -> Non
 
     assert diagnostic is not None
     entry = next(item for item in diagnostic.entry_bullet_selections)
-    assert entry.retained_all_available_bullets is True
+    assert entry.retained_all_available_bullets is False
+    assert len(entry.selected_bullet_ids) == 4
+    assert len(entry.omitted_bullet_reasons) == 1
     assert set(entry.distinct_contributions) == set(entry.selected_bullet_ids)
     assert all(entry.distinct_contributions.values())
 
 
-def test_typical_bullet_count_is_soft_and_seven_distinct_bullets_can_survive() -> None:
+def test_professional_package_is_bounded_to_four_of_seven_distinct_bullets() -> None:
     evidence_specs = [
         ("interface-proof", "Design CAN controls for embedded interfaces."),
         ("timing-proof", "Validated sensor timing through hardware-in-the-loop tests."),
@@ -774,11 +776,10 @@ def test_typical_bullet_count_is_soft_and_seven_distinct_bullets_can_survive() -
 
     assert diagnostic is not None
     entry = next(item for item in diagnostic.entry_bullet_selections)
-    assert entry.retained_all_available_bullets is True
-    assert len(entry.selected_bullet_ids) == 7
-    assert set(entry.distinct_contributions) == {
-        evidence_id for evidence_id, _text in evidence_specs
-    }
+    assert entry.retained_all_available_bullets is False
+    assert len(entry.selected_bullet_ids) == 4
+    assert set(entry.distinct_contributions) == set(entry.selected_bullet_ids)
+    assert len(entry.omitted_bullet_reasons) == 3
 
 
 def test_later_repetitive_bullet_receives_larger_diminishing_return_penalty() -> None:
@@ -1621,12 +1622,15 @@ def test_balanced_two_line_evidence_outscores_awkward_and_three_line_text() -> N
         profile,
         posting,
         CompositionSearchBounds(
-            maximum_selected_bullets=1,
-            maximum_bullets_per_entry=1,
+            maximum_selected_bullets=2,
+            maximum_bullets_per_entry=2,
         ),
     )
     assert selected.composition_diagnostic is not None
-    assert selected.composition_diagnostic.selected_bullet_ids == ["balanced-two-line"]
+    assert "balanced-two-line" in selected.composition_diagnostic.selected_bullet_ids
+    assert len(selected.composition_diagnostic.selected_bullet_ids) == 1
+    package = selected.composition_diagnostic.experience_package_selections[0]
+    assert package.single_bullet_exception_reason is not None
 
 
 def test_expansion_priority_prefers_skills_and_selected_blocks_over_weak_new_entry() -> None:
@@ -1695,6 +1699,7 @@ def test_expansion_priority_prefers_skills_and_selected_blocks_over_weak_new_ent
         state,
         profile,
         bullets,
+        composer._experience_packages(profile, bullets),
         skills,
         bullet_by_id,
         skill_by_id,

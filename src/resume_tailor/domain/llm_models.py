@@ -14,6 +14,9 @@ from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_POLICY_VERSION,
     RESUME_WRITING_PROMPT_VERSION,
     BulletLengthClass,
+    ProviderRequestShapeDiagnostic,
+    ProviderRewriteMappingOutcome,
+    WriterPipelineIssue,
 )
 from resume_tailor.domain.models import ClaimConfidence, MasterProfile, RoleFamily
 from resume_tailor.domain.requirement_ranking import EvidenceRelationship
@@ -44,13 +47,23 @@ class LanguageModelErrorKind(StrEnum):
     MALFORMED_RESPONSE = "malformed_response"
     VALIDATION = "validation"
     TRUNCATED_RESPONSE = "truncated_response"
+    EMPTY_RESPONSE = "empty_response"
+    RESPONSE_EXTRACTION = "response_extraction"
 
 
 class LanguageModelError(RuntimeError):
-    def __init__(self, kind: LanguageModelErrorKind, message: str, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        kind: LanguageModelErrorKind,
+        message: str,
+        retryable: bool = False,
+        *,
+        diagnostic: WriterPipelineIssue | None = None,
+    ) -> None:
         super().__init__(message)
         self.kind = kind
         self.retryable = retryable
+        self.diagnostic = diagnostic
 
 
 class ModelCallMetadata(StrictModel):
@@ -65,6 +78,7 @@ class ModelCallMetadata(StrictModel):
     cache_hit: bool = False
     finish_reason: str | None = None
     finish_message: str | None = None
+    request_shape: ProviderRequestShapeDiagnostic | None = None
 
 
 class ModelResult(StrictModel):
@@ -317,6 +331,7 @@ class BulletRewriteOutput(StrictModel):
 
 class BulletRewriteResult(ModelResult):
     output: BulletRewriteOutput
+    mapping_outcomes: list[ProviderRewriteMappingOutcome] = Field(default_factory=list)
 
 
 class BulletShorteningRequest(StrictModel):

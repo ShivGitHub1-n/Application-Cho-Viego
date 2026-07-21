@@ -31,9 +31,13 @@ class PostingRequirement(BaseModel):
     technical_specificity: float = Field(ge=0, le=1)
     responsibility_signals: list[str] = Field(default_factory=list)
     specific_phrases: list[str] = Field(default_factory=list)
+    # Material parts of a compound requirement (for example, firmware *and*
+    # GUI).  Coverage is complete only when every listed component is supported.
+    material_components: list[str] = Field(default_factory=list)
 
 
 class PostingRequirementModel(BaseModel):
+    role_context: str = ""
     requirements: list[PostingRequirement] = Field(default_factory=list)
 
 
@@ -61,6 +65,16 @@ class EvidenceRelationshipAssessment(BaseModel):
     reason: str
 
 
+class RequirementComponentMatch(BaseModel):
+    component: str
+    normalized_component: str
+    supported: bool
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    supporting_entry_ids: list[str] = Field(default_factory=list)
+    relationships: list[EvidenceRelationship] = Field(default_factory=list)
+    satisfied_by_profile_sections: list[str] = Field(default_factory=list)
+
+
 class RequirementCoverageDiagnostic(BaseModel):
     requirement_id: str
     text: str
@@ -68,7 +82,11 @@ class RequirementCoverageDiagnostic(BaseModel):
     importance: float = Field(ge=0, le=2)
     selected_entry_ids: list[str] = Field(default_factory=list)
     selected_bullet_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
     relationships: list[EvidenceRelationship] = Field(default_factory=list)
+    satisfied_by_profile_sections: list[str] = Field(default_factory=list)
+    component_matches: list[RequirementComponentMatch] = Field(default_factory=list)
+    fully_covered: bool = False
 
 
 class DirectCandidateTradeoffDiagnostic(BaseModel):
@@ -84,6 +102,7 @@ __all__ = [
     "PostingRequirement",
     "PostingRequirementModel",
     "RequirementAuthority",
+    "RequirementComponentMatch",
     "RequirementCoverageDiagnostic",
     "ShortTokenContribution",
 ]

@@ -35,7 +35,9 @@ _BONUS_MARKERS = re.compile(
 )
 _INCIDENTAL_MARKERS = re.compile(
     r"\b(incidental(?:ly)?|optional(?:ly)?|helpful|may occasionally|"
-    r"company overview|about us|benefits|compensation)\b",
+    r"company overview|company description|about us|about the company|what we offer|"
+    r"why join us|benefits|compensation|perks|culture|our facilities|workplace|"
+    r"office location|work location)\b",
     re.IGNORECASE,
 )
 _RAW_TECHNICAL_TOKEN = re.compile(
@@ -48,11 +50,7 @@ def extract_posting_requirements(posting: JobPosting) -> PostingRequirementModel
     provisional: list[
         tuple[str, RequirementAuthority, str, ReviewedTextFeatures]
     ] = []
-    title_features = extract_reviewed_text_features(posting.title)
-    if title_features.meaningful_tokens:
-        provisional.append(
-            (posting.title.strip(), RequirementAuthority.CORE, "title", title_features)
-        )
+    normalized_title = normalize_reviewed_text(posting.title)
     current_context = "posting"
     current_authority = RequirementAuthority.IMPORTANT
     for raw in raw_segments:
@@ -65,8 +63,14 @@ def extract_posting_requirements(posting: JobPosting) -> PostingRequirementModel
             current_authority = detected
             current_context = normalize_reviewed_text(cleaned) or "posting"
             continue
+        if normalize_reviewed_text(cleaned) == normalized_title:
+            # The role title is retrieval context, not a qualification the
+            # candidate must independently prove.
+            continue
         authority = (
-            detected
+            RequirementAuthority.INCIDENTAL
+            if current_authority is RequirementAuthority.INCIDENTAL
+            else detected
             if detected is not RequirementAuthority.IMPORTANT
             else current_authority
         )
@@ -115,6 +119,7 @@ def extract_posting_requirements(posting: JobPosting) -> PostingRequirementModel
                 technical_specificity=features.technical_specificity,
                 responsibility_signals=list(features.responsibility_signals),
                 specific_phrases=list(features.specific_phrases[:24]),
+                material_components=_material_requirement_components(text),
             )
         )
     requirements.sort(
@@ -124,7 +129,10 @@ def extract_posting_requirements(posting: JobPosting) -> PostingRequirementModel
             item.id,
         )
     )
-    return PostingRequirementModel(requirements=requirements)
+    return PostingRequirementModel(
+        role_context=posting.title.strip(),
+        requirements=requirements,
+    )
 
 
 def assess_evidence_relationship(
@@ -143,22 +151,42 @@ def assess_evidence_relationship(
     meaningful_overlap: list[str] = []
     short_contributions: list[ShortTokenContribution] = []
     contextual_score = 0.0
+    partial_compound_context = False
     candidate_raw = " ".join([bullet_text, *structured_values])
     raw_tokens = _candidate_short_tokens(candidate_raw)
     primary_entry_context = any(
         requirement.authority
         in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
-        and match_reviewed_features(
-            entry_features,
-            extract_reviewed_text_features(requirement.text),
-        ).admitted
+        and (
+            match_reviewed_features(
+                entry_features,
+                extract_reviewed_text_features(requirement.text),
+            ).admitted
+            or _has_conservative_term_family(
+                entry_features,
+                extract_reviewed_text_features(requirement.text),
+            )
+        )
         for requirement in requirements.requirements
     )
-
+    title_entry_context = bool(
+        requirements.role_context
+        and match_reviewed_features(
+            entry_features,
+            extract_reviewed_text_features(requirements.role_context),
+        ).admitted
+    )
     for requirement in requirements.requirements:
         requirement_features = extract_reviewed_text_features(requirement.text)
         bullet_match = match_reviewed_features(bullet_features, requirement_features)
         entry_match = match_reviewed_features(entry_features, requirement_features)
+        component_supported = _compound_requirement_is_supported(
+            candidate_raw,
+            requirement.material_components,
+        )
+        compound_incomplete = bool(requirement.material_components) and not component_supported
+        if compound_incomplete and bullet_match.meaningful_overlap:
+            partial_compound_context = True
         meaningful_overlap.extend(bullet_match.meaningful_overlap)
         short_matches = _short_token_matches(
             raw_tokens,
@@ -177,13 +205,6 @@ def assess_evidence_relationship(
         lexical_direct = (
             bullet_match.admitted and not bullet_match.generic_only
         ) or exact_reviewed_skill
-        if (
-            requirement.source_context == "title"
-            and not reviewed_skill
-            and not bullet_features.responsibility_signals
-            and not bullet_features.outcome_signals
-        ):
-            lexical_direct = False
         has_responsibility_adjacency = bool(bullet_match.responsibility_overlap)
         strong_overlap_context = (
             len(bullet_match.meaningful_overlap) >= 2
@@ -204,19 +225,33 @@ def assess_evidence_relationship(
             bool(bullet_match.meaningful_overlap)
             and bool(bullet_features.responsibility_signals)
             and bullet_features.technical_specificity >= 0.45
+        ) or (
+            primary_entry_context
+            and bullet_features.technical_specificity >= 0.45
+            and bool(bullet_features.responsibility_signals)
         )
         term_family_context = _has_conservative_term_family(
             bullet_features,
             requirement_features,
         )
+        family_transferable_context = (
+            term_family_context
+            and bullet_features.technical_specificity >= 0.45
+            and bool(bullet_features.responsibility_signals)
+        )
         contextual_adjacency = (
-            (has_responsibility_adjacency or specific_transferable_context)
+            (
+                has_responsibility_adjacency
+                or specific_transferable_context
+                or family_transferable_context
+            )
             and bullet_features.technical_specificity >= 0.18
             and (
                 strong_overlap_context
                 or corroborated_short
                 or strong_entry_adjacency
                 or specific_transferable_context
+                or family_transferable_context
             )
         )
 
@@ -224,16 +259,28 @@ def assess_evidence_relationship(
             RequirementAuthority.CORE,
             RequirementAuthority.IMPORTANT,
         }:
-            if lexical_direct or corroborated_short:
+            if (lexical_direct and not compound_incomplete) or (
+                corroborated_short and not compound_incomplete
+            ):
                 direct.append(requirement)
                 contextual_score += requirement.importance * (
                     10.0 + min(20.0, bullet_match.relevance_score)
                 )
-            elif contextual_adjacency:
+            elif contextual_adjacency and not compound_incomplete:
                 adjacent.append(requirement)
                 contextual_score += requirement.importance * (
-                    7.0 + min(10.0, bullet_match.relevance_score * 0.35)
+                    3.0
+                    if family_transferable_context
+                    and not (
+                        has_responsibility_adjacency
+                        or specific_transferable_context
+                        or corroborated_short
+                    )
+                    else 7.0 + min(10.0, bullet_match.relevance_score * 0.35)
                 )
+            elif reviewed_skill and term_family_context and not compound_incomplete:
+                adjacent.append(requirement)
+                contextual_score += requirement.importance * 4.0
         elif requirement.authority is RequirementAuthority.BONUS:
             if lexical_direct or corroborated_short or term_family_context:
                 complementary.append(requirement)
@@ -254,6 +301,13 @@ def assess_evidence_relationship(
         if adjacent
         else EvidenceRelationship.COMPLEMENTARY
         if complementary
+        else EvidenceRelationship.ADJACENT
+        if partial_compound_context
+        or (
+            title_entry_context
+            and bullet_features.technical_specificity >= 0.45
+            and bool(bullet_features.responsibility_signals)
+        )
         else EvidenceRelationship.INCIDENTAL
         if incidental
         else EvidenceRelationship.REJECTED
@@ -285,6 +339,88 @@ def _posting_segments(description: str) -> list[str]:
                 continue
             segments.extend(_split_compound_responsibilities(part))
     return segments
+
+
+def _material_requirement_components(text: str) -> list[str]:
+    """Return conservative material components for a two-part requirement."""
+
+    normalized = normalize_reviewed_text(text)
+    protected_components: list[str] = []
+    if re.search(r"\bfirmware\b", normalized):
+        protected_components.append("firmware")
+    has_gui_component = _contains_explicit_gui_language(normalized)
+    if has_gui_component:
+        protected_components.append("gui")
+    if has_gui_component:
+        return protected_components
+
+    # Comma-separated lists use a trailing conjunction as list grammar (for
+    # example, ``I2C, UART, SPI, and DMA``), not a two-part requirement.
+    if "," in text:
+        return []
+    component_text = re.sub(
+        r"^(?:required|important|preferred|bonus)\s*:\s*",
+        "",
+        text.strip(),
+        flags=re.IGNORECASE,
+    )
+    parts = [
+        part.strip(" ,")
+        for part in re.split(r"\s+(?:and|&)\s+", component_text)
+        if part.strip(" ,")
+    ]
+    if len(parts) != 2:
+        return []
+    component_features = [extract_reviewed_text_features(part) for part in parts]
+    if all(
+        feature.meaningful_tokens
+        and (feature.technical_specificity >= 0.18 or feature.specific_phrases)
+        for feature in component_features
+    ):
+        return [feature.normalized_text for feature in component_features]
+    return []
+
+
+def _compound_requirement_is_supported(
+    candidate_text: str,
+    components: list[str],
+) -> bool:
+    if not components:
+        return True
+    return all(
+        requirement_component_supported(component, candidate_text)
+        for component in components
+    )
+
+
+def requirement_component_supported(component: str, candidate_text: str) -> bool:
+    """Return whether reviewed text explicitly supports one material component.
+
+    GUI and firmware are deliberately strict because generic interfaces,
+    software, sensors, robotics, and embedded architecture do not entail either
+    specialized capability.
+    """
+
+    normalized_component = normalize_reviewed_text(component)
+    normalized_candidate = normalize_reviewed_text(candidate_text)
+    if normalized_component == "gui":
+        return _contains_explicit_gui_language(normalized_candidate)
+    if normalized_component == "firmware":
+        return bool(re.search(r"\bfirmware\b", normalized_candidate))
+    return match_reviewed_features(
+        extract_reviewed_text_features(candidate_text),
+        extract_reviewed_text_features(component),
+    ).admitted
+
+
+def _contains_explicit_gui_language(normalized_text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:guis?|graphical user interfaces?|user interface design|"
+            r"desktop user interfaces?|touchscreen user interfaces?)\b",
+            normalized_text,
+        )
+    )
 
 
 def _split_compound_responsibilities(value: str) -> list[str]:
@@ -324,6 +460,12 @@ def _looks_like_heading(value: str) -> bool:
     responsibility_signals = extract_reviewed_text_features(
         value
     ).responsibility_signals
+    _prefix, separator, suffix = value.partition(":")
+    if separator and suffix.strip():
+        # Inline markers such as ``Required: Python APIs`` are requirements,
+        # not section headings.  Treating them as headings loses the actual
+        # requirement and incorrectly attributes the following segment.
+        return False
     return (
         value.endswith(":")
         or len(words) <= 3
@@ -563,12 +705,33 @@ def _has_conservative_term_family(
     candidate: ReviewedTextFeatures,
     requirement: ReviewedTextFeatures,
 ) -> bool:
+    conservative_families = (
+        frozenset(
+            {
+                "circuit",
+                "circuits",
+                "electronic",
+                "electronics",
+                "electrical",
+                "wiring",
+            }
+        ),
+    )
+    candidate_tokens = set(candidate.meaningful_tokens)
+    requirement_tokens = set(requirement.meaningful_tokens)
+    if any(
+        candidate_tokens & family and requirement_tokens & family
+        for family in conservative_families
+    ):
+        return True
     for first in candidate.meaningful_tokens:
         if len(first) < 8:
             continue
         for second in requirement.meaningful_tokens:
             if len(second) < 8:
                 continue
+            if first in second or second in first:
+                return True
             common = 0
             for left, right in zip(first, second, strict=False):
                 if left != right:
@@ -582,4 +745,5 @@ def _has_conservative_term_family(
 __all__ = [
     "assess_evidence_relationship",
     "extract_posting_requirements",
+    "requirement_component_supported",
 ]

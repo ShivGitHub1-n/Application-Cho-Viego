@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import StrEnum
 from math import isfinite
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.hybrid_resume import GroundingFailureCode
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
     BulletRewrite,
@@ -136,6 +138,163 @@ class GroundingValidationError(ValueError):
         self.failures = failures
 
 
+@dataclass(frozen=True)
+class RewriteGroundingComparison:
+    normalized_unsupported_terms: tuple[str, ...]
+    ownership_comparison: str
+    metric_comparison: str
+    causal_outcome_comparison: str
+    singular_plural_scope_comparison: str
+
+
+_NUMBER_WORDS = {
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+}
+_NUMBER_PATTERN = "|".join([r"\d+(?:\.\d+)?", *_NUMBER_WORDS])
+_NUMERIC_FACT_PATTERN = re.compile(
+    rf"(?P<comparator><=|>=|<|>|\bover\b|\bunder\b|\bmore\s+than\b|"
+    rf"\bless\s+than\b|\bwithin\b|\bat\s+most\b|\bup\s+to\b)?\s*"
+    rf"(?P<number>{_NUMBER_PATTERN})\s*"
+    r"(?P<unit>%|percent(?:age)?|cm|centimeters?|Â°|°|degrees?)?",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class _NumericFact:
+    comparator: str
+    number: str
+    unit: str
+
+
+def numeric_semantics_preserved(rewrite: str, source: str) -> bool:
+    """Return whether every numeric fact in a rewrite exists in the source.
+
+    Equivalent number words, symbols, and units are canonicalized. Comparator
+    direction and boundary strength remain exact; in particular ``within`` is
+    not treated as equivalent to a strict less-than claim.
+    """
+
+    source_facts = set(_numeric_facts(source))
+    return all(fact in source_facts for fact in _numeric_facts(rewrite))
+
+
+def _numeric_facts(text: str) -> list[_NumericFact]:
+    facts: list[_NumericFact] = []
+    for match in _NUMERIC_FACT_PATTERN.finditer(text):
+        raw_number = match.group("number").casefold()
+        number = _NUMBER_WORDS.get(raw_number, raw_number)
+        comparator = _canonical_comparator(match.group("comparator") or "")
+        unit = _canonical_unit(match.group("unit") or "")
+        facts.append(_NumericFact(comparator=comparator, number=number, unit=unit))
+    return facts
+
+
+def _canonical_comparator(value: str) -> str:
+    normalized = " ".join(value.casefold().split())
+    return {
+        "over": ">",
+        "more than": ">",
+        "under": "<",
+        "less than": "<",
+        "at most": "<=",
+        "up to": "<=",
+        "within": "within",
+    }.get(normalized, normalized)
+
+
+def _canonical_unit(value: str) -> str:
+    normalized = value.casefold()
+    if normalized in {"%", "percent", "percentage"}:
+        return "percent"
+    if normalized in {"Â°", "°", "degree", "degrees"}:
+        return "degree"
+    if normalized in {"centimeter", "centimeters"}:
+        return "cm"
+    return normalized
+
+
+def grounding_failure_code(failure: str) -> GroundingFailureCode:
+    normalized = failure.casefold()
+    if "repeat" in normalized or "duplicate" in normalized:
+        return GroundingFailureCode.DUPLICATE_EVIDENCE
+    if "unknown evidence" in normalized:
+        return GroundingFailureCode.UNKNOWN_EVIDENCE
+    if "cross-entry" in normalized or "outside its bundle" in normalized:
+        return GroundingFailureCode.CROSS_ENTRY_EVIDENCE
+    if "incorrect combination" in normalized:
+        return GroundingFailureCode.INCORRECT_COMBINATION_STATUS
+    if "unsupported generated claim" in normalized:
+        return GroundingFailureCode.UNSUPPORTED_CLAIM
+    if "claim" in normalized or "provenance" in normalized:
+        return GroundingFailureCode.CLAIM_PROVENANCE
+    if "numeric" in normalized or "required facts dropped" in normalized:
+        return GroundingFailureCode.CHANGED_NUMBER_OR_METRIC
+    if "technical or named terms" in normalized or "preserved terms" in normalized:
+        return GroundingFailureCode.UNSUPPORTED_TECHNOLOGY_OR_ENTITY
+    if "ownership or causality" in normalized:
+        return GroundingFailureCode.OWNERSHIP_EXPANSION
+    if "causal outcome" in normalized:
+        return GroundingFailureCode.UNSUPPORTED_CAUSAL_OUTCOME
+    if "unsupported outcomes" in normalized:
+        return GroundingFailureCode.UNSUPPORTED_OUTCOME
+    if "scope" in normalized or "narrow" in normalized:
+        return GroundingFailureCode.UNSUPPORTED_NARROWING_OR_SCOPE
+    if "writing policy" in normalized or "job-description phrase" in normalized:
+        return GroundingFailureCode.WRITING_POLICY_REJECTION
+    return GroundingFailureCode.OTHER_VALIDATION_RULE
+
+
+def compare_rewrite_grounding(
+    text: str,
+    source_texts: list[str],
+    structured_facts: list[str],
+) -> RewriteGroundingComparison:
+    source = " ".join(source_texts)
+    source_numbers = sorted({item.number for item in _numeric_facts(source)})
+    result_numbers = sorted({item.number for item in _numeric_facts(text)})
+    source_level = _ownership_level(source)
+    result_level = _ownership_level(text)
+    introduced_outcomes = _introduced_outcomes(text, source_texts)
+    introduced_causal = _introduced_causal_outcomes(text, source_texts)
+    allowed_terms = _special_terms(source) | {
+        term.casefold() for term in structured_facts
+    }
+    unsupported_terms = sorted(_special_terms(text) - allowed_terms)
+    scope_changes = _singular_plural_scope_changes(text, source)
+    return RewriteGroundingComparison(
+        normalized_unsupported_terms=tuple(unsupported_terms),
+        ownership_comparison=(
+            f"source_level={source_level}; rewrite_level={result_level}; "
+            f"expanded={result_level > source_level}"
+        ),
+        metric_comparison=(
+            f"source={source_numbers}; rewrite={result_numbers}; "
+            f"introduced={sorted(set(result_numbers) - set(source_numbers))}; "
+            f"omitted={sorted(set(source_numbers) - set(result_numbers))}"
+        ),
+        causal_outcome_comparison=(
+            f"introduced_outcomes={introduced_outcomes}; "
+            f"introduced_causal_phrases={introduced_causal}"
+        ),
+        singular_plural_scope_comparison=(
+            f"pluralized_source_terms={scope_changes}"
+            if scope_changes
+            else "no_singular_plural_scope_change_detected"
+        ),
+    )
+
+
 def validate_composition(
     output: CompositionRecommendationOutput,
     known_entry_ids: set[str],
@@ -239,6 +398,14 @@ def validate_rewrites(
         if any(group.entry_id != bullet.entry_id for group in groups_for_bullet):
             failures.append(f"cross-entry bullet for {bullet.source_evidence_ids}")
             continue
+        if len(groups_for_bullet) > 1 and not _same_entry_bundle_is_coherent(
+            groups_for_bullet
+        ):
+            failures.append(
+                "same-entry evidence bundle does not describe one coherent engineering story: "
+                f"{bullet.source_evidence_ids}"
+            )
+            continue
         if bullet.evidence_combined != (len(bullet.source_evidence_ids) > 1):
             failures.append(f"incorrect combination status for {bullet.source_evidence_ids}")
         if bullet.support == ClaimConfidence.UNSUPPORTED:
@@ -299,6 +466,55 @@ def validate_rewrites(
         failures.append("rewrite exceeds the selected evidence line budget")
     if failures:
         raise GroundingValidationError(failures)
+
+
+def _same_entry_bundle_is_coherent(groups: list[ApprovedEvidenceGroup]) -> bool:
+    """Require a connected reviewed-fact story before combining same-entry evidence."""
+
+    if len(groups) < 2:
+        return True
+    stopwords = {
+        "and",
+        "built",
+        "created",
+        "developed",
+        "designed",
+        "for",
+        "from",
+        "implemented",
+        "the",
+        "using",
+        "with",
+    }
+
+    def group_terms(group: ApprovedEvidenceGroup) -> set[str]:
+        exact = {
+            " ".join(value.casefold().split())
+            for value in [*group.technologies, *group.capabilities]
+            if len(value.strip()) >= 3
+        }
+        lexical = {
+            token
+            for token in re.findall(
+                r"[a-z0-9+#./-]+",
+                " ".join(group.source_texts).casefold(),
+            )
+            if len(token) >= 5 and token not in stopwords
+        }
+        return exact | lexical
+
+    terms = [group_terms(group) for group in groups]
+    reached = {0}
+    changed = True
+    while changed:
+        changed = False
+        for index, candidate_terms in enumerate(terms):
+            if index in reached:
+                continue
+            if any(candidate_terms & terms[seen] for seen in reached):
+                reached.add(index)
+                changed = True
+    return len(reached) == len(groups)
 
 
 def _validate_claim_provenance(
@@ -421,11 +637,18 @@ def _validate_protected_facts(
         missing = [fact for fact in protected_facts if fact and fact.casefold() not in normalized]
         if missing:
             failures.append(f"required facts dropped: {missing}")
-    source_numbers = set(re.findall(r"\d+(?:\.\d+)?", " ".join(source_texts)))
-    result_numbers = set(re.findall(r"\d+(?:\.\d+)?", text))
-    introduced = result_numbers - source_numbers
+    source_text = " ".join(source_texts)
+    source_facts = set(_numeric_facts(source_text))
+    result_facts = set(_numeric_facts(text))
+    introduced = result_facts - source_facts
     if introduced:
-        failures.append(f"unsupported numeric facts: {sorted(introduced)}")
+        rendered_introduced = sorted(
+            f"{item.comparator}{item.number}{item.unit}" for item in introduced
+        )
+        failures.append(
+            "unsupported numeric facts or changed inequality meaning: "
+            f"{rendered_introduced}"
+        )
 
 
 def _validate_factual_terms(
@@ -460,30 +683,33 @@ def _validate_ownership(
 ) -> None:
     levels = {
         "supported": 0,
+        "supporting": 0,
         "collaborated": 0,
+        "collaborating": 0,
+        "built": 1,
+        "building": 1,
         "developed": 1,
+        "developing": 1,
         "implemented": 1,
+        "implementing": 1,
         "designed": 1,
+        "designing": 1,
         "led": 2,
+        "leading": 2,
         "owned": 2,
+        "owning": 2,
         "architected": 2,
+        "architecting": 2,
     }
-    source_text = " ".join(source_texts).casefold()
-    source_tokens = set(re.findall(r"[a-z]+", source_text))
-    source_level = max(
-        (level for verb, level in levels.items() if verb in source_tokens),
-        default=0,
-    )
+    source_text = " ".join(source_texts)
+    source_tokens = set(re.findall(r"[a-z]+", source_text.casefold()))
+    source_level = _ownership_level(source_text, levels)
     if allow_strong_inference and any(
         verb in source_tokens
         for verb in ("built", "developed", "implemented", "designed", "tested", "validated")
     ):
         source_level = max(source_level, 1)
-    result_tokens = set(re.findall(r"[a-z]+", text.casefold()))
-    result_level = max(
-        (level for verb, level in levels.items() if verb in result_tokens),
-        default=0,
-    )
+    result_level = _ownership_level(text, levels)
     if result_level > source_level:
         failures.append("ownership or causality was strengthened beyond source evidence")
 
@@ -493,6 +719,43 @@ def _validate_outcomes(
     source_texts: list[str],
     failures: list[str],
 ) -> None:
+    introduced = _introduced_outcomes(text, source_texts)
+    if introduced:
+        failures.append(f"unsupported outcomes: {introduced}")
+    introduced_causal = _introduced_causal_outcomes(text, source_texts)
+    if introduced_causal:
+        failures.append(f"unsupported causal outcome: {introduced_causal}")
+
+
+def _ownership_level(text: str, levels: dict[str, int] | None = None) -> int:
+    configured = levels or {
+        "supported": 0,
+        "supporting": 0,
+        "collaborated": 0,
+        "collaborating": 0,
+        "built": 1,
+        "building": 1,
+        "developed": 1,
+        "developing": 1,
+        "implemented": 1,
+        "implementing": 1,
+        "designed": 1,
+        "designing": 1,
+        "led": 2,
+        "leading": 2,
+        "owned": 2,
+        "owning": 2,
+        "architected": 2,
+        "architecting": 2,
+    }
+    tokens = set(re.findall(r"[a-z]+", text.casefold()))
+    return max(
+        (level for verb, level in configured.items() if verb in tokens),
+        default=0,
+    )
+
+
+def _introduced_outcomes(text: str, source_texts: list[str]) -> list[str]:
     outcome_terms = {
         "accelerated",
         "decreased",
@@ -505,11 +768,31 @@ def _validate_outcomes(
         "saved",
     }
     source = " ".join(source_texts).casefold()
-    introduced = sorted(
+    return sorted(
         term for term in outcome_terms if term in text.casefold() and term not in source
     )
-    if introduced:
-        failures.append(f"unsupported outcomes: {introduced}")
+
+
+def _introduced_causal_outcomes(text: str, source_texts: list[str]) -> list[str]:
+    source_tokens = set(re.findall(r"[a-z]+", " ".join(source_texts).casefold()))
+    result_tokens = set(re.findall(r"[a-z]+", text.casefold()))
+    causal_terms = {"ensure", "ensured", "ensures", "ensuring"}
+    return sorted((result_tokens & causal_terms) - source_tokens)
+
+
+def _singular_plural_scope_changes(text: str, source: str) -> list[str]:
+    source_tokens = set(re.findall(r"[a-z][a-z0-9-]*", source.casefold()))
+    result_tokens = set(re.findall(r"[a-z][a-z0-9-]*", text.casefold()))
+    measurement_units = {"degrees", "milliseconds", "percentages", "seconds"}
+    return sorted(
+        token
+        for token in result_tokens
+        if token.endswith("s")
+        and token not in measurement_units
+        and len(token) > 4
+        and token[:-1] in source_tokens
+        and token not in source_tokens
+    )
 
 
 def _estimated_lines(text: str) -> int:

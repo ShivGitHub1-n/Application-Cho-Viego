@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from io import BytesIO
+
+from docx import Document
 
 from resume_tailor.application.generated_artifact import (
     ResumeGenerationConfiguration,
     prepare_artifact_download,
 )
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
+from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.application.workflow_state import (
@@ -18,8 +22,15 @@ from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_CONTRACT_VERSION,
     RESUME_WRITING_POLICY_VERSION,
 )
+from resume_tailor.domain.llm_models import (
+    BulletRewrite,
+    BulletRewriteOutput,
+    BulletRewriteResult,
+    LlmOperation,
+)
 from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConstraints
 from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
+from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
@@ -27,6 +38,7 @@ from resume_tailor.infrastructure.optimization import (
 )
 from resume_tailor.infrastructure.rendering import PageCountMeasurement
 from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
+from tests.fakes import FakeResumeLanguageModel, metadata
 
 
 class _FakeArtifactRenderer:
@@ -112,9 +124,7 @@ def _configuration(
     model: str = "controlled-model",
 ) -> ResumeGenerationConfiguration:
     return ResumeGenerationConfiguration(
-        template_identity=(
-            template_identity or f"{TEMPLATE_V1_ID}:{TEMPLATE_V1_DOCX_SHA256}"
-        ),
+        template_identity=(template_identity or f"{TEMPLATE_V1_ID}:{TEMPLATE_V1_DOCX_SHA256}"),
         composition_contract_version=RESUME_COMPOSITION_CONTRACT_VERSION,
         writing_policy_version=writing_policy_version,
         writing_contract_version=RESUME_WRITING_CONTRACT_VERSION,
@@ -237,14 +247,8 @@ def test_artifact_fingerprint_invalidates_every_material_identity_input() -> Non
     )
     changed_plan = plan.model_copy(update={"posting": changed_posting})
 
-    assert (
-        plan_service.expected_artifact_fingerprint(plan, changed_profile, set())
-        != baseline
-    )
-    assert (
-        plan_service.expected_artifact_fingerprint(changed_plan, profile, set())
-        != baseline
-    )
+    assert plan_service.expected_artifact_fingerprint(plan, changed_profile, set()) != baseline
+    assert plan_service.expected_artifact_fingerprint(changed_plan, profile, set()) != baseline
     assert (
         _service(
             _FakeArtifactRenderer(),
@@ -317,3 +321,109 @@ def test_one_build_uses_one_pagination_batch_and_download_never_repeats_it() -> 
     assert artifact.pagination_diagnostic.attempt_count == 1
     assert download.generation_call_counts.pagination_attempts == 0
     assert provider.batch_calls == batch_calls_after_build
+
+
+def test_approved_wording_rebuild_owns_fresh_pagination_and_reuses_writer_cache() -> None:
+    profile = MasterProfile.model_validate(
+        {
+            "id": "approved-profile",
+            "user_id": "approved-user",
+            "display_name": "Approved Candidate",
+            "experiences": [
+                {"id": "controls-entry", "title": "Controls Developer", "kind": "experience"}
+            ],
+            "evidence": [
+                {
+                    "id": "control-evidence",
+                    "entity_id": "controls-entry",
+                    "source_text": "Developed STM32 motor controls using SPI feedback.",
+                    "technologies": ["STM32", "SPI"],
+                    "capabilities": ["motor controls"],
+                },
+                {
+                    "id": "test-evidence",
+                    "entity_id": "controls-entry",
+                    "source_text": "Validated STM32 control timing at 30 Hz.",
+                    "technologies": ["STM32"],
+                    "outcomes": ["30 Hz"],
+                },
+            ],
+        }
+    )
+    posting = JobPosting(
+        id="approved-posting",
+        title="Embedded Controls Developer",
+        description="Build STM32 motor controls and validate SPI timing.",
+    )
+    rewrites = [
+        BulletRewrite(
+            entry_id="controls-entry",
+            final_bullet_text="Built STM32 motor controls with SPI feedback.",
+            source_evidence_ids=["control-evidence"],
+            preserved_technologies=["STM32", "SPI"],
+            evidence_combined=False,
+            support="strongly_implied",
+            confidence=0.9,
+        ),
+        BulletRewrite(
+            entry_id="controls-entry",
+            final_bullet_text="Validated STM32 control timing at 30 Hz.",
+            source_evidence_ids=["test-evidence"],
+            preserved_technologies=["STM32"],
+            preserved_metrics=["30 Hz"],
+            evidence_combined=False,
+            support="strongly_implied",
+            confidence=0.9,
+        ),
+    ]
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(bullets=rewrites),
+        )
+    )
+    telemetry = GenerationTelemetry()
+    page_provider = _BatchPageProvider()
+    renderer = TemplateV1ArtifactRenderer()
+    hybrid = HybridLlmServices(fake, 0, 4, False, False, True)
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        hybrid_services=hybrid,
+        resume_composer=DeterministicResumeComposer(
+            TemplateV1PageFitEvaluator(page_provider, telemetry=telemetry),
+            telemetry=telemetry,
+        ),
+        artifact_renderer=renderer,
+        generation_configuration=_configuration().model_copy(
+            update={"feature_flags": {"bullet_rewrite": True}}
+        ),
+        telemetry=telemetry,
+    )
+    service.start_generation()
+    plan = service.create_plan(profile, posting, TemplateConstraints())
+    initial = service.build_generated_artifact(plan, profile, set())
+    review_ids = {
+        variant.variant_id
+        for variant in initial.writing_diagnostic.bullet_variants
+        if variant.validation_status.value == "review_required"
+    }
+    assert len(review_ids) == 2
+
+    rebuilt = service.build_generated_artifact(
+        plan,
+        profile,
+        review_ids,
+        existing_artifact=initial,
+    )
+    download = prepare_artifact_download(rebuilt, clock=telemetry.clock)
+
+    assert fake.calls["rewrite_bullets"] == 1
+    assert rebuilt.pagination_diagnostic.attempt_count <= 1
+    assert rebuilt.call_counts.pagination_attempts <= 1
+    rebuilt_docx = Document(BytesIO(rebuilt.docx_bytes))
+    rendered_text = "\n".join(paragraph.text for paragraph in rebuilt_docx.paragraphs)
+    assert "Built STM32 motor controls with SPI feedback." in rendered_text
+    assert "Validated STM32 control timing at 30 Hz." in rendered_text
+    assert download.docx_bytes is rebuilt.docx_bytes
+    assert not any(download.generation_call_counts.model_dump().values())

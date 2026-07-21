@@ -128,7 +128,7 @@ The default computation bounds are:
 - maximum exact finalist evaluations: 12;
 - maximum expansion operations: 1,600;
 - maximum ranked bullets: 48;
-- maximum expansion options evaluated from one state: 4;
+- maximum expansion options evaluated from one state: 6;
 - maximum selected bullets: 24;
 - maximum selected coherent entries: 7, with at most 4 experiences and
   3 projects;
@@ -144,11 +144,14 @@ which condition applied, and candidates omitted only by a bound are retained
 in diagnostics.
 
 The final-plan preference is: structural truthfulness; exact one-page fit when
-available; no inadmissible or duplicate content; evidence and portfolio
-quality; distinct requirement coverage; avoidance of unnecessary three-line
-bullets; preferred-density fit among otherwise strong plans; effective use of
-the page without overflow; then stable candidate IDs. Overflowing finalists
-are rolled back without stopping evaluation of lower-occupancy alternatives.
+available; no inadmissible or duplicate content; preferred-density fit among
+admissible plans; evidence and portfolio quality; distinct requirement
+coverage; avoidance of unnecessary three-line bullets; then stable candidate
+IDs. Below the preferred band, density is compared in two-percentage-point
+buckets so a negligible fill difference cannot defeat a clearly stronger
+portfolio, while a material underfill gap is resolved before quality.
+Overflowing finalists are rolled back without stopping evaluation of
+lower-occupancy alternatives.
 
 ## Template V1 utilization calibration
 
@@ -163,12 +166,11 @@ occupied-height estimator:
 | Rich firmware deterministic fixture | 78.01% |
 | Rich mixed-disciplinary deterministic fixture | 77.04% |
 
-The calibrated technical band is 72% through 97%. The floor is below both deliberately
-well-filled deterministic fixtures and materially above the rejected 57.81%
-result. The ceiling anchors the objective to the accepted 96.43% reference
-without rewarding a search for 100% occupancy. Utilization above the floor is
-acceptable only when exact pagination confirms one page; estimated results
-remain typed `unverified`.
+The legacy estimator calibration remains 72% through 97%, but 72% is not a
+successful composition target. A result below 85% is typed severe underfill or
+insufficient evidence even when exact pagination confirms one page. The ceiling
+anchors the objective to the accepted 96.43% reference without rewarding a
+search for 100% occupancy. Estimated results remain typed `unverified`.
 
 The product-level preferred visual density is approximately 90% through 93%.
 Utilization above that range through approximately 95% remains acceptable and
@@ -178,6 +180,11 @@ truthful result may stop below 90% and remains acceptable at 85% to 90%. A
 result below 85% requires investigation and a typed quality, evidence,
 profile-completeness, match, validation, retrieval, or search warning. Density never admits weak,
 redundant, unsupported, or unrelated content, and 100% is not a target.
+
+Bound-pruned bullet diagnostics identify the entry, proposed package and bullet
+count, candidate score, vertical page cost, exact configured bound, and whether
+admission would move an underfilled result toward preferred density. A numeric
+count without candidate identity is not sufficient.
 
 The previous search stopped at 57.81% after 40 renders because its frontier had
 no expansion under the then-active planning constraints. Four bullets in each

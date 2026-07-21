@@ -26,6 +26,9 @@ from resume_tailor.domain.generated_artifact import (
 from resume_tailor.domain.hybrid_resume import (
     HybridResumeDiagnostic,
     WriterExecutionStatus,
+    WriterPipelineFailureCode,
+    WriterPipelineIssue,
+    WriterPipelineStage,
 )
 from resume_tailor.domain.llm_models import ProfileExtractionResult
 from resume_tailor.domain.models import (
@@ -223,13 +226,28 @@ class TailorResumeService:
         source_bullet_count = len(final_bullets) - rewritten_bullet_count
         writer_execution_status = hybrid.writer_execution_status
         writing_reason = hybrid.writing_reason
+        pipeline_issue = hybrid.writer_pipeline_issue
         if hybrid.rewrite_enabled and rendered_variant_ids:
             if writer_execution_status is not WriterExecutionStatus.CACHE_HIT:
-                writer_execution_status = WriterExecutionStatus.WRITER_SUCCEEDED
+                writer_execution_status = (
+                    WriterExecutionStatus.WRITER_PARTIALLY_SUCCEEDED
+                    if hybrid.rejected_variants
+                    or any(
+                        item.validation_status.value != "validated"
+                        for item in hybrid.rewrite_diagnostics
+                    )
+                    else WriterExecutionStatus.WRITER_SUCCEEDED
+                )
             writing_reason = (
                 f"{rewritten_bullet_count} validated materially improved rewrite(s) "
+                "survived deterministic portfolio and page-fit selection; unsafe or "
+                "review-gated siblings were isolated."
+                if writer_execution_status
+                is WriterExecutionStatus.WRITER_PARTIALLY_SUCCEEDED
+                else f"{rewritten_bullet_count} validated materially improved rewrite(s) "
                 "survived deterministic portfolio and page-fit selection."
             )
+            pipeline_issue = None
         elif (
             hybrid.rewrite_enabled
             and hybrid.bullet_variants
@@ -242,6 +260,11 @@ class TailorResumeService:
                 "Rewriting was enabled, but zero rewrites reached the document because "
                 "every grounded generated variant requires explicit human review."
             )
+            pipeline_issue = WriterPipelineIssue(
+                code=WriterPipelineFailureCode.ALL_REWRITES_REQUIRE_REVIEW,
+                stage=WriterPipelineStage.CLAIM_VALIDATION,
+                finish_reason=hybrid.provider_finish_reason,
+            )
         elif hybrid.rewrite_enabled and hybrid.bullet_variants:
             writer_execution_status = WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
             writing_reason = (
@@ -249,11 +272,21 @@ class TailorResumeService:
                 "rewrites reached the document because reviewed source variants scored "
                 "better for material improvement, evidence value, readability, or fit."
             )
+            pipeline_issue = WriterPipelineIssue(
+                code=WriterPipelineFailureCode.SOURCE_VARIANT_SELECTED,
+                stage=WriterPipelineStage.VARIANT_SELECTION,
+                finish_reason=hybrid.provider_finish_reason,
+            )
         elif hybrid.rewrite_enabled and hybrid.rejected_variants:
             writer_execution_status = WriterExecutionStatus.ALL_GENERATED_VARIANTS_REJECTED
             writing_reason = (
                 "Rewriting was enabled, but every generated variant failed grounding "
                 "or writing-policy validation; reviewed source bullets were retained."
+            )
+            pipeline_issue = WriterPipelineIssue(
+                code=WriterPipelineFailureCode.CLAIM_GROUNDING_REJECTION,
+                stage=WriterPipelineStage.CLAIM_VALIDATION,
+                finish_reason=hybrid.provider_finish_reason,
             )
         underfill_reasons = list(composition.underfill_reasons)
         if (
@@ -307,15 +340,32 @@ class TailorResumeService:
                         ],
                         "writer_execution_status": writer_execution_status,
                         "writing_reason": writing_reason,
+                        "writer_pipeline_issue": pipeline_issue,
                         "source_bullet_count": source_bullet_count,
                         "rewritten_bullet_count": rewritten_bullet_count,
                         "fallback_bullet_count": (
                             source_bullet_count if hybrid.rewrite_enabled else 0
                         ),
-                        "rejected_variant_count": len(hybrid.rejected_variants),
+                        "source_alternatives_available": len(
+                            hybrid.shortlisted_evidence_ids
+                        ),
+                        "rewrites_returned": len(hybrid.rewrite_diagnostics),
+                        "rewrites_validated": sum(
+                            item.validation_status.value == "validated"
+                            for item in hybrid.rewrite_diagnostics
+                        ),
+                        "rewrites_selected": rewritten_bullet_count,
+                        "source_bullets_selected": source_bullet_count,
+                        "source_fallbacks_rendered": (
+                            source_bullet_count if hybrid.rewrite_enabled else 0
+                        ),
+                        "rejected_variant_count": sum(
+                            item.validation_status.value == "rejected"
+                            for item in hybrid.rewrite_diagnostics
+                        ),
                         "review_required_variant_count": sum(
                             item.validation_status.value == "review_required"
-                            for item in hybrid.bullet_variants
+                            for item in hybrid.rewrite_diagnostics
                         ),
                         "deterministic_fallback_used": (
                             hybrid.rewrite_enabled and rewritten_bullet_count == 0
@@ -379,24 +429,14 @@ class TailorResumeService:
         if existing_artifact is not None and existing_artifact.artifact_fingerprint == fingerprint:
             return existing_artifact
         build_started = self._telemetry.clock()
-        prior_elapsed = sum(
-            self._telemetry.elapsed(stage)
-            for stage in (
-                GenerationStage.PROFILE_LOADING,
-                GenerationStage.POSTING_NORMALIZATION,
-                GenerationStage.EVIDENCE_RETRIEVAL,
-                GenerationStage.DETERMINISTIC_PLANNING,
-                GenerationStage.SEMANTIC_PLANNING,
-                GenerationStage.STREAMLIT_RERUN_OVERHEAD,
-            )
-        )
+        build_telemetry = self._telemetry.snapshot()
         final_resume = self.build_document(plan, profile, approved_claim_ids)
         docx_bytes = self._artifact_renderer.render_docx_bytes(final_resume)
         if not docx_bytes:
             raise ValueError("Generated resume artifact contains no DOCX bytes")
         composition = final_resume.composition_diagnostic
         writing = final_resume.hybrid_diagnostic
-        counts = self._telemetry.call_counts()
+        counts = self._telemetry.call_counts_since(build_telemetry)
         provider_status = (
             writing.writer_execution_status.value if writing is not None else "provider_unavailable"
         )
@@ -416,11 +456,18 @@ class TailorResumeService:
             request_timeout_seconds=configuration.provider_timeout_seconds,
             configured_retry_count=configuration.provider_retry_count,
             retry_reason=(writing.provider_retry_reason if writing is not None else None),
-            provider_elapsed_seconds=self._telemetry.elapsed(GenerationStage.PROVIDER_REQUEST),
-            parsing_elapsed_seconds=self._telemetry.elapsed(
-                GenerationStage.PROVIDER_RESPONSE_PARSING
+            finish_reason=(writing.provider_finish_reason if writing is not None else None),
+            pipeline_issue=(writing.writer_pipeline_issue if writing is not None else None),
+            request_shape=(writing.provider_request_shape if writing is not None else None),
+            provider_elapsed_seconds=self._telemetry.elapsed_since(
+                GenerationStage.PROVIDER_REQUEST, build_telemetry
             ),
-            validation_elapsed_seconds=self._telemetry.elapsed(GenerationStage.CLAIM_VALIDATION),
+            parsing_elapsed_seconds=self._telemetry.elapsed_since(
+                GenerationStage.PROVIDER_RESPONSE_PARSING, build_telemetry
+            ),
+            validation_elapsed_seconds=self._telemetry.elapsed_since(
+                GenerationStage.CLAIM_VALIDATION, build_telemetry
+            ),
             deterministic_fallback_used=(
                 writing.deterministic_fallback_used if writing is not None else True
             ),
@@ -433,7 +480,9 @@ class TailorResumeService:
             provider=(
                 composition.verification_provider if composition is not None else "not configured"
             ),
-            elapsed_seconds=self._telemetry.elapsed(GenerationStage.EXACT_WORD_PAGINATION),
+            elapsed_seconds=self._telemetry.elapsed_since(
+                GenerationStage.EXACT_WORD_PAGINATION, build_telemetry
+            ),
             failure_reason=(composition.verification_failure if composition is not None else None),
         )
         selected_variants = (
@@ -454,11 +503,11 @@ class TailorResumeService:
             selected_bullet_variants=selected_variants,
             composition_diagnostic=composition,
             writing_diagnostic=writing,
-            stage_timings=self._telemetry.timings(),
+            stage_timings=self._telemetry.timings_since(build_telemetry),
             call_counts=counts,
             provider_diagnostic=provider_diagnostic,
             pagination_diagnostic=pagination_diagnostic,
-            total_build_seconds=prior_elapsed + (self._telemetry.clock() - build_started),
+            total_build_seconds=self._telemetry.clock() - build_started,
             docx_bytes=docx_bytes,
         )
 

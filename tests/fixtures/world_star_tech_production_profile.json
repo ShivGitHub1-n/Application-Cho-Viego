@@ -1,0 +1,718 @@
+{
+  "id": "shiv-arora-master-v1",
+  "user_id": "shiv-arora",
+  "version": 1,
+  "display_name": "Shiv Arora",
+  "contact": {
+    "email": "shiv2006arora@gmail.com",
+    "phone": "647-997-0896",
+    "location": "Toronto, Ontario, Canada",
+    "links": [
+      "linkedin.com/in/shiv-arora-/",
+      "https://shiv-arora.netlify.app/"
+    ]
+  },
+  "education": [
+    {
+      "school": "University of Toronto",
+      "program": "Bachelor of Applied Science in Mechanical Engineering",
+      "minor_or_specialization": "Robotics & Mechatronics + PEY",
+      "co_op_designation": null,
+      "start_date": "Sept. 2024",
+      "expected_graduation_date": "Apr. 2029",
+      "graduation_date": null,
+      "graduation_status": "expected",
+      "location": "Toronto, Ontario, Canada",
+      "gpa": "3.72",
+      "awards": [
+        "University of Toronto Engineering International Scholar",
+        "CSWA",
+        "Dean’s List"
+      ],
+      "relevant_coursework": [
+        "Mechanical Engineering Design",
+        "Circuits in Mechanical Systems",
+        "Analog/Digital Electronics (Mechatronics)"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "id": "exp-telebotics",
+      "title": "Principle Hardware Engineer",
+      "kind": "experience",
+      "organization": "Telebotics",
+      "start_date": "Feb. 2025",
+      "end_date": "Dec. 2025",
+      "location": "Toronto, Ontario, Canada",
+      "subtitle": "Embedded Systems, Mechatronics",
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    },
+    {
+      "id": "exp-lassonde",
+      "title": "R&D Hardware Engineer",
+      "kind": "experience",
+      "organization": "Lassonde School of Engineering - York University",
+      "start_date": "Jun. 2025",
+      "end_date": "Sep. 2025",
+      "location": "York, Ontario, Canada",
+      "subtitle": "Mechanical Integration, Hardware Design",
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    },
+    {
+      "id": "exp-exl",
+      "title": "Digital Engineering Intern",
+      "kind": "experience",
+      "organization": "EXL Services",
+      "start_date": "Jun. 2026",
+      "end_date": "Sep. 2026",
+      "location": "New York, New York, United States",
+      "subtitle": "LLMs, GenAI",
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    },
+    {
+      "id": "exp-stush",
+      "title": "Software Engineering Intern",
+      "kind": "experience",
+      "organization": "Stush Foods",
+      "start_date": "Sep. 2025",
+      "end_date": "Nov. 2025",
+      "location": "Toronto, Ontario, Canada",
+      "subtitle": "Python, Pandas, Power BI",
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-robotic-arm",
+      "title": "Long Reach Robotic Arm Manipulator",
+      "kind": "project",
+      "organization": null,
+      "start_date": null,
+      "end_date": null,
+      "location": null,
+      "subtitle": "Mechanical Design, Solidworks",
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    },
+    {
+      "id": "proj-crest",
+      "title": "Crest – AI-Powered Expense Intelligence Platform",
+      "kind": "project",
+      "organization": null,
+      "start_date": null,
+      "end_date": null,
+      "location": null,
+      "subtitle": null,
+      "technology_label": null,
+      "award_or_placement": "3rd Place, MPC Hacks",
+      "technologies": [
+        "FastAPI",
+        "Gemini",
+        "MongoDB"
+      ],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    },
+    {
+      "id": "proj-ventilation",
+      "title": "Smoke-Triggered Ventilation & Alert Module",
+      "kind": "project",
+      "organization": null,
+      "start_date": null,
+      "end_date": null,
+      "location": null,
+      "subtitle": null,
+      "technology_label": null,
+      "award_or_placement": null,
+      "technologies": [
+        "Quartus",
+        "Circuit Design"
+      ],
+      "capabilities": [],
+      "description": null,
+      "bullets": [],
+      "bullet_points": []
+    }
+  ],
+  "declared_skills": [
+    "Python",
+    "C++",
+    "HTML/CSS",
+    "JavaScript",
+    "MatLab",
+    "Visual Studio",
+    "GitHub",
+    "Bash",
+    "UFLD",
+    "NumPy/Matplotlib",
+    "STM32 (ARM Cortex-M4)",
+    "Arduino",
+    "GPIO Interfacing",
+    "PWM",
+    "ADC/DAC Configuration",
+    "Serial Communication (UART",
+    "I2C",
+    "SPI)",
+    "Microprocessors and Microcontrollers",
+    "Linux",
+    "Ubuntu",
+    "Signal Pathways & Routing",
+    "SolidWorks",
+    "Fusion360",
+    "Mechanical Mount Design",
+    "Tolerancing",
+    "Assembly Drawings",
+    "3D Print drawings",
+    "Wiring Harness Design",
+    "Crimping & Soldering",
+    "Power Distribution",
+    "Voltage Regulation",
+    "CANBus"
+  ],
+  "technical_skills": [
+    {
+      "id": "programming-scripting-c068ddf9b2",
+      "category": "Programming & Scripting",
+      "values": [
+        "Python",
+        "C++",
+        "HTML/CSS",
+        "JavaScript",
+        "MatLab",
+        "Visual Studio",
+        "GitHub",
+        "Bash",
+        "UFLD",
+        "NumPy/Matplotlib"
+      ],
+      "skills": [
+        {
+          "id": "python-d5c3b1e058",
+          "value": "Python",
+          "source_reference": null
+        },
+        {
+          "id": "c-aa32ebf145",
+          "value": "C++",
+          "source_reference": null
+        },
+        {
+          "id": "html-css-e159f49b95",
+          "value": "HTML/CSS",
+          "source_reference": null
+        },
+        {
+          "id": "javascript-de14617c19",
+          "value": "JavaScript",
+          "source_reference": null
+        },
+        {
+          "id": "matlab-c6c91932df",
+          "value": "MatLab",
+          "source_reference": null
+        },
+        {
+          "id": "visual-studio-76060bf815",
+          "value": "Visual Studio",
+          "source_reference": null
+        },
+        {
+          "id": "github-f16b853673",
+          "value": "GitHub",
+          "source_reference": null
+        },
+        {
+          "id": "bash-cf8e620b9c",
+          "value": "Bash",
+          "source_reference": null
+        },
+        {
+          "id": "ufld-9815ca930d",
+          "value": "UFLD",
+          "source_reference": null
+        },
+        {
+          "id": "numpy-matplotlib-78c72c55d6",
+          "value": "NumPy/Matplotlib",
+          "source_reference": null
+        }
+      ],
+      "source_reference": null
+    },
+    {
+      "id": "embedded-systems-microcontrollers-9b4d9fb62c",
+      "category": "Embedded Systems & Microcontrollers",
+      "values": [
+        "STM32 (ARM Cortex-M4)",
+        "Arduino",
+        "GPIO Interfacing",
+        "PWM",
+        "ADC/DAC Configuration",
+        "Serial Communication (UART",
+        "I2C",
+        "SPI)",
+        "Microprocessors and Microcontrollers",
+        "Linux",
+        "Ubuntu",
+        "Signal Pathways & Routing"
+      ],
+      "skills": [
+        {
+          "id": "stm32-arm-cortex-m4-fe2917fb3b",
+          "value": "STM32 (ARM Cortex-M4)",
+          "source_reference": null
+        },
+        {
+          "id": "arduino-49c17f7120",
+          "value": "Arduino",
+          "source_reference": null
+        },
+        {
+          "id": "gpio-interfacing-d0deca4536",
+          "value": "GPIO Interfacing",
+          "source_reference": null
+        },
+        {
+          "id": "pwm-44b50c2107",
+          "value": "PWM",
+          "source_reference": null
+        },
+        {
+          "id": "adc-dac-configuration-a20ce5cff3",
+          "value": "ADC/DAC Configuration",
+          "source_reference": null
+        },
+        {
+          "id": "serial-communication-uart-0d889a07a8",
+          "value": "Serial Communication (UART",
+          "source_reference": null
+        },
+        {
+          "id": "i2c-08bc66f01f",
+          "value": "I2C",
+          "source_reference": null
+        },
+        {
+          "id": "spi-deb3b72c18",
+          "value": "SPI)",
+          "source_reference": null
+        },
+        {
+          "id": "microprocessors-and-microcontrollers-1fd28bb6ec",
+          "value": "Microprocessors and Microcontrollers",
+          "source_reference": null
+        },
+        {
+          "id": "linux-c2d84d2b9a",
+          "value": "Linux",
+          "source_reference": null
+        },
+        {
+          "id": "ubuntu-08fe475d74",
+          "value": "Ubuntu",
+          "source_reference": null
+        },
+        {
+          "id": "signal-pathways-routing-70bb4bd451",
+          "value": "Signal Pathways & Routing",
+          "source_reference": null
+        }
+      ],
+      "source_reference": null
+    },
+    {
+      "id": "mechanical-design-cad-660a86aa8e",
+      "category": "Mechanical Design & CAD",
+      "values": [
+        "SolidWorks",
+        "Fusion360",
+        "Mechanical Mount Design",
+        "Tolerancing",
+        "Assembly Drawings",
+        "3D Print drawings"
+      ],
+      "skills": [
+        {
+          "id": "solidworks-dbe7230689",
+          "value": "SolidWorks",
+          "source_reference": null
+        },
+        {
+          "id": "fusion360-816ebf0921",
+          "value": "Fusion360",
+          "source_reference": null
+        },
+        {
+          "id": "mechanical-mount-design-8f233f3e36",
+          "value": "Mechanical Mount Design",
+          "source_reference": null
+        },
+        {
+          "id": "tolerancing-3ac6ba7206",
+          "value": "Tolerancing",
+          "source_reference": null
+        },
+        {
+          "id": "assembly-drawings-7cb1df319f",
+          "value": "Assembly Drawings",
+          "source_reference": null
+        },
+        {
+          "id": "3d-print-drawings-3100e3c275",
+          "value": "3D Print drawings",
+          "source_reference": null
+        }
+      ],
+      "source_reference": null
+    },
+    {
+      "id": "wiring-electrical-systems-ecc4b63492",
+      "category": "Wiring & Electrical Systems",
+      "values": [
+        "Wiring Harness Design",
+        "Crimping & Soldering",
+        "Power Distribution",
+        "Voltage Regulation",
+        "CANBus"
+      ],
+      "skills": [
+        {
+          "id": "wiring-harness-design-7f7113a49e",
+          "value": "Wiring Harness Design",
+          "source_reference": null
+        },
+        {
+          "id": "crimping-soldering-dc9de0a31d",
+          "value": "Crimping & Soldering",
+          "source_reference": null
+        },
+        {
+          "id": "power-distribution-c10cc4baa2",
+          "value": "Power Distribution",
+          "source_reference": null
+        },
+        {
+          "id": "voltage-regulation-c76137d232",
+          "value": "Voltage Regulation",
+          "source_reference": null
+        },
+        {
+          "id": "canbus-14da9c8228",
+          "value": "CANBus",
+          "source_reference": null
+        }
+      ],
+      "source_reference": null
+    }
+  ],
+  "coursework": [
+    "Mechanical Engineering Design",
+    "Circuits in Mechanical Systems",
+    "Analog/Digital Electronics (Mechatronics)"
+  ],
+  "evidence": [
+    {
+      "id": "evidence:dd95115c40bdf670",
+      "entity_id": "exp-telebotics",
+      "source_text": "Led the design and technical architecture of a retrofittable drive-by-wire actuation system for an autonomous golf cart, integrating electronic steering, throttle, and braking through 3 linear actuators and embedded control interfaces.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:b2b2dadd79b01acc",
+      "entity_id": "exp-telebotics",
+      "source_text": "Evaluated hydraulic braking architectures, actuator selection, and mechanical linkage designs to develop a universal drive-by-wire retrofit solution balancing packaging constraints, serviceability, and reliable vehicle operation.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:ac7eab4b0fe779cb",
+      "entity_id": "exp-telebotics",
+      "source_text": "Authored Interface Control Documents (ICDs) defining hardware-software interfaces, 30+ I/O signals, actuator command structures, GPIO mappings, and subsystem communication architecture supporting embedded development and integration.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:42bafd375b096dbd",
+      "entity_id": "exp-telebotics",
+      "source_text": "Supported functional safety and autonomous vehicle control architecture by developing supervisory safety logic, emergency-stop control strategies, and system documentation for drive-by-wire operation and intellectual property development.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:4f3d25c9e53ac538",
+      "entity_id": "exp-lassonde",
+      "source_text": "Integrated the hardware architecture of a level 1 autonomous teleoperation last-mile delivery solution for low-speed vehicles (LSVs) using ROS 2, enabling real-time remote control, safety override, and operator-to-vehicle round-trip latency <200 ms over 5G modem.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:6c32de654a9b5e2c",
+      "entity_id": "exp-lassonde",
+      "source_text": "Integrated and implemented full GPIO interfacing between NVIDIA Jetson Orin microprocessor and embedded microcontroller for edge AI inference, low-level motor control and command emergency stop in <150 ms when an object is simulated.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:33a334d3c9c5d98a",
+      "entity_id": "exp-lassonde",
+      "source_text": "Designed and deployed sensor architecture + wiring harnesses including RTK GPS, IMU, ultrasonic, LiDAR, and camera arrays, achieving 360° environmental perception with <2cm localization error.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:38e1d2effe833080",
+      "entity_id": "exp-lassonde",
+      "source_text": "Designed and printed custom sensor mounting brackets and compute module enclosures using SolidWorks and Fusion 360.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:d188fd931b5c5dc6",
+      "entity_id": "exp-lassonde",
+      "source_text": "Collaborated on integrating a real-time perception pipeline using YOLOv8 and OpenCV to detect traffic lights, pedestrians, and vehicles with >90% accuracy at 30 FPS for supporting live object detection, lane tracking, and command processing.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:8d1fcf223becb4f1",
+      "entity_id": "exp-lassonde",
+      "source_text": "Supported ROS 2-based teleoperation workflows, enabling real-time vehicle monitoring, command execution, and communication between onboard systems and remote operator interfaces.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:240f568a600b77ea",
+      "entity_id": "exp-exl",
+      "source_text": "Developed and enhanced Govern.ai, an enterprise multi-agent AI governance platform that automates compliance auditing, adversarial testing, and risk assessment for generative AI applications.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:664b8d952d654c2c",
+      "entity_id": "exp-exl",
+      "source_text": "Implemented and evaluated AWS Bedrock Guardrails, configuring denied topics, sensitive information filtering, content moderation, and policy controls to strengthen enterprise AI safety and security.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:2b2021e87e0c46d4",
+      "entity_id": "exp-exl",
+      "source_text": "Leveraged RAG (Retrieval-Augmented Generation) and enterprise knowledge sources to improve regulatory reasoning, audit accuracy, and AI policy evaluation.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:11981fd46bcd6741",
+      "entity_id": "exp-exl",
+      "source_text": "Designed and extended LangGraph-based multi-agent workflows, enabling coordinated execution across specialized AI agents for research, planning, testing, and evaluation.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:55cafb1a21633254",
+      "entity_id": "exp-stush",
+      "source_text": "Developed a Python-based ETL platform that automatically extracted, validated, and normalized sales data from 3 major distributor systems into a unified report, processing thousands of transaction records across multiple reporting formats.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:c0a09b243a234de5",
+      "entity_id": "exp-stush",
+      "source_text": "Engineered data transformation and validation pipelines using Pandas and NumPy to standardize SKU, promotion, and sales data, reducing manual reporting effort by approximately 40–50% and improving data consistency across business units.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:1f088e6e54ac5d62",
+      "entity_id": "exp-stush",
+      "source_text": "Implemented automated schema detection and file-parsing workflows capable of ingesting distributor-specific Excel and CSV reporting formats into a canonical sales data model.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:f557f818e8cf2742",
+      "entity_id": "exp-stush",
+      "source_text": "Automated monthly sales reporting and Power BI dashboard refresh workflows, enabling dynamic KPI tracking, promotional analysis, and historical trend reporting through a centralized analytics dataset.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:33aee39a7d66dbd6",
+      "entity_id": "proj-robotic-arm",
+      "source_text": "Designed complete multi-DOF kinematic structure in SolidWorks, including linkage configurations, housings, and mounts.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:8e887f630d5c6337",
+      "entity_id": "proj-robotic-arm",
+      "source_text": "Modeled custom actuator assemblies in SolidWorks with integrated harmonic drives, specifying torque-speed profiles, encoder resolution, and gear ratios for <0.1° positioning accuracy and minimal backlash.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:64d42d0b59c2cbf7",
+      "entity_id": "proj-robotic-arm",
+      "source_text": "Created complete CAD assembly integrating all mechanical components to form a digital twin of the robotic arm.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:4213c1c8ca3a26f5",
+      "entity_id": "proj-crest",
+      "source_text": "Built an AI-powered financial management platform that analyzed 4,000+ transactions using natural language queries, enabling users to explore spending patterns, budgets, and expense data through an interactive dashboard.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:8bc876315fa00c09",
+      "entity_id": "proj-crest",
+      "source_text": "Implemented AI-driven expense reporting and recommendation features using FastAPI, MongoDB Atlas, and Gemini, Vultr generating contextual insights and approval suggestions for business users within a full-stack web application.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:b5d98b083e0e7d85",
+      "entity_id": "proj-crest",
+      "source_text": "Developed fraud detection and policy compliance workflows that automatically identified anomalous transactions, spending violations, and approval risks from financial datasets.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:c09ac4594502a678",
+      "entity_id": "proj-ventilation",
+      "source_text": "Prototyped a low-cost smoke detection simulator using an LDR sensor to model reduced light intensity from dense smoke and comparator logic, triggering a response through a 555 monostable circuit with supporting components",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:b8dd62a9598e3ae6",
+      "entity_id": "proj-ventilation",
+      "source_text": "Integrated a DC fan and LED + buzzer alert system controlled via an L293D motor driver, activating ventilation and periodic flashing/beeping when thresholds were reached.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    },
+    {
+      "id": "evidence:d368f3e67cb1f6fd",
+      "entity_id": "proj-ventilation",
+      "source_text": "Created simple logic models in Quartus to plan control flow before implementation using a breadboard and perfboard soldering.",
+      "source_reference": null,
+      "capabilities": [],
+      "technologies": [],
+      "outcomes": [],
+      "confirmed": true
+    }
+  ],
+  "skill_normalization_decisions": []
+}
