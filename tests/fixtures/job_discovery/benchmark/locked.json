@@ -1,0 +1,4439 @@
+[
+  {
+    "case_id": "locked-001",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "software_engineering",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-001",
+      "title": "Junior Computer Vision Engineer",
+      "company": "Fieldglass Imaging",
+      "description": "Fieldglass Imaging is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The team prioritizes measured latency and clear rollback notes. Qualification: OpenCV. Qualification: Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+      "location": "Seattle, WA",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The position partners with manufacturing and operations during release gates."
+      ],
+      "requirements_text": [
+        "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-001",
+      "source_url": "https://jobs.example.test/locked/1",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 1,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-001:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "excellent",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-001:critical",
+        "text": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-01:e1"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-001:required",
+        "text": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-001:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-01:e1",
+        "provenance": "reviewed profile record",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-01:e1",
+          "provenance": "reviewed profile record",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1",
+          "posting:req:synthetic-locked-001:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1",
+          "posting:req:synthetic-locked-001:critical"
+        ]
+      }
+    ],
+    "rationale": "The Junior Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "posting_age",
+      "software_engineering"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_1",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-002",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-003",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-002",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "backend_engineering",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-002",
+      "title": "Intermediate Computer Vision Engineer",
+      "company": "Aurora Canopy",
+      "description": "Aurora Canopy is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The work centers on a new customer workflow and careful handoff documentation. Qualification: OpenCV. Qualification: Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The team owns a service with strict audit trails and incident reviews."
+      ],
+      "requirements_text": [
+        "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-002",
+      "source_url": "https://jobs.example.test/locked/2",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 2,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-002:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "good",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-002:critical",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-002:required",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-002:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-01:e2",
+        "provenance": "reviewed profile record",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-01:e2",
+          "provenance": "reviewed profile record",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-002:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-002:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-002:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-002:critical"
+        ]
+      },
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-002:critical"
+        ]
+      }
+    ],
+    "rationale": "The Intermediate Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "backend_engineering",
+      "deidentified_profile",
+      "incomplete_description"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_2",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-003",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-004",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-003",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "data_engineering",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-003",
+      "title": "Senior Computer Vision Engineer",
+      "company": "Harbor Moss Robotics",
+      "description": "Harbor Moss Robotics is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include SQL. and practical ownership of the stated work. The group supports a pilot deployment with weekly field feedback.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The work includes mentoring peers through design and test reviews."
+      ],
+      "requirements_text": [
+        "SQL.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-003",
+      "source_url": "https://jobs.example.test/locked/3",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 3,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-003:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "weak",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-003:critical",
+        "text": "SQL.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-003:required",
+        "text": "SQL.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-003:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-003:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-003:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-003:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-003:critical"
+        ]
+      }
+    ],
+    "rationale": "The Senior Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "data_engineering",
+      "deidentified_profile",
+      "duplicate_identity"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_3",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-004",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-005",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-004",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "machine_learning",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-004",
+      "title": "Staff Computer Vision Engineer",
+      "company": "Northline University",
+      "description": "Northline University is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The position partners with manufacturing and operations during release gates.",
+      "location": "Remote Canada",
+      "work_arrangement": "remote",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The group is migrating a legacy component while preserving customer behavior."
+      ],
+      "requirements_text": [
+        "Python.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-004",
+      "source_url": "https://jobs.example.test/locked/4",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 4,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-004:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-004:critical",
+        "text": "Python.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-004:required",
+        "text": "Python.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-004:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-004:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-004:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-004:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-004:critical"
+        ]
+      }
+    ],
+    "rationale": "The Lead Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "machine_learning",
+      "provider_order"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-005",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-006",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-005",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "computer_vision",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-005",
+      "title": "Lead Computer Vision Engineer",
+      "company": "Stonewater Agriculture",
+      "description": "Stonewater Agriculture is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. Applicants must already hold Canadian work authorization and the position is not able to sponsor a work permit. The team owns a service with strict audit trails and incident reviews.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The position supports a small multidisciplinary team with short delivery cycles."
+      ],
+      "requirements_text": [
+        "Python.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-005",
+      "source_url": "https://jobs.example.test/locked/5",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 5,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "ineligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "hard_authorization_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-005:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-005:critical",
+        "text": "Python.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-005:required",
+        "text": "Python.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-005:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-005:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-005:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-005:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-005:critical"
+        ]
+      }
+    ],
+    "rationale": "The Junior Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "computer_vision",
+      "deidentified_profile",
+      "hard_negative",
+      "work_authorization"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-006",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-007",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-006",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "robotics",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-006",
+      "title": "Intern Computer Vision Engineer",
+      "company": "Blue Fern Mapping",
+      "description": "Blue Fern Mapping is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include ROS 2. and practical ownership of the stated work. The work includes mentoring peers through design and test reviews. Qualification: OpenCV. Qualification: Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The work is evaluated through reproducible experiments and written evidence."
+      ],
+      "requirements_text": [
+        "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-006",
+      "source_url": "https://jobs.example.test/locked/6",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 6,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-006:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "good",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-006:critical",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-006:required",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-006:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-01:e2",
+        "provenance": "reviewed profile record",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-01:e2",
+          "provenance": "reviewed profile record",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-006:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-006:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-006:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-006:critical"
+        ]
+      },
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-006:critical"
+        ]
+      }
+    ],
+    "rationale": "The Intermediate Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "deidentified_profile",
+      "false_positive",
+      "robotics"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_2",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-007",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-008",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-007",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "autonomous_systems",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-007",
+      "title": "Co-op Computer Vision Engineer",
+      "company": "Cedar Moon Farms",
+      "description": "Cedar Moon Farms is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include C++. and practical ownership of the stated work. The group is migrating a legacy component while preserving customer behavior.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The team rotates ownership of support questions and post-release follow-up."
+      ],
+      "requirements_text": [
+        "C++.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-007",
+      "source_url": "https://jobs.example.test/locked/7",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 7,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-007:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "weak",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-007:critical",
+        "text": "C++.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-007:required",
+        "text": "C++.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-007:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-007:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-007:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-007:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-01:e3",
+          "posting:req:synthetic-locked-007:critical"
+        ]
+      }
+    ],
+    "rationale": "The Senior Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "autonomous_systems",
+      "boundary",
+      "deidentified_profile"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_3",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-008",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-009",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-008",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "embedded_systems",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-008",
+      "title": "New Graduate Computer Vision Engineer",
+      "company": "Lumen Coast",
+      "description": "Lumen Coast is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include C. and practical ownership of the stated work. The position supports a small multidisciplinary team with short delivery cycles.",
+      "location": "Toronto, ON",
+      "work_arrangement": "remote",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The team prioritizes measured latency and clear rollback notes."
+      ],
+      "requirements_text": [
+        "C.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-008",
+      "source_url": "https://jobs.example.test/locked/8",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 8,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-008:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": true,
+    "provisional_reason_codes": [
+      "incomplete_description"
+    ],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-008:critical",
+        "text": "C.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-008:required",
+        "text": "C.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-008:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-008:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-008:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-008:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-008:critical"
+        ]
+      }
+    ],
+    "rationale": "The Lead Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "low",
+    "review_tags": [
+      "deidentified_profile",
+      "embedded_systems",
+      "work_authorization"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-009",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-010",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-009",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "firmware",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-009",
+      "title": "Senior Computer Vision Engineer",
+      "company": "Prairie Lens",
+      "description": "Prairie Lens is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include C. and practical ownership of the stated work. The work is evaluated through reproducible experiments and written evidence. Qualification: OpenCV. Qualification: Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The work centers on a new customer workflow and careful handoff documentation."
+      ],
+      "requirements_text": [
+        "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-009",
+      "source_url": "https://jobs.example.test/locked/9",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 9,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-009:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "excellent",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-009:critical",
+        "text": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-01:e1"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-009:required",
+        "text": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-009:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-01:e1",
+        "provenance": "reviewed profile record",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-01:e1",
+          "provenance": "reviewed profile record",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1",
+          "posting:req:synthetic-locked-009:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e1",
+          "posting:req:synthetic-locked-009:critical"
+        ]
+      }
+    ],
+    "rationale": "The Junior Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "firmware",
+      "unknown_eligibility"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_1",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-010",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-001",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-010",
+    "scenario_id": "locked-group-01",
+    "split": "locked",
+    "scenario_category": "hardware_systems_integration",
+    "ranking_group": "locked-group-01",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-01",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Built camera calibration and image-quality checks for a crop-monitoring prototype, with field crews validating lighting and lens changes.",
+      "skills": [
+        "Python",
+        "OpenCV",
+        "camera calibration",
+        "NumPy",
+        "data analysis"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-01:e1",
+          "statement": "Implemented OpenCV camera calibration and image-quality checks for crop-monitoring trials.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e2",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e3",
+          "statement": "Read about 3D reconstruction without building a depth pipeline.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-01:e4",
+          "statement": "Completed a computer-vision course project on feature matching.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 5.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "computer_vision"
+      ],
+      "target_titles": [
+        "Computer Vision Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-010",
+      "title": "Lead Computer Vision Engineer",
+      "company": "Moraine Orchard",
+      "description": "Moraine Orchard is hiring for camera pipelines and image evaluation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include camera pipelines and image evaluation; this role reports outcomes to an engineering manager. Qualifications include Linux. and practical ownership of the stated work. The team rotates ownership of support questions and post-release follow-up. Qualification: OpenCV. Qualification: Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+      "location": "Remote Canada",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own camera pipelines and image evaluation and communicate evidence to partner teams. The group supports a pilot deployment with weekly field feedback."
+      ],
+      "requirements_text": [
+        "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-01",
+      "external_job_id": "job-synthetic-locked-010",
+      "source_url": "https://jobs.example.test/locked/10",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 10,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-010:critical",
+          "preferences:lock-profile-01:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "good",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-010:critical",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-010:required",
+        "text": "Analyzed lighting drift and summarized false detections for field crews. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-010:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-01:e2",
+        "provenance": "reviewed profile record",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-01:e2",
+          "provenance": "reviewed profile record",
+          "statement": "Analyzed lighting drift and summarized false detections for field crews.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-010:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-010:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-010:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Analyzed lighting drift and summarized false detections for field crews. supports the posting responsibility for camera pipelines and image evaluation.",
+        "evidence_references": [
+          "profile:lock-profile-01:e2",
+          "posting:req:synthetic-locked-010:critical"
+        ]
+      },
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-010:critical"
+        ]
+      }
+    ],
+    "rationale": "The Intermediate Computer Vision Engineer proposal weighs camera pipelines and image evaluation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "deidentified_profile",
+      "hardware_systems_integration",
+      "misleading_title"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_2",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-001",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-002",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-011",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "controls",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-011",
+      "title": "Junior Controls Engineer",
+      "company": "Thermalspan Equipment",
+      "description": "Thermalspan Equipment uses MATLAB in its product language, but the day-to-day work is vendor coordination and operational reporting rather than loop tuning and instrumentation. Qualifications include MATLAB. The team prioritizes measured latency and clear rollback notes.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The position partners with manufacturing and operations during release gates."
+      ],
+      "requirements_text": [
+        "MATLAB.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-011",
+      "source_url": "https://jobs.example.test/locked/11",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 11,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "unknown",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "posting_fact_unresolved",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-011:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "weak",
+    "proposed_provisional": true,
+    "provisional_reason_codes": [
+      "unresolved_authorization"
+    ],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-011:critical",
+        "text": "MATLAB.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-011:required",
+        "text": "MATLAB.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-011:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-011:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-011:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-011:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-011:critical"
+        ]
+      }
+    ],
+    "rationale": "The Senior Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "low",
+    "review_tags": [
+      "controls",
+      "deidentified_profile",
+      "keyword_trap"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_3",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-012",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-013",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-012",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "mechatronics",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-012",
+      "title": "Intermediate Controls Engineer",
+      "company": "Cobalt Kiln Systems",
+      "description": "Cobalt Kiln Systems uses MATLAB in its product language, but the day-to-day work is vendor coordination and operational reporting rather than loop tuning and instrumentation. Qualifications include CAD. The work centers on a new customer workflow and careful handoff documentation.",
+      "location": "Toronto, ON",
+      "work_arrangement": "remote",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The team owns a service with strict audit trails and incident reviews."
+      ],
+      "requirements_text": [
+        "CAD.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-012",
+      "source_url": "https://jobs.example.test/locked/12",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 12,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-012:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-012:critical",
+        "text": "CAD.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-012:required",
+        "text": "CAD.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-012:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-012:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-012:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-012:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-012:critical"
+        ]
+      }
+    ],
+    "rationale": "The Lead Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "mechatronics",
+      "sector_trap"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-013",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-014",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-013",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "testing",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-013",
+      "title": "Senior Controls Engineer",
+      "company": "Northshore Pumps",
+      "description": "Northshore Pumps is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include pytest. and practical ownership of the stated work. The group supports a pilot deployment with weekly field feedback.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The work includes mentoring peers through design and test reviews."
+      ],
+      "requirements_text": [
+        "pytest.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-013",
+      "source_url": "https://jobs.example.test/locked/13",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 13,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-013:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-013:critical",
+        "text": "pytest.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-013:required",
+        "text": "pytest.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-013:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-013:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-013:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-013:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-013:critical"
+        ]
+      }
+    ],
+    "rationale": "The Junior Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "critical_gap",
+      "deidentified_profile",
+      "testing"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-014",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-015",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-014",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "verification",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-014",
+      "title": "Staff Controls Engineer",
+      "company": "Redstone Process",
+      "description": "Redstone Process is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include requirements traceability. and practical ownership of the stated work. The position partners with manufacturing and operations during release gates. Qualification: Commissioned temperature instrumentation against a reference probe. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The group is migrating a legacy component while preserving customer behavior."
+      ],
+      "requirements_text": [
+        "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-014",
+      "source_url": "https://jobs.example.test/locked/14",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 14,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-014:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "good",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-014:critical",
+        "text": "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-02:e2"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-014:required",
+        "text": "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-014:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-02:e2",
+        "provenance": "reviewed profile record",
+        "statement": "Commissioned temperature instrumentation against a reference probe.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-02:e2",
+          "provenance": "reviewed profile record",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-014:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Commissioned temperature instrumentation against a reference probe. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2",
+          "posting:req:synthetic-locked-014:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-014:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Commissioned temperature instrumentation against a reference probe. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2",
+          "posting:req:synthetic-locked-014:critical"
+        ]
+      },
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-014:critical"
+        ]
+      }
+    ],
+    "rationale": "The Intermediate Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "medium",
+    "review_tags": [
+      "degree_alternative",
+      "deidentified_profile",
+      "verification"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_2",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-015",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-016",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-015",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "mixed_family",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-015",
+      "title": "Lead Controls Engineer",
+      "company": "Frost Creek Utilities",
+      "description": "Frost Creek Utilities is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The source does not state the authorization policy or complete work arrangement, so those details require confirmation. The team owns a service with strict audit trails and incident reviews.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The position supports a small multidisciplinary team with short delivery cycles."
+      ],
+      "requirements_text": [
+        "Python.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-015",
+      "source_url": "https://jobs.example.test/locked/15",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 15,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "unknown",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "posting_fact_unresolved",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-015:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "weak",
+    "proposed_provisional": true,
+    "provisional_reason_codes": [
+      "unresolved_authorization"
+    ],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-015:critical",
+        "text": "Python.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-015:required",
+        "text": "Python.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-015:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-015:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-015:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-015:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "material_stretch",
+        "statement": "The related experience is present only as reviewed skill and does not establish production depth.",
+        "evidence_references": [
+          "profile:lock-profile-02:e3",
+          "posting:req:synthetic-locked-015:critical"
+        ]
+      }
+    ],
+    "rationale": "The Senior Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "low",
+    "review_tags": [
+      "deidentified_profile",
+      "mixed_family",
+      "posting_age"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_3",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-016",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-017",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-016",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "platform_engineering",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-016",
+      "title": "Intern Controls Engineer",
+      "company": "Copper Ridge Robotics",
+      "description": "Copper Ridge Robotics is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include Go. and practical ownership of the stated work. The work includes mentoring peers through design and test reviews.",
+      "location": "Remote Canada",
+      "work_arrangement": "remote",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The work is evaluated through reproducible experiments and written evidence."
+      ],
+      "requirements_text": [
+        "Go.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-016",
+      "source_url": "https://jobs.example.test/locked/16",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 16,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-016:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-016:critical",
+        "text": "Go.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-016:required",
+        "text": "Go.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-016:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-016:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-016:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-016:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-016:critical"
+        ]
+      }
+    ],
+    "rationale": "The Lead Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "incomplete_description",
+      "platform_engineering"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-017",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-018",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-017",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "software_engineering",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-017",
+      "title": "Co-op Controls Engineer",
+      "company": "Maple Basin Manufacturing",
+      "description": "Maple Basin Manufacturing is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The group is migrating a legacy component while preserving customer behavior. Qualification: MATLAB. Qualification: Tuned PID loops for a thermal chamber and documented settling-time changes. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The team rotates ownership of support questions and post-release follow-up."
+      ],
+      "requirements_text": [
+        "Tuned PID loops for a thermal chamber and documented settling-time changes. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-017",
+      "source_url": "https://jobs.example.test/locked/17",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 17,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-017:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "excellent",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-017:critical",
+        "text": "Tuned PID loops for a thermal chamber and documented settling-time changes. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-02:e1"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-017:required",
+        "text": "Tuned PID loops for a thermal chamber and documented settling-time changes. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-02:e1"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-017:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-02:e1",
+        "provenance": "reviewed profile record",
+        "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-02:e1",
+          "provenance": "reviewed profile record",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e1",
+          "posting:req:synthetic-locked-017:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e1",
+          "posting:req:synthetic-locked-017:critical"
+        ]
+      }
+    ],
+    "rationale": "The Junior Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "duplicate_identity",
+      "software_engineering"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_1",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-018",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-019",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-018",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "backend_engineering",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-018",
+      "title": "New Graduate Controls Engineer",
+      "company": "Lakeside Instruments",
+      "description": "Lakeside Instruments is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The position supports a small multidisciplinary team with short delivery cycles. Qualification: Commissioned temperature instrumentation against a reference probe. Experience is required.",
+      "location": "Toronto, ON",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The team prioritizes measured latency and clear rollback notes."
+      ],
+      "requirements_text": [
+        "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "synthetic_ats",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-018",
+      "source_url": "https://jobs.example.test/locked/18",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 18,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting and confirmed preferences are compared using the stated authorization and work-arrangement facts.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-018:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "good",
+    "proposed_provisional": true,
+    "provisional_reason_codes": [
+      "incomplete_description"
+    ],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-018:critical",
+        "text": "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "importance": "critical",
+        "evidence_references": [
+          "profile:lock-profile-02:e2"
+        ]
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-018:required",
+        "text": "Commissioned temperature instrumentation against a reference probe. Experience is required.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2"
+        ]
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-018:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [
+      {
+        "reference": "profile:lock-profile-02:e2",
+        "provenance": "reviewed profile record",
+        "statement": "Commissioned temperature instrumentation against a reference probe.",
+        "evidence_quality": "verified"
+      }
+    ],
+    "evidence_assessment": {
+      "quality": "verified",
+      "provenance": [
+        {
+          "reference": "profile:lock-profile-02:e2",
+          "provenance": "reviewed profile record",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_quality": "verified"
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-018:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Commissioned temperature instrumentation against a reference probe. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2",
+          "posting:req:synthetic-locked-018:critical"
+        ]
+      }
+    ],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-018:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "role_evidence_match",
+        "statement": "Commissioned temperature instrumentation against a reference probe. supports the posting responsibility for loop tuning and instrumentation.",
+        "evidence_references": [
+          "profile:lock-profile-02:e2",
+          "posting:req:synthetic-locked-018:critical"
+        ]
+      },
+      {
+        "code": "limited_noncritical_gap",
+        "statement": "A preferred domain detail is not demonstrated, but the central responsibility remains credible.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-018:critical"
+        ]
+      }
+    ],
+    "rationale": "The Intermediate Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "low",
+    "review_tags": [
+      "backend_engineering",
+      "deidentified_profile",
+      "provider_order"
+    ],
+    "review_required": true,
+    "apply_worthy": true,
+    "human_ranking_tier": "tier_2",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-019",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-020",
+        "relationship": "preferred_to_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-019",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "data_engineering",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-019",
+      "title": "Senior Controls Engineer",
+      "company": "Willow Peak Energy",
+      "description": "Willow Peak Energy is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include SQL. and practical ownership of the stated work. The work is evaluated through reproducible experiments and written evidence.",
+      "location": "Seattle, WA",
+      "work_arrangement": "hybrid",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The work centers on a new customer workflow and careful handoff documentation."
+      ],
+      "requirements_text": [
+        "SQL.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "greenhouse",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-019",
+      "source_url": "https://jobs.example.test/locked/19",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 19,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-019:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-019:critical",
+        "text": "SQL.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-019:required",
+        "text": "SQL.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-019:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-019:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-019:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-019:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-019:critical"
+        ]
+      }
+    ],
+    "rationale": "The Senior Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "data_engineering",
+      "deidentified_profile",
+      "hard_negative",
+      "work_authorization"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-020",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-011",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  },
+  {
+    "case_id": "locked-020",
+    "scenario_id": "locked-group-02",
+    "split": "locked",
+    "scenario_category": "machine_learning",
+    "ranking_group": "locked-group-02",
+    "stage": "A",
+    "proposal_status": "proposed",
+    "profile": {
+      "profile_ref": "lock-profile-02",
+      "synthetic_or_deidentified": true,
+      "reviewed": true,
+      "summary": "Commissioned thermal equipment, tuning PID loops, recording test data, and translating technician observations into engineering changes.",
+      "skills": [
+        "MATLAB",
+        "Python",
+        "PID control",
+        "instrumentation",
+        "commissioning"
+      ],
+      "evidence_items": [
+        {
+          "evidence_id": "profile:lock-profile-02:e1",
+          "statement": "Tuned PID loops for a thermal chamber and documented settling-time changes.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e2",
+          "statement": "Commissioned temperature instrumentation against a reference probe.",
+          "evidence_kind": "demonstrated",
+          "evidence_quality": "verified",
+          "provenance": "reviewed profile record",
+          "demonstrated": true
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e3",
+          "statement": "Reviewed Simulink examples without owning a plant model.",
+          "evidence_kind": "reviewed_skill",
+          "evidence_quality": "self_reported",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        },
+        {
+          "evidence_id": "profile:lock-profile-02:e4",
+          "statement": "Completed controls laboratory work using state-space simulations.",
+          "evidence_kind": "coursework",
+          "evidence_quality": "incomplete",
+          "provenance": "reviewed profile record",
+          "demonstrated": false
+        }
+      ],
+      "experience_years": 6.0,
+      "education_summary": "Deidentified applied engineering education and project work; no private identity data.",
+      "date_evidence_status": "current"
+    },
+    "preferences": {
+      "confirmed": true,
+      "role_families": [
+        "controls"
+      ],
+      "target_titles": [
+        "Controls Engineer",
+        "Systems Engineer"
+      ],
+      "target_levels": [
+        "mid",
+        "senior"
+      ],
+      "locations": [
+        "Toronto"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ],
+      "work_authorization_status": "confirmed",
+      "selected_exploration_sectors": [
+        "industrial technology",
+        "public infrastructure"
+      ],
+      "preferred_companies": []
+    },
+    "posting": {
+      "normalized_id": "normalized-synthetic-locked-020",
+      "title": "Lead Controls Engineer",
+      "company": "Harbor Summit HVAC",
+      "description": "Harbor Summit HVAC is hiring for loop tuning and instrumentation. The team works with partner engineers and documents decisions in a production environment. Responsibilities include loop tuning and instrumentation; this role reports outcomes to an engineering manager. Qualifications include Python. and practical ownership of the stated work. The team rotates ownership of support questions and post-release follow-up.",
+      "location": "Toronto, ON",
+      "work_arrangement": "remote",
+      "employment_type": "full_time",
+      "posted_date": "2026-07-10",
+      "responsibilities": [
+        "Own loop tuning and instrumentation and communicate evidence to partner teams. The group supports a pilot deployment with weekly field feedback."
+      ],
+      "requirements_text": [
+        "Python.",
+        "Document decisions and investigate failures in a team setting."
+      ]
+    },
+    "source": {
+      "provider": "lever",
+      "source_id": "board-lock-profile-02",
+      "external_job_id": "job-synthetic-locked-020",
+      "source_url": "https://jobs.example.test/locked/20",
+      "retrieved_at": "2026-07-21T12:00:00Z",
+      "provider_position": 20,
+      "verification_status": "verified_active"
+    },
+    "expected_eligibility": "eligible",
+    "proposed_eligibility_reasons": [
+      {
+        "code": "no_known_hard_conflict",
+        "statement": "The posting provides no known hard conflict with the confirmed search preferences.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-020:critical",
+          "preferences:lock-profile-02:work_authorization"
+        ]
+      }
+    ],
+    "proposed_grade": "dont_match",
+    "proposed_provisional": false,
+    "provisional_reason_codes": [],
+    "critical_requirements": [
+      {
+        "requirement_id": "posting:req:synthetic-locked-020:critical",
+        "text": "Python.",
+        "importance": "critical",
+        "evidence_references": []
+      }
+    ],
+    "required_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-020:required",
+        "text": "Python.",
+        "evidence_references": []
+      }
+    ],
+    "preferred_qualifications": [
+      {
+        "qualification_id": "posting:req:synthetic-locked-020:preferred",
+        "text": "Experience documenting decisions with partner teams.",
+        "evidence_references": []
+      }
+    ],
+    "important_evidence": [],
+    "evidence_assessment": {
+      "quality": "self_reported",
+      "provenance": [
+        {
+          "reference": "posting:req:synthetic-locked-020:critical",
+          "provenance": "posting text",
+          "statement": "The critical requirement is stated in the posting.",
+          "evidence_quality": null
+        }
+      ]
+    },
+    "important_gaps": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-020:critical"
+        ]
+      }
+    ],
+    "proposed_positive_reasons": [],
+    "proposed_material_gap_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-020:critical"
+        ]
+      }
+    ],
+    "proposed_reasons": [
+      {
+        "code": "critical_gap",
+        "statement": "The profile has no demonstrated evidence for the critical posting requirement.",
+        "evidence_references": [
+          "posting:req:synthetic-locked-020:critical"
+        ]
+      }
+    ],
+    "rationale": "The Lead Controls Engineer proposal weighs loop tuning and instrumentation, demonstrated evidence quality, level, and hard eligibility facts under the written rubric; it is a profile-fit assessment, not a hiring probability.",
+    "proposal_confidence": "high",
+    "review_tags": [
+      "deidentified_profile",
+      "false_positive",
+      "machine_learning"
+    ],
+    "review_required": true,
+    "apply_worthy": false,
+    "human_ranking_tier": "not_ranked",
+    "comparable_pair_annotations": [
+      {
+        "other_case_id": "locked-011",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      },
+      {
+        "other_case_id": "locked-012",
+        "relationship": "less_preferred_than_other",
+        "rationale": "The comparison follows responsibility relevance, evidence depth, level, and hard constraints."
+      }
+    ],
+    "reviewer_decision": "",
+    "reviewer_notes": "",
+    "approval_status": "unapproved"
+  }
+]
