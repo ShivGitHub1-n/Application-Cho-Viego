@@ -104,11 +104,24 @@ def test_requirement_categories_cover_experience_education_authorization_arrange
 
     assert signals.experience_years == 3
     assert signals.degree_requirements
+    assert signals.degree_equivalent_experience is False
     assert signals.authorization_language
     assert signals.work_arrangement is WorkArrangement.HYBRID
     assert signals.location is not None
     assert signals.location.country_code == "CA"
     assert signals.job_level.value == "senior"
+
+
+def test_degree_equivalent_experience_alternative_is_retained() -> None:
+    signals = RequirementExtractor().extract(
+        "Software Engineer",
+        "A bachelor's degree or equivalent experience is required.",
+        None,
+        WorkArrangement.UNKNOWN,
+    )
+
+    assert signals.degree_requirements == ["bachelor's degree"]
+    assert signals.degree_equivalent_experience is True
 
 
 def test_responsibilities_are_extracted_but_marketing_language_is_not_a_requirement():

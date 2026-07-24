@@ -32,11 +32,14 @@ Lever sources. The production registry is empty by default; when it is empty,
 the product displays `No approved job sources are configured` and does not
 describe that state as a successful empty search.
 
-Recommendations show a deterministic profile-fit score, never interview,
-hiring, offer, or other outcome probability. Match labels are Strong, Good,
-Stretch, and Provisional. Each result exposes its source, official posting URL,
-verification state, matching reasons, material gaps, and important provisional
-or unknown eligibility information.
+Recommendations show a deterministic evidence-authoritative profile fit, never
+interview, hiring, offer, or other outcome probability. Fit grades are
+Excellent, Good, Weak, and Don't Match, stored as `excellent`, `good`, `weak`,
+and `dont_match`. Provisional is an independent uncertainty flag and never
+replaces a substantive grade. Each result exposes its source, official posting
+URL, verification state, typed matching reasons, material gaps, and important
+provisional or unknown eligibility information. Interests and preferred
+companies do not contribute qualification points.
 
 Users can save a job as an immutable timestamped posting snapshot and manually
 check availability later. An unavailable or expired posting remains visible

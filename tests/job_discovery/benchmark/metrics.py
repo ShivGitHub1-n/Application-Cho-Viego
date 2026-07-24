@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -98,7 +99,7 @@ class CurrentPrediction(BaseModel):
     current_explanation_traceable: bool | None = None
     current_explanation_reasons: list[str] = Field(default_factory=list)
     current_explanation_gaps: list[str] = Field(default_factory=list)
-    ranking_key: tuple[float, int, str] = (0.0, 0, "")
+    ranking_key: tuple[object, ...] = (0.0, 0, "")
 
 
 class RankingPair(BaseModel):
@@ -108,6 +109,27 @@ class RankingPair(BaseModel):
     preferred_case_id: str
     other_case_id: str
     tied: bool = False
+
+
+@dataclass(frozen=True)
+class LockedAggregateAuthorization:
+    """Non-global authorization token for the dedicated locked aggregate path."""
+
+    marker_enabled: bool
+    project_owner_authorized: bool
+
+    @classmethod
+    def from_explicit_gate(
+        cls, *, marker_enabled: bool, project_owner_authorized: bool
+    ) -> LockedAggregateAuthorization:
+        if not marker_enabled or not project_owner_authorized:
+            raise PermissionError(
+                "Locked aggregate metrics require explicit marker and owner authorization"
+            )
+        return cls(
+            marker_enabled=marker_enabled,
+            project_owner_authorized=project_owner_authorized,
+        )
 
 
 def _ensure_development(
@@ -611,6 +633,32 @@ def calculate_quality_metrics(
     return result
 
 
+def calculate_locked_quality_metrics(
+    cases: list[MetricCase],
+    predictions: Mapping[str, CurrentPrediction],
+    pairs: list[RankingPair] | None = None,
+    *,
+    authorization: LockedAggregateAuthorization | None,
+) -> dict[str, Any]:
+    """Calculate locked metrics only through an explicit aggregate scope.
+
+    The public development function deliberately rejects locked cases. This
+    separate entry point validates a local authorization token, creates
+    development-shaped metric views without exposing them, and returns only
+    the shared aggregate metrics needed by the locked gate.
+    """
+
+    if authorization is None:
+        raise PermissionError("Locked aggregate metrics require explicit authorization")
+    if not authorization.marker_enabled or not authorization.project_owner_authorized:
+        raise PermissionError("Locked aggregate metrics authorization is invalid")
+    if not cases or any(case.split != "locked" for case in cases):
+        raise ValueError("Locked aggregate metrics require locked cases only")
+
+    metric_views = [case.model_copy(update={"split": "validation"}) for case in cases]
+    return calculate_quality_metrics(metric_views, predictions, pairs)
+
+
 def canonical_json(value: Any) -> str:
     return json.dumps(
         value,
@@ -623,9 +671,11 @@ def canonical_json(value: Any) -> str:
 
 __all__ = [
     "CurrentPrediction",
+    "LockedAggregateAuthorization",
     "MetricCase",
     "RankingPair",
     "calculate_quality_metrics",
+    "calculate_locked_quality_metrics",
     "canonical_json",
     "categorized_failure_modes",
     "eligibility_confusion_matrix",

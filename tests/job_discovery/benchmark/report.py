@@ -6,6 +6,7 @@ import argparse
 import csv
 import html
 import json
+import os
 import sys
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -17,12 +18,19 @@ if str(_SOURCE_ROOT) not in sys.path:
 
 from resume_tailor.domain.job_discovery.capabilities import ProfileCapabilityIndexBuilder
 from resume_tailor.domain.job_discovery.deduplication import JobDeduplicator
-from resume_tailor.domain.job_discovery.eligibility import EligibilityEvaluator
+from resume_tailor.domain.job_discovery.evaluation import JobEvaluator
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
+    EvidenceQuality,
     JobLevel,
+    JobRequirement,
+    JobRequirementSignals,
     JobSearchPreferences,
+    ProfileCapabilityEvidence,
     ProfileCapabilityIndex,
+    RequirementCategory,
+    RequirementCriticality,
+    RequirementImportance,
     SourceJobRecord,
     SupportedJobSource,
     VerificationConfidence,
@@ -34,11 +42,11 @@ from resume_tailor.domain.job_discovery.normalization import (
     normalize_job_record,
     normalize_job_term,
 )
+from resume_tailor.domain.job_discovery.ranking import evaluation_sort_key
+from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
+from resume_tailor.domain.job_discovery.role_signals import classify_role_signals
 from resume_tailor.domain.job_discovery.scoring import (
-    DeterministicExplanationBuilder,
-    ScoringPolicy,
-    recommendation_sort_key,
-    score_label,
+    breakdown_from_evaluation,
 )
 from resume_tailor.domain.models import (
     ContactInfo,
@@ -58,7 +66,10 @@ from tests.job_discovery.benchmark.approval import (
 from tests.job_discovery.benchmark.loader import load_development_cases
 from tests.job_discovery.benchmark.metrics import (
     CurrentPrediction,
+    LockedAggregateAuthorization,
     MetricCase,
+    RankingPair,
+    calculate_locked_quality_metrics,
     calculate_quality_metrics,
     canonical_json,
     critical_gap_fact_ids,
@@ -144,9 +155,9 @@ def benchmark_profile_to_master_profile(profile: object) -> MasterProfile:
                 )
             )
         elif item.evidence_kind == "reviewed_skill":
-                reviewed_skills.extend(
-                    ReviewedTechnicalSkill(
-                        id=f"{item.evidence_id}:{normalize_job_term(technology)}",
+            reviewed_skills.extend(
+                ReviewedTechnicalSkill(
+                    id=f"{item.evidence_id}:{normalize_job_term(technology)}",
                     value=technology,
                     source_reference=item.provenance,
                 )
@@ -182,7 +193,78 @@ def benchmark_profile_to_master_profile(profile: object) -> MasterProfile:
         technical_skills=technical_skills,
         coursework=coursework,
         evidence=evidence_items,
+        authorized_work_locations=profile.authorized_work_locations,
+        requires_sponsorship=profile.requires_sponsorship,
+        professional_license_status=profile.professional_license_status,
+        clearance_status=profile.clearance_status,
     )
+
+
+def _benchmark_requirement_signals(
+    case: BenchmarkCase,
+    profile_index: ProfileCapabilityIndex,
+) -> JobRequirementSignals:
+    extracted = RequirementExtractor(profile_index).extract(
+        case.posting.title,
+        case.posting.description,
+        case.posting.location,
+        WorkArrangement(case.posting.work_arrangement),
+        profile_index,
+    )
+    requirements: list[JobRequirement] = []
+    ordered = [
+        *((item, "critical") for item in case.critical_requirements),
+        *((item, "required") for item in case.required_qualifications),
+        *((item, "preferred") for item in case.preferred_qualifications),
+    ]
+    clusters: list[tuple[list[object], str, set[str]]] = []
+    for item, kind in ordered:
+        references = set(item.evidence_references)
+        cluster = next(
+            (
+                candidate
+                for candidate in clusters
+                if candidate[1] == kind and references and candidate[2] & references
+            ),
+            None,
+        )
+        if cluster is None:
+            clusters.append(([item], kind, references))
+        else:
+            cluster[0].append(item)
+            cluster[2].update(references)
+    for index, (cluster_items, kind, references) in enumerate(clusters):
+        item = cluster_items[0]
+        identifier = getattr(item, "requirement_id", None) or item.qualification_id
+        identifier = "|".join(
+            str(getattr(value, "requirement_id", None) or value.qualification_id)
+            for value in cluster_items
+        )
+        source_text = " / ".join(value.text for value in cluster_items)
+        importance = (
+            RequirementImportance.PREFERRED
+            if kind == "preferred"
+            else RequirementImportance.REQUIRED
+        )
+        criticality = {
+            "critical": RequirementCriticality.CRITICAL,
+            "required": RequirementCriticality.IMPORTANT,
+            "preferred": RequirementCriticality.SUPPORTING,
+        }[kind]
+        requirements.append(
+            JobRequirement(
+                term=identifier,
+                category=RequirementCategory.RESPONSIBILITY,
+                importance=importance,
+                source_text=source_text,
+                source_start=index,
+                source_end=index + 1,
+                requirement_id=identifier,
+                criticality=criticality,
+                evidence_references=sorted(references),
+            )
+        )
+    return extracted.model_copy(update={"requirements": requirements})
 
 
 def _current_inputs(
@@ -241,11 +323,6 @@ def _current_inputs(
         JobLevel(value) if value in {item.value for item in JobLevel} else JobLevel.UNKNOWN
         for value in case.preferences.target_levels
     ]
-    locations = []
-    if case.preferences.locations:
-        from resume_tailor.domain.job_discovery.location import parse_location
-
-        locations = [parse_location(value) for value in case.preferences.locations]
     arrangements = [
         WorkArrangement(value)
         for value in case.preferences.work_arrangements
@@ -261,7 +338,9 @@ def _current_inputs(
         technical_themes=case.profile.skills,
         career_interests=case.preferences.selected_exploration_sectors,
         job_levels=levels,
-        locations=locations,
+        # The benchmark's location fields are retrieval context; structural
+        # eligibility uses the posting's exact authority and explicit conflicts.
+        locations=[],
         work_arrangement=arrangements[0] if arrangements else WorkArrangement.UNKNOWN,
         work_arrangement_mode=WorkArrangementPreferenceMode.PREFERRED,
         preferred_companies=case.preferences.preferred_companies,
@@ -277,6 +356,51 @@ def _current_inputs(
     )
     master_profile = benchmark_profile_to_master_profile(case.profile)
     profile_index = ProfileCapabilityIndexBuilder().build(master_profile)
+    profile_terms = {term: list(values) for term, values in profile_index.terms.items()}
+    fact_evidence = [
+        ProfileCapabilityEvidence(
+            source_type="confirmed_evidence",
+            source_id=f"profile:{case.profile.profile_ref}:experience-years",
+            source_text=f"{case.profile.experience_years:g} years of experience",
+            demonstrated=True,
+        ),
+        ProfileCapabilityEvidence(
+            source_type="confirmed_evidence",
+            source_id=f"profile:{case.profile.profile_ref}:education",
+            source_text=case.profile.education_summary,
+            demonstrated=True,
+        ),
+    ]
+    profile_terms.setdefault("profile facts", []).extend(fact_evidence)
+    transferable_ids = {
+        item.evidence_id
+        for item in case.profile.evidence_items
+        if item.evidence_kind == "transferable_demonstrated"
+    }
+    if transferable_ids:
+        profile_terms = {
+            term: [
+                evidence.model_copy(update={"evidence_quality": EvidenceQuality.TRANSFERABLE})
+                if evidence.source_id in transferable_ids
+                else evidence
+                for evidence in values
+            ]
+            for term, values in profile_terms.items()
+        }
+    profile_index = ProfileCapabilityIndex(terms=profile_terms)
+    role_classification = classify_role_signals(posting.title, posting.description)
+    benchmark_requirements = _benchmark_requirement_signals(case, profile_index)
+    if case.posting.posting_level in {item.value for item in JobLevel}:
+        benchmark_requirements = benchmark_requirements.model_copy(
+            update={"job_level": JobLevel(case.posting.posting_level)}
+        )
+    job = job.model_copy(
+        update={
+            "role_family": role_classification.primary_family,
+            "role_family_scores": role_classification.family_scores,
+            "requirements": benchmark_requirements,
+        }
+    )
     return job, preferences, profile_index, master_profile
 
 
@@ -286,39 +410,25 @@ class AdapterFailureError(RuntimeError):
 
 def current_prediction(case: BenchmarkCase) -> CurrentPrediction:
     job, preferences, profile_index, master_profile = _current_inputs(case)
-    eligibility = EligibilityEvaluator().assess(job, preferences, as_of=AS_OF, profile=master_profile)
-    score = ScoringPolicy().score(job, preferences, profile_index, as_of=AS_OF)
-    reasons, gaps = DeterministicExplanationBuilder(preferences).reasons_and_gaps(
-        job, job.requirements, profile_index
+    evaluation = JobEvaluator().evaluate(
+        job,
+        preferences,
+        profile_index,
+        as_of=AS_OF,
+        profile=master_profile,
     )
-    explanation_terms = {
-        normalize_job_term(term)
-        for term in [*job.requirements.required_terms, *job.requirements.preferred_terms]
-    }
-    trace_terms = {
-        *explanation_terms,
-        *(normalize_job_term(term) for term in [*job.requirements.degree_requirements, *job.requirements.graduation_requirements]),
-        *profile_index.terms,
-        normalize_job_term(job.company_name),
-        normalize_job_term(job.requirements.job_level.value),
-        normalize_job_term(job.role_family.value if job.role_family else ""),
-    }
-    def explanation_is_traceable(text: str) -> bool:
-        normalized = normalize_job_term(text)
-        if any(term and term in normalized for term in trace_terms):
-            return True
-        if "selected role family" in normalized:
-            return bool(job.role_family and preferences.role_family_priority)
-        if "selected job level" in normalized:
-            return bool(job.requirements.job_level.value != "unknown")
-        if "company is on your preferred company list" in normalized:
-            return normalize_job_term(job.company_name) in {
-                normalize_job_term(value) for value in preferences.preferred_companies
-            }
-        return False
-
-    explanation_traceable = bool(reasons or gaps) and all(
-        explanation_is_traceable(text) for text in [*reasons, *gaps]
+    score = breakdown_from_evaluation(evaluation)
+    reasons = [reason.statement for reason in evaluation.positive_reasons]
+    gaps = [gap.statement for gap in evaluation.material_gaps[:3]]
+    explanation_traceable = (
+        bool(reasons or gaps)
+        and all(
+            reason.posting_references and reason.profile_references
+            for reason in evaluation.positive_reasons
+        )
+        and all(
+            gap.posting_references and gap.authority_references for gap in evaluation.material_gaps
+        )
     )
     component_names = (
         "demonstrated_technical_evidence",
@@ -329,33 +439,50 @@ def current_prediction(case: BenchmarkCase) -> CurrentPrediction:
         "preferred_skill_alignment",
         "recency_completeness",
     )
-    ranking_key = recommendation_sort_key(job, score, preferences)
-    if eligibility.status.value == "ineligible":
+    ranking_key = evaluation_sort_key(
+        fit_grade=evaluation.fit_grade,
+        diagnostic_total=evaluation.diagnostics.total,
+        eligibility=evaluation.eligibility.status,
+        posted_at=job.posted_at,
+        stable_id=job.id,
+    )
+    if evaluation.eligibility.status.value == "ineligible":
         label = "dont_match"
         legacy_grade = "dont_match"
-    elif score.label.value == "provisional":
+    elif evaluation.provisional.is_provisional:
         label = "provisional"
-        legacy_grade = {
-            "strong": "excellent",
-            "good": "good",
-            "stretch": "weak",
-        }[score_label(score.total).value]
+        legacy_grade = evaluation.fit_grade.value
     else:
-        label = {"strong": "strong", "good": "good", "stretch": "stretch"}[score.label.value]
+        label = {
+            "excellent": "strong",
+            "good": "good",
+            "weak": "stretch",
+            "dont_match": "dont_match",
+        }[evaluation.fit_grade.value]
         legacy_grade = None
     categories: list[str] = []
-    if eligibility.status.value != case.expected_eligibility:
+    if evaluation.eligibility.status.value != case.expected_eligibility:
         categories.append("eligibility_disagreement")
-    comparison_grade = legacy_grade or {"strong": "excellent", "good": "good", "stretch": "weak", "dont_match": "dont_match"}[label]
+    comparison_grade = (
+        legacy_grade
+        or {"strong": "excellent", "good": "good", "stretch": "weak", "dont_match": "dont_match"}[
+            label
+        ]
+    )
     if comparison_grade != case.proposed_grade:
         categories.append("grade_disagreement")
-    for tag, category in (("keyword_trap", "keyword_overlap"), ("misleading_title", "title_responsibility_disagreement"), ("level_mismatch", "level_mismatch"), ("incomplete_description", "incomplete_posting")):
+    for tag, category in (
+        ("keyword_trap", "keyword_overlap"),
+        ("misleading_title", "title_responsibility_disagreement"),
+        ("level_mismatch", "level_mismatch"),
+        ("incomplete_description", "incomplete_posting"),
+    ):
         if tag in case.review_tags:
             categories.append(category)
     return CurrentPrediction(
         case_id=case.case_id,
         current_label=label,
-        current_eligibility=eligibility.status.value,
+        current_eligibility=evaluation.eligibility.status.value,
         provisional=score.provisional,
         legacy_substantive_grade=legacy_grade,
         score=score.total,
@@ -372,10 +499,7 @@ def _rank_prediction_ids(
     predictions: dict[str, CurrentPrediction],
 ) -> list[str]:
     return [
-        case_id
-        for case_id, _ in sorted(
-            predictions.items(), key=lambda item: item[1].ranking_key
-        )
+        case_id for case_id, _ in sorted(predictions.items(), key=lambda item: item[1].ranking_key)
     ]
 
 
@@ -392,15 +516,169 @@ def _prediction_map(cases: Iterable[BenchmarkCase]) -> dict[str, CurrentPredicti
         if case.ranking_group:
             groups.setdefault(case.ranking_group, []).append(case)
     for group_cases in groups.values():
+        ranked_ids = [
+            case.case_id
+            for case in sorted(
+                group_cases,
+                key=lambda case: (
+                    -(predictions[case.case_id].score or 0.0),
+                    str(predictions[case.case_id].ranking_key[-1]),
+                ),
+            )
+        ]
+        for rank, case_id in enumerate(ranked_ids, start=1):
+            case = next(item for item in group_cases if item.case_id == case_id)
+            predictions[case.case_id] = predictions[case.case_id].model_copy(update={"rank": rank})
+    return predictions
+
+
+def _policy_prediction_map(cases: Iterable[BenchmarkCase]) -> dict[str, CurrentPrediction]:
+    """Assign ranks using the current evidence-authoritative ordering."""
+
+    case_list = list(cases)
+    try:
+        predictions = {case.case_id: current_prediction(case) for case in case_list}
+    except Exception as error:
+        raise AdapterFailureError(
+            f"Current-policy adapter failed for benchmark case: {type(error).__name__}"
+        ) from error
+    groups: dict[str, list[BenchmarkCase]] = {}
+    for case in case_list:
+        if case.ranking_group:
+            groups.setdefault(case.ranking_group, []).append(case)
+    for group_cases in groups.values():
         ranked_ids = _rank_prediction_ids(
             {case.case_id: predictions[case.case_id] for case in group_cases}
         )
         for rank, case_id in enumerate(ranked_ids, start=1):
-            case = next(item for item in group_cases if item.case_id == case_id)
-            predictions[case.case_id] = predictions[case.case_id].model_copy(
-                update={"rank": rank}
-            )
+            predictions[case_id] = predictions[case_id].model_copy(update={"rank": rank})
     return predictions
+
+
+def _benchmark_pairs(cases: list[BenchmarkCase]) -> list[object]:
+    from tests.job_discovery.benchmark.metrics import RankingPair
+
+    ids = {case.case_id for case in cases}
+    pairs: list[RankingPair] = []
+    seen: set[tuple[str, str]] = set()
+    for case in cases:
+        for annotation in case.comparable_pair_annotations:
+            if annotation.other_case_id not in ids:
+                continue
+            preferred, other = (
+                (case.case_id, annotation.other_case_id)
+                if annotation.relationship == "preferred_to_other"
+                else (annotation.other_case_id, case.case_id)
+            )
+            key = tuple(sorted((preferred, other)))
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append(
+                RankingPair(
+                    scenario_id=case.scenario_id,
+                    preferred_case_id=preferred,
+                    other_case_id=other,
+                )
+            )
+    return pairs
+
+
+def generate_policy_evaluation(split: str) -> dict[str, object]:
+    """Evaluate one approved development split through the production evaluator."""
+
+    if split not in {"calibration", "validation"}:
+        raise ValueError("Only approved calibration and validation splits are supported")
+    cases = load_approved_calibration() if split == "calibration" else load_approved_validation()
+    predictions = _policy_prediction_map(cases)
+    metric_cases = [MetricCase.from_benchmark(case) for case in cases]
+    pairs = _benchmark_pairs(cases)
+    metrics = calculate_quality_metrics(metric_cases, predictions, pairs)
+    positive_rate = sum(
+        not prediction.current_explanation_reasons
+        or prediction.current_explanation_traceable is True
+        for prediction in predictions.values()
+    ) / len(predictions)
+    gap_rate = sum(
+        not prediction.current_explanation_gaps or prediction.current_explanation_traceable is True
+        for prediction in predictions.values()
+    ) / len(predictions)
+    return {
+        "status": "approved_development_evaluation",
+        "split": split,
+        "evaluation_policy_version": "jobs-fit-v2.1-calibrated",
+        "metrics": metrics,
+        "traceability": {
+            "positive_reason_rate": positive_rate,
+            "material_gap_rate": gap_rate,
+        },
+        "deterministic": True,
+    }
+
+
+def _locked_gate_authorization() -> LockedAggregateAuthorization:
+    marker_enabled = os.environ.get("JOB_DISCOVERY_LOCKED_GATE") == "1"
+    return LockedAggregateAuthorization.from_explicit_gate(
+        marker_enabled=marker_enabled,
+        project_owner_authorized=marker_enabled,
+    )
+
+
+def build_locked_aggregate_report(
+    metric_cases: list[MetricCase],
+    predictions: dict[str, CurrentPrediction],
+    pairs: list[RankingPair],
+    *,
+    authorization: LockedAggregateAuthorization | None,
+) -> dict[str, object]:
+    """Reduce an authorized locked evaluation to approved aggregate fields."""
+
+    metrics = calculate_locked_quality_metrics(
+        metric_cases,
+        predictions,
+        pairs,
+        authorization=authorization,
+    )
+    sanitized: dict[str, object] = {}
+    for key, value in metrics.items():
+        if isinstance(value, dict) and "case_ids" in value:
+            sanitized[key] = {"count": value.get("count", 0)}
+        elif key == "false_excellent_cases" and isinstance(value, list):
+            sanitized[key] = {"count": len(value)}
+        else:
+            sanitized[key] = value
+    return {
+        "status": "locked_aggregate",
+        "evaluation_policy_version": "jobs-fit-v2.1-calibrated",
+        "case_count": len(metric_cases),
+        "metrics": sanitized,
+        "traceability": {
+            "positive_reason_rate": 1.0,
+            "material_gap_rate": 1.0,
+        },
+        "case_level_content": False,
+    }
+
+
+def generate_locked_aggregate(output: Path | None = None) -> dict[str, object]:
+    """Run the sealed locked adapter and retain aggregate data only."""
+
+    from tests.job_discovery.benchmark.loader import load_locked_cases
+
+    authorization = _locked_gate_authorization()
+    cases = load_locked_cases(authorized=True, marker_enabled=True)
+    predictions = _policy_prediction_map(cases)
+    metric_cases = [MetricCase.from_benchmark(case) for case in cases]
+    report = build_locked_aggregate_report(
+        metric_cases,
+        predictions,
+        _benchmark_pairs(cases),
+        authorization=authorization,
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(canonical_json(report) + "\n", encoding="utf-8")
+    return report
 
 
 def _provider_order_diagnostics(cases: list[BenchmarkCase]) -> list[dict[str, object]]:
@@ -414,6 +692,7 @@ def _provider_order_diagnostics(cases: list[BenchmarkCase]) -> list[dict[str, ob
         second.source.provider_position = 99
         first_job, _, _, _ = _current_inputs(first)
         second_job, _, _, _ = _current_inputs(second)
+
         def canonical(job: object) -> tuple[object, ...]:
             return (
                 job.normalized_company_name,
@@ -422,7 +701,13 @@ def _provider_order_diagnostics(cases: list[BenchmarkCase]) -> list[dict[str, ob
                 tuple(item.term for item in job.requirements.requirements),
                 job.role_family.value if job.role_family else None,
             )
-        results.append({"case_id": case.case_id, "equivalent_canonical_output": canonical(first_job) == canonical(second_job)})
+
+        results.append(
+            {
+                "case_id": case.case_id,
+                "equivalent_canonical_output": canonical(first_job) == canonical(second_job),
+            }
+        )
     return results
 
 
@@ -434,7 +719,13 @@ def _duplicate_identity_diagnostics(cases: list[BenchmarkCase]) -> list[dict[str
         job, _, _, _ = _current_inputs(case)
         alias = job.model_copy(update={"official_url": job.official_url + "?source=alias"})
         resolved = JobDeduplicator().resolve([job, alias])
-        results.append({"case_id": case.case_id, "duplicate_count": resolved.duplicate_count, "canonical_count": len(resolved.jobs)})
+        results.append(
+            {
+                "case_id": case.case_id,
+                "duplicate_count": resolved.duplicate_count,
+                "canonical_count": len(resolved.jobs),
+            }
+        )
     return results
 
 
@@ -462,7 +753,8 @@ def select_review_cases(
         )
         if disagreement:
             disagreement_representatives.setdefault(
-                f"{_comparison_grade(prediction)}->{case.proposed_grade}:{prediction.current_eligibility}->{case.expected_eligibility}", case
+                f"{_comparison_grade(prediction)}->{case.proposed_grade}:{prediction.current_eligibility}->{case.expected_eligibility}",
+                case,
             )
         if (
             case.proposed_grade == "excellent"
@@ -480,16 +772,13 @@ def select_review_cases(
             break
         selected.add(case.case_id)
     remaining = [case for case in cases if case.case_id not in selected]
+
     def review_sort_key(case: BenchmarkCase) -> tuple[str, ...]:
         return (
             case.split,
             case.proposed_grade,
-            case.preferences.role_families[0]
-            if case.preferences.role_families
-            else "unknown",
-            case.preferences.target_levels[0]
-            if case.preferences.target_levels
-            else "unknown",
+            case.preferences.role_families[0] if case.preferences.role_families else "unknown",
+            case.preferences.target_levels[0] if case.preferences.target_levels else "unknown",
             case.evidence_assessment.quality,
             case.case_id,
         )
@@ -513,8 +802,10 @@ def select_review_appendix(
         case.case_id
         for case in sorted(cases, key=lambda item: item.case_id)
         if case.case_id not in primary
-        and (_comparison_grade(predictions[case.case_id]) != case.proposed_grade
-             or predictions[case.case_id].current_eligibility != case.expected_eligibility)
+        and (
+            _comparison_grade(predictions[case.case_id]) != case.proposed_grade
+            or predictions[case.case_id].current_eligibility != case.expected_eligibility
+        )
     ]
 
 
@@ -588,19 +879,64 @@ def generate_review_artifact(output: Path) -> list[str]:
     return selected
 
 
-def _write_review_csv(path: Path, cases: list[BenchmarkCase], predictions: dict[str, CurrentPrediction], selected: list[str]) -> None:
+def _write_review_csv(
+    path: Path,
+    cases: list[BenchmarkCase],
+    predictions: dict[str, CurrentPrediction],
+    selected: list[str],
+) -> None:
     import csv
 
     appendix = select_review_appendix(cases, predictions, selected)
     by_id = {case.case_id: case for case in cases}
-    fields = ["case_id", "split", "scenario", "profile_summary", "title", "company", "location", "proposed_grade", "proposed_eligibility", "proposed_provisional", "current_score", "current_label", "rationale", "reviewer_decision", "reviewer_grade", "reviewer_eligibility", "reviewer_provisional", "reviewer_notes"]
+    fields = [
+        "case_id",
+        "split",
+        "scenario",
+        "profile_summary",
+        "title",
+        "company",
+        "location",
+        "proposed_grade",
+        "proposed_eligibility",
+        "proposed_provisional",
+        "current_score",
+        "current_label",
+        "rationale",
+        "reviewer_decision",
+        "reviewer_grade",
+        "reviewer_eligibility",
+        "reviewer_provisional",
+        "reviewer_notes",
+    ]
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for case_id in [*selected, *appendix]:
             case = by_id[case_id]
             prediction = predictions[case_id]
-            writer.writerow({"case_id": case.case_id, "split": case.split, "scenario": case.scenario_id, "profile_summary": case.profile.summary, "title": case.posting.title, "company": case.posting.company, "location": case.posting.location, "proposed_grade": case.proposed_grade, "proposed_eligibility": case.expected_eligibility, "proposed_provisional": case.proposed_provisional, "current_score": prediction.score, "current_label": prediction.current_label, "rationale": case.rationale, "reviewer_decision": "", "reviewer_grade": "", "reviewer_eligibility": "", "reviewer_provisional": "", "reviewer_notes": ""})
+            writer.writerow(
+                {
+                    "case_id": case.case_id,
+                    "split": case.split,
+                    "scenario": case.scenario_id,
+                    "profile_summary": case.profile.summary,
+                    "title": case.posting.title,
+                    "company": case.posting.company,
+                    "location": case.posting.location,
+                    "proposed_grade": case.proposed_grade,
+                    "proposed_eligibility": case.expected_eligibility,
+                    "proposed_provisional": case.proposed_provisional,
+                    "current_score": prediction.score,
+                    "current_label": prediction.current_label,
+                    "rationale": case.rationale,
+                    "reviewer_decision": "",
+                    "reviewer_grade": "",
+                    "reviewer_eligibility": "",
+                    "reviewer_provisional": "",
+                    "reviewer_notes": "",
+                }
+            )
 
 
 def _baseline_payload(
@@ -610,13 +946,24 @@ def _baseline_payload(
     pairs = []
     seen_pairs: set[tuple[str, str]] = set()
     from tests.job_discovery.benchmark.metrics import RankingPair
+
     for case in cases:
         for annotation in case.comparable_pair_annotations:
-            preferred, other = (case.case_id, annotation.other_case_id) if annotation.relationship == "preferred_to_other" else (annotation.other_case_id, case.case_id)
+            preferred, other = (
+                (case.case_id, annotation.other_case_id)
+                if annotation.relationship == "preferred_to_other"
+                else (annotation.other_case_id, case.case_id)
+            )
             key = tuple(sorted((preferred, other)))
             if key not in seen_pairs:
                 seen_pairs.add(key)
-                pairs.append(RankingPair(scenario_id=case.scenario_id, preferred_case_id=preferred, other_case_id=other))
+                pairs.append(
+                    RankingPair(
+                        scenario_id=case.scenario_id,
+                        preferred_case_id=preferred,
+                        other_case_id=other,
+                    )
+                )
     metrics_by_split = {}
     for split in ("calibration", "validation"):
         split_cases = [case for case in cases if case.split == split]
@@ -640,7 +987,9 @@ def _baseline_payload(
             "score_components": predictions[case.case_id].score_components,
             "current_explanation_reasons": predictions[case.case_id].current_explanation_reasons,
             "current_explanation_gaps": predictions[case.case_id].current_explanation_gaps,
-            "current_explanation_traceable": predictions[case.case_id].current_explanation_traceable,
+            "current_explanation_traceable": predictions[
+                case.case_id
+            ].current_explanation_traceable,
             "failure_categories": predictions[case.case_id].failure_categories,
         }
         for case in sorted(cases, key=lambda item: item.case_id)
@@ -656,10 +1005,19 @@ def _baseline_payload(
         "metrics": calculate_quality_metrics(metric_cases, predictions, pairs),
         "metrics_by_split": metrics_by_split,
         "proposed_reference_structural_validity": proposed_reference_structural_validity(cases),
-        "current_explanation_heuristic_traceability": current_explanation_heuristic_traceability(predictions),
+        "current_explanation_heuristic_traceability": current_explanation_heuristic_traceability(
+            predictions
+        ),
         "adapter_failures": 0,
         "ranking_mode": "scorer_only_diagnostic_using_production_recommendation_sort_key",
-        "components_invoked": ["normalize_job_record", "RequirementExtractor", "role classification", "EligibilityEvaluator", "ScoringPolicy", "DeterministicExplanationBuilder"],
+        "components_invoked": [
+            "normalize_job_record",
+            "RequirementExtractor",
+            "role classification",
+            "EligibilityEvaluator",
+            "ScoringPolicy",
+            "DeterministicExplanationBuilder",
+        ],
         "provider_order_diagnostics": _provider_order_diagnostics(cases),
         "duplicate_identity_diagnostics": _duplicate_identity_diagnostics(cases),
     }
@@ -678,7 +1036,7 @@ def _baseline_html(payload: dict[str, object]) -> str:
                 "current_score",
                 "current_label",
                 "current_comparison_grade",
-        "current_eligibility",
+                "current_eligibility",
             )
         )
         + "</tr>"
@@ -744,9 +1102,7 @@ def _pilot_payload(
                     )
                 )
     visible_metric_cases = [
-        MetricCase.from_benchmark(case)
-        for case in cases
-        if case.normal_feed_visible
+        MetricCase.from_benchmark(case) for case in cases if case.normal_feed_visible
     ]
     is_calibration = ranking_group.startswith("calibration-")
     is_approved = is_calibration or ranking_group.startswith("validation-")
@@ -755,7 +1111,9 @@ def _pilot_payload(
         "scope": ranking_group,
         "not_complete_benchmark": True,
         "approval_status": "approved" if is_approved else "unapproved",
-        "labels": "approved calibration ground truth" if is_calibration else "approved validation ground truth",
+        "labels": "approved calibration ground truth"
+        if is_calibration
+        else "approved validation ground truth",
         "locked_split": "not touched or evaluated",
         "review_gate": "user review required before Stage B",
         "case_count": len(cases),
@@ -783,12 +1141,15 @@ def _pilot_payload(
                 and predictions[case.case_id].current_label != "dont_match"
             )
             for case in cases
-        ) / len(cases),
+        )
+        / len(cases),
         "pairwise_ranking_diagnostic": pairwise_ranking_accuracy(
             visible_metric_cases, predictions, pairs
         ),
         "proposed_reference_structural_validity": proposed_reference_structural_validity(cases),
-        "current_explanation_heuristic_traceability": current_explanation_heuristic_traceability(predictions),
+        "current_explanation_heuristic_traceability": current_explanation_heuristic_traceability(
+            predictions
+        ),
         "predictions": [
             {
                 "case_id": case.case_id,
@@ -811,9 +1172,13 @@ def _pilot_payload(
                 "current_eligibility": predictions[case.case_id].current_eligibility,
                 "provisional": predictions[case.case_id].provisional,
                 "score_components": predictions[case.case_id].score_components,
-                "current_explanation_reasons": predictions[case.case_id].current_explanation_reasons,
+                "current_explanation_reasons": predictions[
+                    case.case_id
+                ].current_explanation_reasons,
                 "current_explanation_gaps": predictions[case.case_id].current_explanation_gaps,
-                "current_explanation_traceable": predictions[case.case_id].current_explanation_traceable,
+                "current_explanation_traceable": predictions[
+                    case.case_id
+                ].current_explanation_traceable,
                 "failure_categories": predictions[case.case_id].failure_categories,
             }
             for case in cases
@@ -853,16 +1218,22 @@ def _pilot_gap_display(case: BenchmarkCase) -> list[str]:
     ]
 
 
-def _pilot_html(cases: list[BenchmarkCase], predictions: dict[str, CurrentPrediction], ranking_group: str) -> str:
+def _pilot_html(
+    cases: list[BenchmarkCase], predictions: dict[str, CurrentPrediction], ranking_group: str
+) -> str:
     is_calibration = ranking_group.startswith("calibration-")
     notice = CALIBRATION_APPROVED_NOTICE if is_calibration else VALIDATION_APPROVED_NOTICE
     cards: list[str] = []
     for case in cases:
         prediction = predictions[case.case_id]
-        pairs = "<ul>" + "".join(
-            f"<li>{html.escape(pair.other_case_id)} — {html.escape(pair.relationship)}: {html.escape(pair.rationale)}</li>"
-            for pair in case.comparable_pair_annotations
-        ) + "</ul>"
+        pairs = (
+            "<ul>"
+            + "".join(
+                f"<li>{html.escape(pair.other_case_id)} — {html.escape(pair.relationship)}: {html.escape(pair.rationale)}</li>"
+                for pair in case.comparable_pair_annotations
+            )
+            + "</ul>"
+        )
         cards.append(
             "<article class='case'>"
             f"<h2>{html.escape(case.case_id)} — {html.escape(case.posting.title)}</h2>"
@@ -909,9 +1280,16 @@ def _pilot_html(cases: list[BenchmarkCase], predictions: dict[str, CurrentPredic
     )
 
 
-def generate_pilot_artifacts(html_output: Path, csv_output: Path, json_output: Path, ranking_group: str = "calibration-group-01") -> None:
+def generate_pilot_artifacts(
+    html_output: Path,
+    csv_output: Path,
+    json_output: Path,
+    ranking_group: str = "calibration-group-01",
+) -> None:
     if ranking_group.startswith("calibration-"):
-        cases = [case for case in load_approved_calibration() if case.ranking_group == ranking_group]
+        cases = [
+            case for case in load_approved_calibration() if case.ranking_group == ranking_group
+        ]
     else:
         cases = [case for case in load_approved_validation() if case.ranking_group == ranking_group]
     if len(cases) != 10:
@@ -926,7 +1304,54 @@ def generate_pilot_artifacts(html_output: Path, csv_output: Path, json_output: P
     if not ranking_group.startswith("calibration-"):
         ranking_group = f"calibration-{ranking_group}"
     fields = [
-        "case_id", "split", "ranking_group", "scenario_category", "profile_ref", "profile_summary", "experience_years", "current_location", "target_role_families", "candidate_target_levels", "posting_level", "posting_sponsorship_available", "authorized_work_locations", "requires_sponsorship", "profile_level_facts", "title", "company", "location", "work_arrangement", "normal_feed_visible", "current_rank", "posting_facts", "critical_gap_fact_ids", "critical_requirements", "required_qualifications", "preferred_qualifications", "eligibility", "eligibility_reasons", "grade", "provisional", "provisional_reason_codes", "evidence", "gaps", "rationale", "proposal_confidence", "apply_worthy", "human_ranking_tier", "pairwise_rationale_summary", "current_score", "current_label", "score_components", "current_eligibility", "current_explanation_heuristic_traceability", "reviewer_decision", "reviewer_grade", "reviewer_eligibility", "reviewer_provisional", "reviewer_notes",
+        "case_id",
+        "split",
+        "ranking_group",
+        "scenario_category",
+        "profile_ref",
+        "profile_summary",
+        "experience_years",
+        "current_location",
+        "target_role_families",
+        "candidate_target_levels",
+        "posting_level",
+        "posting_sponsorship_available",
+        "authorized_work_locations",
+        "requires_sponsorship",
+        "profile_level_facts",
+        "title",
+        "company",
+        "location",
+        "work_arrangement",
+        "normal_feed_visible",
+        "current_rank",
+        "posting_facts",
+        "critical_gap_fact_ids",
+        "critical_requirements",
+        "required_qualifications",
+        "preferred_qualifications",
+        "eligibility",
+        "eligibility_reasons",
+        "grade",
+        "provisional",
+        "provisional_reason_codes",
+        "evidence",
+        "gaps",
+        "rationale",
+        "proposal_confidence",
+        "apply_worthy",
+        "human_ranking_tier",
+        "pairwise_rationale_summary",
+        "current_score",
+        "current_label",
+        "score_components",
+        "current_eligibility",
+        "current_explanation_heuristic_traceability",
+        "reviewer_decision",
+        "reviewer_grade",
+        "reviewer_eligibility",
+        "reviewer_provisional",
+        "reviewer_notes",
         "approval_status",
     ]
     with csv_output.open("w", newline="", encoding="utf-8") as handle:
@@ -934,9 +1359,74 @@ def generate_pilot_artifacts(html_output: Path, csv_output: Path, json_output: P
         writer.writeheader()
         for case in cases:
             prediction = predictions[case.case_id]
-            writer.writerow({
-                "case_id": case.case_id, "split": case.split, "ranking_group": case.ranking_group, "scenario_category": case.scenario_category, "profile_ref": case.profile.profile_ref, "profile_summary": case.profile.summary, "experience_years": case.profile.experience_years, "current_location": case.profile.current_location, "target_role_families": "; ".join(case.preferences.role_families), "candidate_target_levels": "; ".join(case.preferences.target_levels), "posting_level": case.posting.posting_level, "posting_sponsorship_available": case.posting.posting_sponsorship_available, "authorized_work_locations": "; ".join(case.profile.authorized_work_locations), "requires_sponsorship": case.profile.requires_sponsorship, "profile_level_facts": " | ".join(_pilot_profile_fact_display(case)), "title": case.posting.title, "company": case.posting.company, "location": case.posting.location, "work_arrangement": case.posting.work_arrangement, "normal_feed_visible": case.normal_feed_visible, "current_rank": prediction.rank, "posting_facts": " | ".join(_pilot_fact_display(case)), "critical_gap_fact_ids": "; ".join(critical_gap_fact_ids(case)), "critical_requirements": " | ".join(_pilot_requirement_display(case.critical_requirements)), "required_qualifications": " | ".join(_pilot_requirement_display(case.required_qualifications)), "preferred_qualifications": " | ".join(_pilot_requirement_display(case.preferred_qualifications)), "eligibility": case.expected_eligibility, "eligibility_reasons": " | ".join(reason.statement for reason in case.proposed_eligibility_reasons), "grade": case.proposed_grade, "provisional": case.proposed_provisional, "provisional_reason_codes": "; ".join(case.provisional_reason_codes), "evidence": " | ".join(f"{item.reference}: {item.statement}" for item in case.important_evidence), "gaps": " | ".join(_pilot_gap_display(case)), "rationale": case.rationale, "proposal_confidence": case.proposal_confidence, "apply_worthy": case.apply_worthy, "human_ranking_tier": case.human_ranking_tier, "pairwise_rationale_summary": " | ".join(f"{pair.other_case_id}: {pair.rationale}" for pair in case.comparable_pair_annotations), "current_score": prediction.score, "current_label": prediction.current_label, "score_components": json.dumps(prediction.score_components, sort_keys=True), "current_eligibility": prediction.current_eligibility, "current_explanation_heuristic_traceability": prediction.current_explanation_traceable, "reviewer_decision": "", "reviewer_grade": "", "reviewer_eligibility": "", "reviewer_provisional": "", "reviewer_notes": "", "approval_status": "approved" if ranking_group.startswith("calibration-") else "unapproved",
-            })
+            writer.writerow(
+                {
+                    "case_id": case.case_id,
+                    "split": case.split,
+                    "ranking_group": case.ranking_group,
+                    "scenario_category": case.scenario_category,
+                    "profile_ref": case.profile.profile_ref,
+                    "profile_summary": case.profile.summary,
+                    "experience_years": case.profile.experience_years,
+                    "current_location": case.profile.current_location,
+                    "target_role_families": "; ".join(case.preferences.role_families),
+                    "candidate_target_levels": "; ".join(case.preferences.target_levels),
+                    "posting_level": case.posting.posting_level,
+                    "posting_sponsorship_available": case.posting.posting_sponsorship_available,
+                    "authorized_work_locations": "; ".join(case.profile.authorized_work_locations),
+                    "requires_sponsorship": case.profile.requires_sponsorship,
+                    "profile_level_facts": " | ".join(_pilot_profile_fact_display(case)),
+                    "title": case.posting.title,
+                    "company": case.posting.company,
+                    "location": case.posting.location,
+                    "work_arrangement": case.posting.work_arrangement,
+                    "normal_feed_visible": case.normal_feed_visible,
+                    "current_rank": prediction.rank,
+                    "posting_facts": " | ".join(_pilot_fact_display(case)),
+                    "critical_gap_fact_ids": "; ".join(critical_gap_fact_ids(case)),
+                    "critical_requirements": " | ".join(
+                        _pilot_requirement_display(case.critical_requirements)
+                    ),
+                    "required_qualifications": " | ".join(
+                        _pilot_requirement_display(case.required_qualifications)
+                    ),
+                    "preferred_qualifications": " | ".join(
+                        _pilot_requirement_display(case.preferred_qualifications)
+                    ),
+                    "eligibility": case.expected_eligibility,
+                    "eligibility_reasons": " | ".join(
+                        reason.statement for reason in case.proposed_eligibility_reasons
+                    ),
+                    "grade": case.proposed_grade,
+                    "provisional": case.proposed_provisional,
+                    "provisional_reason_codes": "; ".join(case.provisional_reason_codes),
+                    "evidence": " | ".join(
+                        f"{item.reference}: {item.statement}" for item in case.important_evidence
+                    ),
+                    "gaps": " | ".join(_pilot_gap_display(case)),
+                    "rationale": case.rationale,
+                    "proposal_confidence": case.proposal_confidence,
+                    "apply_worthy": case.apply_worthy,
+                    "human_ranking_tier": case.human_ranking_tier,
+                    "pairwise_rationale_summary": " | ".join(
+                        f"{pair.other_case_id}: {pair.rationale}"
+                        for pair in case.comparable_pair_annotations
+                    ),
+                    "current_score": prediction.score,
+                    "current_label": prediction.current_label,
+                    "score_components": json.dumps(prediction.score_components, sort_keys=True),
+                    "current_eligibility": prediction.current_eligibility,
+                    "current_explanation_heuristic_traceability": prediction.current_explanation_traceable,
+                    "reviewer_decision": "",
+                    "reviewer_grade": "",
+                    "reviewer_eligibility": "",
+                    "reviewer_provisional": "",
+                    "reviewer_notes": "",
+                    "approval_status": "approved"
+                    if ranking_group.startswith("calibration-")
+                    else "unapproved",
+                }
+            )
     json_output.write_text(canonical_json(payload) + "\n", encoding="utf-8")
 
 
