@@ -17,7 +17,12 @@ from resume_tailor.domain.job_discovery.models import (
     SavedJobAvailability,
     SupportedJobSource,
 )
+from resume_tailor.infrastructure.job_discovery_migrations import (
+    SCHEMA_VERSION,
+    initialize_job_discovery_database,
+)
 from resume_tailor.ports.job_discovery import (
+    AtomicJobDiscoveryPersistence,
     DiscoveredJobRepository,
     DiscoveryRunRepository,
     JobRecommendationRepository,
@@ -27,7 +32,7 @@ from resume_tailor.ports.job_discovery import (
     SupportedJobSourceRepository,
 )
 
-SCHEMA_VERSION = 1
+SAVED_SNAPSHOT_SCHEMA_VERSION = 1
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
@@ -38,141 +43,6 @@ class JobDiscoveryStoreError(RuntimeError):
 
 class CorruptStoredJobDiscoveryError(JobDiscoveryStoreError):
     """Raised when stored job-discovery JSON no longer matches typed models."""
-
-
-def initialize_job_discovery_database(database_path: str | Path) -> None:
-    resolved_database_path = Path(database_path)
-    resolved_database_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(resolved_database_path)
-    try:
-        connection.execute("BEGIN IMMEDIATE")
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_search_preferences (
-                user_id TEXT NOT NULL,
-                profile_id TEXT NOT NULL,
-                version INTEGER NOT NULL,
-                payload_json TEXT NOT NULL,
-                schema_version INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                confirmed_at TEXT,
-                PRIMARY KEY (user_id, profile_id, version)
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_job_search_preferences_current
-            ON job_search_preferences(user_id, profile_id, version DESC)
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS discovered_jobs (
-                job_id TEXT PRIMARY KEY,
-                external_job_id TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                schema_version INTEGER NOT NULL,
-                fetched_at TEXT NOT NULL,
-                UNIQUE(source_id, external_job_id)
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_discovered_jobs_source_external
-            ON discovered_jobs(source_id, external_job_id)
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS discovery_runs (
-                run_id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                profile_id TEXT NOT NULL,
-                preference_version INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                warning_count INTEGER NOT NULL,
-                error_json TEXT NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_discovery_runs_user_profile_started
-            ON discovery_runs(user_id, profile_id, started_at DESC, run_id)
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_recommendations (
-                recommendation_id TEXT PRIMARY KEY,
-                run_id TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                group_name TEXT NOT NULL,
-                rank INTEGER NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(run_id, job_id)
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_job_recommendations_run_rank
-            ON job_recommendations(run_id, rank, created_at, recommendation_id)
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS saved_jobs (
-                saved_id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                availability TEXT NOT NULL,
-                snapshot_json TEXT NOT NULL,
-                snapshot_schema_version INTEGER NOT NULL,
-                saved_at TEXT NOT NULL,
-                checked_at TEXT
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_saved_jobs_user_saved
-            ON saved_jobs(user_id, saved_at DESC, saved_id)
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS supported_job_sources (
-                source_id TEXT PRIMARY KEY,
-                connector_type TEXT NOT NULL,
-                company_name TEXT NOT NULL,
-                board_token TEXT NOT NULL,
-                official_base_url TEXT NOT NULL,
-                lever_api_region TEXT,
-                enabled INTEGER NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_supported_job_sources_enabled
-            ON supported_job_sources(enabled, company_name COLLATE NOCASE, source_id)
-            """
-        )
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
 
 
 class _SQLiteJobDiscoveryRepository:
@@ -330,9 +200,9 @@ class SQLiteDiscoveryRunRepository(
                     INSERT INTO discovery_runs(
                         run_id, user_id, profile_id, preference_version, status,
                         payload_json, started_at, completed_at, warning_count,
-                        error_json
+                        error_json, source_outcomes_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     _run_row(validated, payload_json),
                 )
@@ -358,7 +228,8 @@ class SQLiteDiscoveryRunRepository(
                         started_at = ?,
                         completed_at = ?,
                         warning_count = ?,
-                        error_json = ?
+                        error_json = ?,
+                        source_outcomes_json = ?
                     WHERE run_id = ?
                     """,
                     (
@@ -371,6 +242,7 @@ class SQLiteDiscoveryRunRepository(
                         _optional_datetime(validated.completed_at),
                         validated.warning_count,
                         _dump_json_list(validated.error_messages),
+                        _dump_model_list(validated.source_outcomes),
                         validated.id,
                     ),
                 )
@@ -385,7 +257,7 @@ class SQLiteDiscoveryRunRepository(
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT payload_json, error_json
+                SELECT payload_json, error_json, source_outcomes_json
                 FROM discovery_runs
                 WHERE run_id = ?
                 """,
@@ -394,6 +266,7 @@ class SQLiteDiscoveryRunRepository(
         if row is None:
             return None
         _load_json_list(row[1], f"discovery run {run_id!r} errors")
+        _load_model_list(row[2], f"discovery run {run_id!r} source outcomes")
         run = _load_model(DiscoveryRun, row[0], f"discovery run {run_id!r}")
         if run.id != run_id:
             raise CorruptStoredJobDiscoveryError(
@@ -430,9 +303,9 @@ class SQLiteJobRecommendationRepository(
                     """
                     INSERT INTO job_recommendations(
                         recommendation_id, run_id, job_id, group_name, rank,
-                        payload_json, created_at
+                        payload_json, created_at, feed_kind, visibility
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -443,6 +316,8 @@ class SQLiteJobRecommendationRepository(
                             recommendation.rank,
                             _dump_model(recommendation),
                             recommendation.created_at.isoformat(),
+                            recommendation.feed_kind.value,
+                            recommendation.visibility.value,
                         )
                         for recommendation in validated
                     ],
@@ -456,7 +331,7 @@ class SQLiteJobRecommendationRepository(
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT payload_json, group_name
+                SELECT payload_json, group_name, feed_kind, visibility
                 FROM job_recommendations
                 WHERE run_id = ?
                 ORDER BY rank ASC, created_at ASC, recommendation_id ASC
@@ -464,16 +339,138 @@ class SQLiteJobRecommendationRepository(
                 (run_id,),
             ).fetchall()
         recommendations: list[JobRecommendation] = []
-        for payload_json, group_name in rows:
+        for payload_json, group_name, feed_kind, visibility in rows:
             recommendation = _load_model(
                 JobRecommendation, payload_json, f"recommendation for run {run_id!r}"
             )
-            if recommendation.run_id != run_id or recommendation.group.value != group_name:
+            if (
+                recommendation.run_id != run_id
+                or recommendation.group.value != group_name
+                or recommendation.feed_kind.value != feed_kind
+                or recommendation.visibility.value != visibility
+            ):
                 raise CorruptStoredJobDiscoveryError(
                     "Stored recommendation does not match indexed metadata"
                 )
             recommendations.append(recommendation)
         return recommendations
+
+    def list_for_feed(
+        self, user_id: str, feed_kind: str, *, include_excluded: bool = False
+    ) -> list[JobRecommendation]:
+        query = (
+            "SELECT payload_json, group_name, feed_kind, visibility "
+            "FROM job_recommendations WHERE feed_kind = ? "
+        )
+        parameters: list[object] = [feed_kind]
+        if not include_excluded:
+            query += "AND visibility = 'visible' "
+        query += "ORDER BY rank ASC, created_at ASC, recommendation_id ASC"
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        results: list[JobRecommendation] = []
+        for payload_json, group_name, stored_feed_kind, visibility in rows:
+            recommendation = _load_model(
+                JobRecommendation, payload_json, "feed recommendation"
+            )
+            if (
+                recommendation.user_id == user_id
+                and recommendation.group.value == group_name
+                and recommendation.feed_kind.value == stored_feed_kind
+                and recommendation.visibility.value == visibility
+            ):
+                results.append(recommendation)
+        return results
+
+
+class SQLiteAtomicJobDiscoveryPersistence(
+    _SQLiteJobDiscoveryRepository, AtomicJobDiscoveryPersistence
+):
+    """Persist one completed refresh as one SQLite transaction."""
+
+    def persist_refresh(
+        self,
+        run: DiscoveryRun,
+        jobs: list[DiscoveredJob],
+        recommendations: list[JobRecommendation],
+    ) -> None:
+        validated_run = _validate_model(DiscoveryRun, run)
+        validated_jobs = [_validate_model(DiscoveredJob, job) for job in jobs]
+        validated_recommendations = [
+            _validate_model(JobRecommendation, recommendation)
+            for recommendation in recommendations
+        ]
+        if any(item.run_id != validated_run.id for item in validated_recommendations):
+            raise ValueError("Recommendation run_id must match persisted run")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO discovery_runs(
+                        run_id, user_id, profile_id, preference_version, status,
+                        payload_json, started_at, completed_at, warning_count,
+                        error_json, source_outcomes_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    _run_row(validated_run, _dump_model(validated_run)),
+                )
+                for job in validated_jobs:
+                    connection.execute(
+                        """
+                        INSERT INTO discovered_jobs(
+                            job_id, external_job_id, source_id, payload_json,
+                            schema_version, fetched_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(job_id) DO UPDATE SET
+                            external_job_id = excluded.external_job_id,
+                            source_id = excluded.source_id,
+                            payload_json = excluded.payload_json,
+                            schema_version = excluded.schema_version,
+                            fetched_at = excluded.fetched_at
+                        """,
+                        (
+                            job.id,
+                            job.external_job_id,
+                            job.source.source_id,
+                            _dump_model(job),
+                            SCHEMA_VERSION,
+                            job.fetched_at.isoformat(),
+                        ),
+                    )
+                _raise_for_reused_recommendation_identity(
+                    connection, validated_run.id, validated_recommendations
+                )
+                connection.execute(
+                    "DELETE FROM job_recommendations WHERE run_id = ?",
+                    (validated_run.id,),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO job_recommendations(
+                        recommendation_id, run_id, job_id, group_name, rank,
+                        payload_json, created_at, feed_kind, visibility
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            item.id,
+                            item.run_id,
+                            item.job_id,
+                            item.group.value,
+                            item.rank,
+                            _dump_model(item),
+                            item.created_at.isoformat(),
+                            item.feed_kind.value,
+                            item.visibility.value,
+                        )
+                        for item in validated_recommendations
+                    ],
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
 
 class SQLiteSavedJobRepository(_SQLiteJobDiscoveryRepository, SavedJobRepository):
@@ -659,6 +656,7 @@ def _run_row(run: DiscoveryRun, payload_json: str) -> tuple[Any, ...]:
         _optional_datetime(run.completed_at),
         run.warning_count,
         _dump_json_list(run.error_messages),
+        _dump_model_list(run.source_outcomes),
     )
 
 
@@ -699,6 +697,10 @@ def _dump_json_list(values: list[str]) -> str:
     return json.dumps(values, separators=(",", ":"), sort_keys=True)
 
 
+def _dump_model_list(values: list[object]) -> str:
+    return json.dumps(values, separators=(",", ":"), sort_keys=True)
+
+
 def _load_json_list(payload_json: str, label: str) -> list[str]:
     try:
         payload = json.loads(payload_json)
@@ -706,6 +708,16 @@ def _load_json_list(payload_json: str, label: str) -> list[str]:
         raise CorruptStoredJobDiscoveryError(f"Stored {label} is invalid JSON") from error
     if not isinstance(payload, list) or not all(isinstance(item, str) for item in payload):
         raise CorruptStoredJobDiscoveryError(f"Stored {label} is not a string list")
+    return payload
+
+
+def _load_model_list(payload_json: str, label: str) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError as error:
+        raise CorruptStoredJobDiscoveryError(f"Stored {label} is invalid JSON") from error
+    if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+        raise CorruptStoredJobDiscoveryError(f"Stored {label} is not an object list")
     return payload
 
 
@@ -725,6 +737,20 @@ def _load_versioned_model(
 def _load_model(model_type: type[_ModelT], payload_json: str, label: str) -> _ModelT:
     try:
         payload = json.loads(payload_json)
+        if model_type is JobRecommendation and isinstance(payload, dict):
+            score_payload = payload.get("score")
+            legacy = (
+                "feed_kind" not in payload
+                or "visibility" not in payload
+                or not isinstance(score_payload, dict)
+                or score_payload.get("evaluation_policy_version") is None
+            )
+            if legacy:
+                payload = {
+                    **payload,
+                    "earlier_policy": True,
+                    "legacy_payload": json.loads(json.dumps(payload)),
+                }
         return model_type.model_validate(payload)
     except (json.JSONDecodeError, TypeError, ValidationError, ValueError) as error:
         raise CorruptStoredJobDiscoveryError(
@@ -743,7 +769,7 @@ def _load_saved(row: tuple[Any, ...], label: str) -> SavedJob:
         saved_at,
         checked_at,
     ) = row
-    if snapshot_schema_version != SCHEMA_VERSION:
+    if snapshot_schema_version != SAVED_SNAPSHOT_SCHEMA_VERSION:
         raise CorruptStoredJobDiscoveryError(
             f"Stored {label} uses unsupported snapshot schema version "
             f"{snapshot_schema_version}"

@@ -19,6 +19,12 @@ from resume_tailor.domain.job_discovery.models import (
     VerificationResult,
     VerificationStatus,
 )
+from resume_tailor.domain.job_discovery.providers import (
+    JobSourcePage,
+    ProviderCapabilities,
+    ProviderCursor,
+)
+from resume_tailor.domain.job_discovery.queries import ProviderJobQuery
 from resume_tailor.infrastructure.job_sources._common import (
     arrangement,
     build_record,
@@ -56,28 +62,99 @@ class LeverConnector:
         self._eu_api_base_url = eu_api_base_url.rstrip("/")
         self._clock = clock or (lambda: datetime.now(UTC))
 
-    def fetch(self, source: SupportedJobSource, *, fetched_at: datetime) -> JobSourceFetchResult:
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities:
         self._validate_source(source)
-        records = []
+        return ProviderCapabilities(
+            connector_type=ConnectorType.LEVER,
+            supports_title_or_keyword=False,
+            supports_sector=False,
+            supports_location=False,
+            supports_work_arrangement=False,
+            supports_level=False,
+            supports_employment_type=False,
+            supports_posting_date_boundary=False,
+            supports_pagination=True,
+            supports_page_size=True,
+            supports_availability_checks=True,
+            posted_timestamp_authority=None,
+            updated_timestamp_authority="posting.updatedAt",
+            max_page_size=100,
+        )
+
+    def fetch_page(
+        self,
+        source: SupportedJobSource,
+        query: ProviderJobQuery,
+        cursor: ProviderCursor,
+        *,
+        fetched_at: datetime,
+    ) -> JobSourcePage:
+        self._validate_source(source)
+        skip = _parse_skip(cursor.value)
+        page_size = min(query.page_size, self._page_size, 100)
         warnings: list[SourceRecordWarning] = []
         base_url = self._base_url(source)
-        for page_number in range(self._max_pages):
-            skip = page_number * self._page_size
-            payload = request_json(
-                self._client,
-                f"{base_url}/v0/postings/{quote(source.board_token, safe='')}",
-                timeout=self._timeout,
-                params={"mode": "json", "skip": str(skip), "limit": str(self._page_size)},
+        payload = request_json(
+            self._client,
+            f"{base_url}/v0/postings/{quote(source.board_token, safe='')}",
+            timeout=self._timeout,
+            params={"mode": "json", "skip": str(skip), "limit": str(page_size)},
+        )
+        raw_records: list[Any]
+        provider_next: str | None = None
+        provider_has_more: bool | None = None
+        if isinstance(payload, list):
+            raw_records = payload
+        elif isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            raw_records = payload["data"]
+            provider_next = _text(payload.get("next")) or None
+            provider_has_more = (
+                payload.get("hasNext")
+                if isinstance(payload.get("hasNext"), bool)
+                else None
             )
-            if not isinstance(payload, list):
-                raise JobSourceEnvelopeError("Lever response must be a postings list")
-            for raw in payload:
-                record, record_warnings = self._record(raw, source)
-                warnings.extend(record_warnings)
-                if record is not None:
-                    records.append(record)
-            if len(payload) < self._page_size:
+        else:
+            raise JobSourceEnvelopeError("Lever response must be a postings list")
+        records: list[SourceJobRecord] = []
+        for raw in raw_records:
+            record, record_warnings = self._record(raw, source)
+            warnings.extend(record_warnings)
+            if record is not None:
+                records.append(record)
+        next_cursor = provider_next
+        has_more = (
+            provider_has_more
+            if provider_has_more is not None
+            else len(raw_records) >= page_size
+        )
+        if next_cursor is None and has_more:
+            next_cursor = str(skip + len(raw_records))
+        records.sort(key=lambda item: item.external_job_id)
+        return JobSourcePage(
+            source=source,
+            cursor=cursor,
+            next_cursor=ProviderCursor(value=next_cursor),
+            records=records,
+            warnings=sorted_warnings(warnings),
+            has_more=has_more and next_cursor is not None,
+        )
+
+    def fetch(self, source: SupportedJobSource, *, fetched_at: datetime) -> JobSourceFetchResult:
+        records: list[SourceJobRecord] = []
+        warnings: list[SourceRecordWarning] = []
+        cursor = ProviderCursor()
+        for _ in range(self._max_pages):
+            page = self.fetch_page(
+                source,
+                ProviderJobQuery(feed_kind="tailored", page_size=self._page_size),
+                cursor,
+                fetched_at=fetched_at,
+            )
+            records.extend(page.records)
+            warnings.extend(page.warnings)
+            if not page.has_more:
                 break
+            cursor = page.next_cursor
         records.sort(key=lambda item: item.external_job_id)
         return JobSourceFetchResult(records=records, warnings=sorted_warnings(warnings))
 
@@ -239,6 +316,18 @@ def _text(value: Any) -> str:
         if isinstance(value, int)
         else ""
     )
+
+
+def _parse_skip(value: str | None) -> int:
+    if value is None:
+        return 0
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise JobSourceEnvelopeError("Lever cursor is invalid") from error
+    if parsed < 0:
+        raise JobSourceEnvelopeError("Lever cursor is invalid")
+    return parsed
 
 
 __all__ = ["LeverConnector"]

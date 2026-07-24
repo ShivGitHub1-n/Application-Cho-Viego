@@ -3,39 +3,45 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 
+from resume_tailor.application.job_discovery.feed_services import FeedAssemblyService
 from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
+from resume_tailor.application.job_discovery.retrieval import RetrievalService
 from resume_tailor.domain.job_discovery.capabilities import ProfileCapabilityIndexBuilder
 from resume_tailor.domain.job_discovery.deduplication import JobDeduplicator
 from resume_tailor.domain.job_discovery.eligibility import EligibilityEvaluator
 from resume_tailor.domain.job_discovery.evaluation import JobEvaluation, JobEvaluator
-from resume_tailor.domain.job_discovery.ids import recommendation_id, run_id
+from resume_tailor.domain.job_discovery.ids import run_id
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
     DiscoveredJob,
     DiscoveryRun,
     DiscoveryRunStatus,
-    EligibilityAssessment,
     EligibilityStatus,
     JobRecommendation,
-    JobScoreBreakdown,
     JobSearchPreferences,
+    NormalizedLocation,
     ProfileCapabilityIndex,
-    RecommendationGroup,
     SourceJobRecord,
     SourceRecordWarning,
     SupportedJobSource,
+    WorkArrangement,
 )
 from resume_tailor.domain.job_discovery.normalization import JobNormalizer
-from resume_tailor.domain.job_discovery.ranking import evaluation_sort_key
+from resume_tailor.domain.job_discovery.providers import SourceOutcome
+from resume_tailor.domain.job_discovery.queries import (
+    ExploreJobQuery,
+    FeedKind,
+    TailoredJobQuery,
+)
 from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
 from resume_tailor.domain.job_discovery.scoring import (
     DeterministicExplanationBuilder,
     ScoringPolicy,
-    breakdown_from_evaluation,
 )
 from resume_tailor.domain.models import MasterProfile
 from resume_tailor.ports.interfaces import MasterProfileRepository
 from resume_tailor.ports.job_discovery import (
+    AtomicJobDiscoveryPersistence,
     DiscoveredJobRepository,
     DiscoveryRunRepository,
     JobRecommendationRepository,
@@ -50,7 +56,6 @@ ConnectorCollection = Mapping[
     ConnectorType,
     JobSourceConnector | Mapping[str, JobSourceConnector],
 ]
-MAX_INITIAL_RECOMMENDATIONS = 10
 
 
 class RefreshJobDiscoveryService:
@@ -74,6 +79,7 @@ class RefreshJobDiscoveryService:
         scoring_policy: ScoringPolicy | None = None,
         explanation_builder: DeterministicExplanationBuilder | None = None,
         job_evaluator: JobEvaluator | None = None,
+        atomic_persistence: AtomicJobDiscoveryPersistence | None = None,
     ) -> None:
         self._profiles = profiles
         self._preferences = preferences
@@ -93,6 +99,8 @@ class RefreshJobDiscoveryService:
             eligibility_evaluator=self._eligibility_evaluator,
             requirement_extractor=self._requirement_extractor,
         )
+        self._feed_assembly = FeedAssemblyService()
+        self._atomic_persistence = atomic_persistence
         self._last_evaluations: list[JobEvaluation] = []
 
     def refresh(
@@ -112,12 +120,15 @@ class RefreshJobDiscoveryService:
             profile.version,
             preferences.version,
             started_at,
+            FeedKind.TAILORED.value,
         )
         try:
             return self._refresh_impl(
                 user_id,
                 profile_id,
                 preferences,
+                query=TailoredJobQuery(preferences=preferences),
+                feed_kind=FeedKind.TAILORED,
                 started_at=started_at,
             )
         except Exception:
@@ -136,12 +147,64 @@ class RefreshJobDiscoveryService:
             self._runs.complete(failed)
             return failed
 
+    def refresh_explore(
+        self,
+        user_id: str,
+        *,
+        sectors: list[str],
+        profile_id: str,
+        started_at: datetime,
+        title_keywords: list[str] | None = None,
+        locations: list[str] | None = None,
+        page_size: int = 100,
+        max_posting_age_days: int | None = None,
+    ) -> DiscoveryRun:
+        self._load_owned_profile(user_id, profile_id)
+        preferences = self._preferences.get_current(user_id, profile_id)
+        if preferences is None:
+            preferences = JobSearchPreferences(
+                user_id=user_id,
+                profile_id=profile_id,
+                version=0,
+                role_family_priority=[],
+                target_titles=list(title_keywords or []),
+                related_title_variants=[],
+                technical_themes=[],
+                career_interests=[],
+                job_levels=[],
+                locations=[NormalizedLocation(raw=value) for value in locations or []],
+                work_arrangement=WorkArrangement.UNKNOWN,
+                preferred_companies=[],
+                excluded_companies=[],
+                max_posting_age_days=max_posting_age_days,
+                created_at=started_at,
+            )
+        query = ExploreJobQuery(
+            sectors=sectors,
+            title_keywords=list(title_keywords or []),
+            locations=list(locations or []),
+            max_posting_age_days=max_posting_age_days,
+            page_size=page_size,
+            profile_id=profile_id,
+            evaluate_fit=True,
+        )
+        return self._refresh_impl(
+            user_id,
+            profile_id,
+            preferences,
+            query=query,
+            feed_kind=FeedKind.EXPLORE,
+            started_at=started_at,
+        )
+
     def _refresh_impl(
         self,
         user_id: str,
         profile_id: str,
         preferences: JobSearchPreferences,
         *,
+        query: TailoredJobQuery | ExploreJobQuery,
+        feed_kind: FeedKind,
         started_at: datetime,
     ) -> DiscoveryRun:
         profile = self._load_owned_profile(user_id, profile_id)
@@ -154,6 +217,7 @@ class RefreshJobDiscoveryService:
             profile.version,
             preferences.version,
             started_at,
+            feed_kind.value,
         )
         running = DiscoveryRun(
             id=identifier,
@@ -169,7 +233,8 @@ class RefreshJobDiscoveryService:
             warning_count=0,
             error_messages=[],
         )
-        self._runs.create(running)
+        if self._atomic_persistence is None:
+            self._runs.create(running)
 
         sources = sorted(
             self._sources.list_enabled(),
@@ -182,21 +247,21 @@ class RefreshJobDiscoveryService:
                 completed_at=started_at,
             )
 
-        raw_records: list[tuple[SupportedJobSource, SourceJobRecord]] = []
-        warnings: list[str] = []
-        errors: list[str] = []
-        failed_sources: list[str] = []
-        successful_sources = 0
-        for source in sources:
-            try:
-                result = self._connector_for(source).fetch(source, fetched_at=started_at)
-            except (JobSourceEnvelopeError, JobSourceTransportError) as error:
-                errors.append(self._source_error(source, error))
-                failed_sources.append(source.source_id)
-                continue
-            successful_sources += 1
-            raw_records.extend((source, record) for record in result.records)
-            warnings.extend(self._format_warnings(source, result.warnings))
+        retrieval = RetrievalService(sources=sources, connectors=self._connectors).retrieve(
+            query, fetched_at=started_at
+        )
+        raw_records = [
+            (item.source, item.record)
+            for item in retrieval.records
+        ]
+        warnings = self._retrieval_warnings(retrieval.source_outcomes)
+        errors = self._retrieval_errors(retrieval.source_outcomes)
+        failed_sources = sorted(
+            item.source_id for item in retrieval.source_outcomes if item.status.value == "failed"
+        )
+        successful_sources = sum(
+            item.status.value != "failed" for item in retrieval.source_outcomes
+        )
 
         warnings.sort()
         errors.sort()
@@ -234,44 +299,70 @@ class RefreshJobDiscoveryService:
             assessed.append((job, evaluation))
         self._last_evaluations = [evaluation for _job, evaluation in assessed]
 
-        for job in deduplicated.jobs:
-            self._discovered_jobs.upsert(job)
+        if self._atomic_persistence is None:
+            for job in deduplicated.jobs:
+                self._discovered_jobs.upsert(job)
 
-        recommendations = self._build_recommendations(
+        assembly = self._feed_assembly.build_recommendations(
             identifier,
-            profile,
-            preferences,
-            profile_index,
-            assessed,
+            profile=profile,
+            preferences=preferences,
+            assessed=assessed,
+            feed_kind=feed_kind,
             created_at=started_at,
         )
-        self._recommendations.replace_for_run(identifier, recommendations)
+        recommendations = assembly.recommendations
         status = (
             DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
             if warnings or errors
             else DiscoveryRunStatus.COMPLETED
         )
+        complete = running.model_copy(
+            update={
+                "status": status,
+                "source_count": len(sources),
+                "sources_attempted": [source.source_id for source in sources],
+                "failed_sources": sorted(failed_sources),
+                "record_count": len(raw_records),
+                "retrieved_count": len(raw_records),
+                "normalized_count": len(normalized),
+                "duplicate_count": deduplicated.duplicate_count,
+                "eligibility_filtered_count": sum(
+                    evaluation.eligibility.status is EligibilityStatus.INELIGIBLE
+                    for _job, evaluation in assessed
+                ),
+                "scored_count": len(assessed),
+                "returned_count": sum(
+                    item.visibility.value == "visible" for item in recommendations
+                ),
+                "warning_count": len(warnings),
+                "source_warnings": warnings,
+                "warnings": warnings,
+                "error_messages": errors,
+                "source_outcomes": [
+                    item.model_dump(mode="json") for item in retrieval.source_outcomes
+                ],
+                "completed_at": started_at,
+            }
+        )
+        if self._atomic_persistence is not None:
+            self._atomic_persistence.persist_refresh(
+                complete, deduplicated.jobs, recommendations
+            )
+            return complete
+        self._recommendations.replace_for_run(identifier, recommendations)
         return self._finish(
             running,
-            status=status,
-            source_count=len(sources),
-            sources_attempted=[source.source_id for source in sources],
-            failed_sources=sorted(failed_sources),
-            record_count=len(raw_records),
-            retrieved_count=len(raw_records),
-            normalized_count=len(normalized),
-            duplicate_count=deduplicated.duplicate_count,
-            eligibility_filtered_count=sum(
-                evaluation.eligibility.status is EligibilityStatus.INELIGIBLE
-                for _job, evaluation in assessed
+            **complete.model_dump(
+                exclude={
+                    "id",
+                    "user_id",
+                    "profile_id",
+                    "profile_version",
+                    "preference_version",
+                    "started_at",
+                }
             ),
-            scored_count=len(assessed),
-            returned_count=len(recommendations),
-            warning_count=len(warnings),
-            source_warnings=warnings,
-            warnings=warnings,
-            error_messages=errors,
-            completed_at=started_at,
         )
 
     def _load_owned_profile(self, user_id: str, profile_id: str) -> MasterProfile:
@@ -292,6 +383,31 @@ class RefreshJobDiscoveryService:
                 raise JobSourceTransportError("job source connector is not configured")
             return connector
         return configured
+
+    @staticmethod
+    def _retrieval_warnings(outcomes: list[SourceOutcome]) -> list[str]:
+        values = []
+        for outcome in outcomes:
+            for warning in outcome.warnings:
+                values.append(
+                    "|".join(
+                        (
+                            warning.source_id,
+                            warning.code,
+                            warning.external_job_id or "",
+                            warning.message,
+                        )
+                    )
+                )
+        return sorted(values)
+
+    @staticmethod
+    def _retrieval_errors(outcomes: list[SourceOutcome]) -> list[str]:
+        return sorted(
+            f"{error.source_id}: {error.message}"
+            for outcome in outcomes
+            for error in outcome.errors
+        )
 
     def _normalize(
         self,
@@ -349,89 +465,14 @@ class RefreshJobDiscoveryService:
         *,
         created_at: datetime,
     ) -> list[JobRecommendation]:
-        explanation_builder = self._explanation_builder
-        if isinstance(explanation_builder, DeterministicExplanationBuilder):
-            explanation_builder = DeterministicExplanationBuilder(preferences)
-        ranked = sorted(
-            (
-                (job, evaluation)
-                for job, evaluation in assessed
-                if evaluation.eligibility.status is not EligibilityStatus.INELIGIBLE
-            ),
-            key=lambda item: evaluation_sort_key(
-                fit_grade=item[1].fit_grade,
-                diagnostic_total=item[1].diagnostics.total,
-                eligibility=item[1].eligibility.status,
-                posted_at=item[0].posted_at,
-                stable_id=item[0].id,
-            ),
-        )[:MAX_INITIAL_RECOMMENDATIONS]
-        recommendations: list[JobRecommendation] = []
-        for rank, (job, evaluation) in enumerate(ranked, start=1):
-            eligibility = evaluation.eligibility
-            score = breakdown_from_evaluation(evaluation)
-            reasons = [reason.statement for reason in evaluation.positive_reasons]
-            gaps = [gap.statement for gap in evaluation.material_gaps[:3]]
-            group = (
-                RecommendationGroup.PRIMARY
-                if job.role_family in preferences.role_family_priority
-                else RecommendationGroup.FALLBACK
-            )
-            recommendations.append(
-                JobRecommendation(
-                    id=recommendation_id(
-                        run_identifier,
-                        job.id,
-                        profile.version,
-                        preferences.version,
-                    ),
-                    run_id=run_identifier,
-                    user_id=profile.user_id,
-                    profile_id=profile.id,
-                    profile_version=profile.version,
-                    preference_version=preferences.version,
-                    job_id=job.id,
-                    group=group,
-                    primary_role_family=job.role_family,
-                    eligibility=eligibility,
-                    score=score,
-                    reasons=reasons,
-                    gaps=gaps,
-                    rank=rank,
-                    created_at=created_at,
-                    evaluation_policy_version=evaluation.evaluation_policy_version,
-                )
-            )
-        return recommendations
-
-    @staticmethod
-    def _recommendation_sort_key(
-        job: DiscoveredJob,
-        eligibility: EligibilityAssessment,
-        score: JobScoreBreakdown,
-        preferences: JobSearchPreferences,
-    ) -> tuple[float, int, int, int, int, str, str, str]:
-        preferred = {
-            company.casefold().strip() for company in preferences.preferred_companies
-        }
-        role_order = {
-            family: index for index, family in enumerate(preferences.role_family_priority)
-        }
-        role_index = (
-            role_order.get(job.role_family)
-            if job.role_family is not None
-            else None
-        )
-        return (
-            -score.total,
-            0 if job.company_name.casefold().strip() in preferred else 1,
-            0 if job.role_family in role_order else 1,
-            role_index if role_index is not None else len(role_order),
-            0 if eligibility.status is EligibilityStatus.ELIGIBLE else 1,
-            job.normalized_company_name,
-            job.normalized_title,
-            job.id,
-        )
+        return self._feed_assembly.build_recommendations(
+            run_identifier,
+            profile=profile,
+            preferences=preferences,
+            assessed=assessed,
+            feed_kind=FeedKind.TAILORED,
+            created_at=created_at,
+        ).recommendations
 
     def _finish(self, running: DiscoveryRun, **updates: object) -> DiscoveryRun:
         complete = running.model_copy(update=updates)
@@ -439,8 +480,12 @@ class RefreshJobDiscoveryService:
             DiscoveryRunStatus.NO_SOURCES_CONFIGURED,
             DiscoveryRunStatus.FAILED_ALL_SOURCES,
         }:
-            self._recommendations.replace_for_run(complete.id, [])
-        self._runs.complete(complete)
+            if self._atomic_persistence is None:
+                self._recommendations.replace_for_run(complete.id, [])
+        if self._atomic_persistence is None:
+            self._runs.complete(complete)
+        else:
+            self._atomic_persistence.persist_refresh(complete, [], [])
         return complete
 
 

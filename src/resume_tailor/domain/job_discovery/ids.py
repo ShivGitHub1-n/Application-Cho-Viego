@@ -18,14 +18,18 @@ def run_id(
     profile_version: str | int,
     preference_version: str | int,
     started_at: datetime,
+    feed_kind: str = "",
 ) -> str:
-    digest = _digest(
+    parts = [
         user_id,
         profile_id,
         str(profile_version),
         str(preference_version),
         started_at.isoformat(),
-    )
+    ]
+    if feed_kind:
+        parts.append(feed_kind)
+    digest = _digest(*parts)
     return f"run-{digest}"
 
 

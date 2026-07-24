@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle, get_job_discovery_services
 from resume_tailor.api.main import app
 from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
+from resume_tailor.application.job_discovery.queries import JobFeedDetails
 from resume_tailor.application.job_discovery.saved import (
     DiscoveredJobNotFoundError,
     SavedJobNotFoundError,
@@ -14,6 +15,7 @@ from resume_tailor.application.job_discovery.saved import (
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
     DiscoveryRunStatus,
+    FeedKind,
     JobSearchPreferences,
     JobSearchPreferenceSuggestion,
     SavedJob,
@@ -133,6 +135,19 @@ class FakeRefresh:
         self.calls.append((user_id, profile_id, preferences, started_at))
         return self.run
 
+    def refresh_explore(self, user_id: str, **kwargs):
+        self.calls.append((user_id, kwargs))
+        return self.run
+
+
+class FakeFeedQueries:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def get(self, user_id: str, feed_kind: FeedKind, *, excluded_only: bool = False):
+        self.calls.append((user_id, feed_kind, excluded_only))
+        return JobFeedDetails(feed_kind=feed_kind, items=[], excluded_count=0)
+
 
 class FakeRuns:
     def __init__(self, run: DiscoveryRun | None) -> None:
@@ -204,6 +219,12 @@ def test_router_is_included_with_exact_supportable_paths() -> None:
     assert ("/job-discovery/preferences/suggest", "POST") in routes
     assert ("/job-discovery/preferences/confirm", "POST") in routes
     assert ("/job-discovery/refresh", "POST") in routes
+    assert ("/job-discovery/feeds/tailored/refresh", "POST") in routes
+    assert ("/job-discovery/feeds/explore/refresh", "POST") in routes
+    assert ("/job-discovery/feeds/tailored", "GET") in routes
+    assert ("/job-discovery/feeds/explore", "GET") in routes
+    assert ("/job-discovery/feeds/tailored/excluded", "GET") in routes
+    assert ("/job-discovery/feeds/explore/excluded", "GET") in routes
     assert ("/job-discovery/runs/{run_id}", "GET") in routes
     assert ("/job-discovery/saved", "POST") in routes
     assert ("/job-discovery/saved", "GET") in routes
@@ -334,6 +355,57 @@ def test_refresh_request_validation_is_standard_fastapi_validation() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_tailored_refresh_alias_and_feed_route_share_the_same_refresh_service() -> None:
+    bundle = _bundle()
+    app.dependency_overrides[get_job_discovery_services] = lambda: bundle
+    try:
+        client = TestClient(app)
+        alias = client.post("/job-discovery/refresh", json={"profile_id": "p1"})
+        feed = client.post(
+            "/job-discovery/feeds/tailored/refresh",
+            json={"profile_id": "p1", "user_id": "u1"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert alias.status_code == 200
+    assert feed.status_code == 200
+    assert len(bundle.refresh.calls) == 2
+
+
+def test_explore_refresh_and_feed_reads_are_typed_and_user_scoped() -> None:
+    bundle = _bundle()
+    bundle.feed_queries = FakeFeedQueries()
+    app.dependency_overrides[get_job_discovery_services] = lambda: bundle
+    try:
+        client = TestClient(app)
+        refreshed = client.post(
+            "/job-discovery/feeds/explore/refresh",
+            json={
+                "user_id": "u1",
+                "profile_id": "p1",
+                "sectors": ["Robotics / Autonomous Systems"],
+            },
+        )
+        tailored = client.get("/job-discovery/feeds/tailored?user_id=u1")
+        excluded = client.get("/job-discovery/feeds/explore/excluded?user_id=u1")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["feed_kind"] == "explore"
+    assert tailored.status_code == 200
+    assert tailored.json()["feed_kind"] == "tailored"
+    assert excluded.status_code == 200
+    assert excluded.json()["feed_kind"] == "explore"
+    assert bundle.feed_queries.calls == [
+        ("u1", FeedKind.TAILORED, False),
+        ("u1", FeedKind.EXPLORE, True),
+    ]
+    assert bundle.refresh.calls[-1][0] == "u1"
+    assert bundle.refresh.calls[-1][1]["sectors"] == ["Robotics / Autonomous Systems"]
 
 
 def test_save_list_and_availability_routes_delegate_to_services_with_typed_shapes() -> None:

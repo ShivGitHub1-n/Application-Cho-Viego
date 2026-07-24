@@ -251,7 +251,7 @@ def test_successful_one_source_refresh_persists_jobs_recommendations_and_run() -
     assert connector.calls == [(source.source_id, WHEN)]
 
 
-def test_refresh_returns_only_the_initial_ten_recommendations() -> None:
+def test_refresh_persists_every_evaluation_without_initial_ten_truncation() -> None:
     source = _source()
     connector = FakeConnector(
         JobSourceFetchResult(
@@ -270,8 +270,8 @@ def test_refresh_returns_only_the_initial_ten_recommendations() -> None:
 
     assert len(jobs.jobs) == 11
     assert run.scored_count == 11
-    assert run.returned_count == 10
-    assert [item.rank for item in recommendations.list_for_run(run.id)] == list(range(1, 11))
+    assert run.returned_count == 11
+    assert [item.rank for item in recommendations.list_for_run(run.id)] == list(range(1, 12))
 
 
 def test_partial_source_failure_keeps_valid_results_and_sorts_warnings() -> None:
@@ -311,8 +311,8 @@ def test_partial_source_failure_keeps_valid_results_and_sorts_warnings() -> None
     assert recommendations.list_for_run(run.id)
     assert run.warning_count == 2
     assert run.source_warnings == [
-        "good|invalid_location|1|invalid location",
-        "good|missing_title|2|missing title",
+        "good|invalid_location|1|Provider record had an invalid location.",
+        "good|missing_title|2|Provider record was missing a title.",
     ]
     assert "secret token" not in " ".join(run.error_messages)
 

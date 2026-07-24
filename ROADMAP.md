@@ -43,6 +43,20 @@
 - Live source checks remain opt-in under the `job_source_integration` pytest
   marker and require explicit approved configuration.
 
+### Batch 3 complete
+
+- Added sanitized Tailored and Explore query contracts, provider capability
+  declarations, bounded paged retrieval, partial-success source outcomes, and
+  provider-safe serialization.
+- Strengthened canonical identity, cross-provider deduplication, aliases, and
+  provenance; retained unknown timestamp authority instead of inventing dates.
+- Persisted every frozen-evaluator result, including excluded evaluations, with
+  deterministic feed ordering and schema-version-2 atomic refresh persistence.
+- Added typed feed refresh/read/excluded-feed APIs while retaining
+  `/job-discovery/refresh` as the Tailored compatibility alias.
+- Greenhouse and Lever remain the only approved connectors. Expansion beyond
+  them is deferred by the provider audit. The dedicated Jobs UI is Batch 4.
+
 ## Phase 7 — Application Management
 
 - Add application records, version history, tracking, analytics, and interview preparation.

@@ -21,6 +21,11 @@ class ConnectorType(StrEnum):
     LEVER = "lever"
 
 
+class FeedKind(StrEnum):
+    TAILORED = "tailored"
+    EXPLORE = "explore"
+
+
 class LeverApiRegion(StrEnum):
     GLOBAL = "global"
     EU = "eu"
@@ -100,6 +105,11 @@ class EligibilityReasonCode(StrEnum):
 class RecommendationGroup(StrEnum):
     PRIMARY = "primary"
     FALLBACK = "fallback"
+
+
+class RecommendationVisibility(StrEnum):
+    VISIBLE = "visible"
+    EXCLUDED = "excluded"
 
 
 class DiscoveryRunStatus(StrEnum):
@@ -291,6 +301,17 @@ class SourceJobRecord(BaseModel):
     source_payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class SourceProvenance(BaseModel):
+    source_id: str
+    connector_type: ConnectorType
+    external_job_id: str
+    official_url: str
+    fetched_at: datetime
+    page_cursor: str | None = None
+    source_updated_at: datetime | None = None
+    posted_at: datetime | None = None
+
+
 class SourceRecordWarningCode(StrEnum):
     MISSING_EXTERNAL_JOB_ID = "missing_external_job_id"
     MISSING_TITLE = "missing_title"
@@ -344,6 +365,7 @@ class DiscoveredJob(BaseModel):
     normalized_company_name: str = ""
     canonical_description_hash: str = ""
     source_alias_ids: list[str] = Field(default_factory=list)
+    source_provenance: list[SourceProvenance] = Field(default_factory=list)
 
 
 class EligibilityAssessment(BaseModel):
@@ -414,6 +436,12 @@ class JobRecommendation(BaseModel):
     rank: int
     created_at: datetime
     evaluation_policy_version: str | None = None
+    feed_kind: FeedKind = FeedKind.TAILORED
+    visibility: RecommendationVisibility = RecommendationVisibility.VISIBLE
+    unresolved_facts: list[str] = Field(default_factory=list)
+    provisional: bool = False
+    earlier_policy: bool = False
+    legacy_payload: dict[str, Any] | None = None
 
     @field_validator("created_at")
     @classmethod
@@ -467,6 +495,7 @@ class DiscoveryRun(BaseModel):
     model_assisted: bool = False
     model_call_count: int = 0
     error_messages: list[str] = Field(default_factory=list)
+    source_outcomes: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("started_at", "completed_at")
     @classmethod

@@ -11,6 +11,7 @@ from resume_tailor.domain.job_discovery.location import parse_location
 from resume_tailor.domain.job_discovery.models import (
     DiscoveredJob,
     SourceJobRecord,
+    SourceProvenance,
     SupportedJobSource,
 )
 from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
@@ -141,6 +142,17 @@ class JobNormalizer:
             normalized_title=normalize_job_term(title),
             normalized_company_name=normalize_job_term(company_name),
             canonical_description_hash=_description_hash(description),
+            source_provenance=[
+                SourceProvenance(
+                    source_id=source.source_id,
+                    connector_type=source.connector_type,
+                    external_job_id=external_job_id,
+                    official_url=url,
+                    fetched_at=fetched_at,
+                    source_updated_at=record.source_updated_at,
+                    posted_at=record.posted_at,
+                )
+            ],
         )
 
 

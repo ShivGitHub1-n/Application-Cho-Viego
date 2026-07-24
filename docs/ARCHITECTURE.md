@@ -72,7 +72,8 @@ handling uses only the approved city, region, country, and work-arrangement
 fields; it does not geocode or calculate radius or distance. SQLite stores
 preferences, discovered jobs, runs, recommendations, and saved-job records
 through repository ports, using the same application database as the existing
-profile store. Permanent recommendation/feed migration remains a later plan.
+profile store. Recommendation/feed persistence uses the transactional Batch 3
+schema-version-2 migration described below.
 
 FastAPI exposes typed discovery contracts and delegates to application
 services. Streamlit is a thin delivery layer that presents editable confirmed
@@ -100,3 +101,32 @@ Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter
 - AI inference needs conservative policy and evidence citations to remain trustworthy.
 - Company research must respect source terms, permissions, rate limits, and clear provenance.
 - DOCX-to-PDF conversion varies by platform; production export needs a chosen conversion service or runtime.
+
+## Batch 3 job-discovery boundaries
+
+Tailored queries may carry local profile and confirmed-preference references to
+the application layer; Explore queries carry only approved sectors and
+sanitized search controls. Conversion to `ProviderJobQuery` is an explicit
+allow-list: provider payloads never contain resume text, profile evidence,
+scores, explanations, gaps, or career-interest prose. Provider capabilities
+declare pushdown support, while the retrieval service records pushed-down,
+local, unsupported, and unrequested filters. Unsupported filters never
+silently broaden a query.
+
+Retrieval is bounded by source, page, record, timeout, and retry settings. It
+protects against repeated cursors and preserves successful sources when
+another source fails. Normalization and deduplication retain source-qualified
+identity, canonical URL authority, aliases, and complete provenance
+independently of provider or page order. Every deduplicated candidate is
+evaluated by the frozen evaluator. Tailored and Explore feed ordering and
+visibility are applied after evaluation; ordinary feeds hide Don't Match and
+hard-ineligible items but report `excluded_count`, and excluded endpoints
+return retained evaluations without recomputation.
+
+Schema version 2 is the single permanent feed migration. Version-1
+recommendations remain readable as explicitly earlier-policy records, and
+saved-job snapshots remain immutable. FastAPI exposes independent Tailored and
+Explore refresh/read/excluded-feed contracts; `/job-discovery/refresh` is a
+Tailored compatibility alias. The policy is development-gate-approved but not
+locked-release-certified; the locked split remains sealed. The dedicated Jobs
+UI belongs to Batch 4.
