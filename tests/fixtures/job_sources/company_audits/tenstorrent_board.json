@@ -1,0 +1,13 @@
+{
+  "fixture_kind": "redacted_greenhouse_board_audit",
+  "official_careers_url": "https://tenstorrent.com/careers/software",
+  "provider_board_url": "https://job-boards.greenhouse.io/tenstorrent",
+  "connector_type": "greenhouse",
+  "board_token": "tenstorrent",
+  "sample_posting_id": "redacted-tenstorrent-posting-id",
+  "sample_absolute_url": "https://job-boards.greenhouse.io/tenstorrent/jobs/redacted",
+  "toronto_gta_locations": ["Toronto, Ontario, Canada", "North York, Ontario, Canada"],
+  "role_families": ["semiconductor", "ai_machine_learning", "embedded_systems", "testing_verification"],
+  "description": "[redacted]",
+  "candidate_data": false
+}

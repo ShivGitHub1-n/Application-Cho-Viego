@@ -1,0 +1,1856 @@
+{
+  "version": 1,
+  "companies": [
+    {
+      "source_id": "anthropic",
+      "company_id": "anthropic",
+      "canonical_company_name": "Anthropic",
+      "canonical_domain": "www.anthropic.com",
+      "careers_entry_url": "https://www.anthropic.com/careers",
+      "allowed_hosts": [
+        "www.anthropic.com"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "ai"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "ai_machine_learning"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/?$"
+        ],
+        "navigation_hosts": [
+          "www.anthropic.com"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "anthropic",
+          "lever_api_region": null
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.anthropic.com/careers",
+        "https://job-boards.greenhouse.io/anthropic"
+      ],
+      "provenance_notes": "Official careers page links to Greenhouse open roles; provider board is the sole refresh authority."
+    },
+    {
+      "source_id": "anduril",
+      "company_id": "anduril",
+      "canonical_company_name": "Anduril",
+      "canonical_domain": "www.anduril.com",
+      "careers_entry_url": "https://www.anduril.com/careers",
+      "allowed_hosts": [
+        "www.anduril.com"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "defense",
+        "aerospace"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "robotics",
+        "embedded_systems",
+        "systems_integration"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/?$"
+        ],
+        "navigation_hosts": [
+          "www.anduril.com"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "andurilindustries",
+          "lever_api_region": null
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.anduril.com/careers",
+        "https://job-boards.greenhouse.io/andurilindustries"
+      ],
+      "provenance_notes": "Official careers surface is JavaScript-rendered and delegates approved public roles to Greenhouse."
+    },
+    {
+      "source_id": "palantir",
+      "company_id": "palantir",
+      "canonical_company_name": "Palantir",
+      "canonical_domain": "www.palantir.com",
+      "careers_entry_url": "https://www.palantir.com/careers",
+      "allowed_hosts": [
+        "www.palantir.com"
+      ],
+      "redirect_hosts": [
+        "jobs.lever.co"
+      ],
+      "industry_tags": [
+        "software",
+        "defense",
+        "ai"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "ai_machine_learning"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "lever",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/?$"
+        ],
+        "navigation_hosts": [
+          "www.palantir.com"
+        ],
+        "redirect_hosts": [
+          "jobs.lever.co"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "lever",
+          "board_token": "palantir",
+          "lever_api_region": "global"
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.palantir.com/careers",
+        "https://jobs.lever.co/palantir"
+      ],
+      "provenance_notes": "Official careers surface exposes a Lever-backed public board; Lever is the sole refresh authority."
+    },
+    {
+      "source_id": "zoox",
+      "company_id": "zoox",
+      "canonical_company_name": "Zoox",
+      "canonical_domain": "www.zoox.com",
+      "careers_entry_url": "https://www.zoox.com/careers",
+      "allowed_hosts": [
+        "www.zoox.com"
+      ],
+      "redirect_hosts": [
+        "jobs.lever.co"
+      ],
+      "industry_tags": [
+        "automotive",
+        "robotics"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "computer_vision",
+        "robotics",
+        "controls"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "lever",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/?$"
+        ],
+        "navigation_hosts": [
+          "www.zoox.com"
+        ],
+        "redirect_hosts": [
+          "jobs.lever.co"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "lever",
+          "board_token": "zoox",
+          "lever_api_region": "global"
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.zoox.com/careers",
+        "https://jobs.lever.co/zoox"
+      ],
+      "provenance_notes": "Official careers surface delegates to the public Zoox Lever board."
+    },
+    {
+      "source_id": "spacex",
+      "company_id": "spacex",
+      "canonical_company_name": "SpaceX",
+      "canonical_domain": "www.spacex.com",
+      "careers_entry_url": "https://www.spacex.com/careers/jobs",
+      "allowed_hosts": [
+        "www.spacex.com"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "space",
+        "aerospace"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "space_systems",
+        "software_engineering",
+        "avionics"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/jobs/?$"
+        ],
+        "navigation_hosts": [
+          "www.spacex.com"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "spacex",
+          "lever_api_region": null
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.spacex.com/careers/jobs",
+        "https://job-boards.greenhouse.io/spacex"
+      ],
+      "provenance_notes": "Official SpaceX careers surface and public Greenhouse board were reviewed."
+    },
+    {
+      "source_id": "relativity-space",
+      "company_id": "relativity-space",
+      "canonical_company_name": "Relativity Space",
+      "canonical_domain": "www.relativityspace.com",
+      "careers_entry_url": "https://www.relativityspace.com/jobs",
+      "allowed_hosts": [
+        "www.relativityspace.com"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "space",
+        "aerospace",
+        "manufacturing"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "mechanical_engineering",
+        "manufacturing_engineering",
+        "software_engineering"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/jobs/?$"
+        ],
+        "navigation_hosts": [
+          "www.relativityspace.com"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "relativity",
+          "lever_api_region": null
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.relativityspace.com/jobs",
+        "https://job-boards.greenhouse.io/relativity"
+      ],
+      "provenance_notes": "Official careers page and public Greenhouse board were reviewed."
+    },
+    {
+      "source_id": "figure",
+      "company_id": "figure",
+      "canonical_company_name": "Figure",
+      "canonical_domain": "www.figure.ai",
+      "careers_entry_url": "https://www.figure.ai/careers",
+      "allowed_hosts": [
+        "www.figure.ai"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "robotics",
+        "ai"
+      ],
+      "role_family_tags": [
+        "robotics",
+        "computer_vision",
+        "software_engineering",
+        "mechanical_engineering"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/?$"
+        ],
+        "navigation_hosts": [
+          "www.figure.ai"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "figureai",
+          "lever_api_region": null
+        }
+      },
+      "audit_evidence_urls": [
+        "https://www.figure.ai/careers",
+        "https://job-boards.greenhouse.io/figureai"
+      ],
+      "provenance_notes": "Official Figure careers surface and public Greenhouse board were reviewed."
+    },
+    {
+      "source_id": "rocket-lab",
+      "company_id": "rocket-lab",
+      "canonical_company_name": "Rocket Lab",
+      "canonical_domain": "rocketlabcorp.com",
+      "careers_entry_url": "https://rocketlabcorp.com/careers/positions/",
+      "allowed_hosts": [
+        "rocketlabcorp.com",
+        "www.rocketlabusa.com"
+      ],
+      "redirect_hosts": [
+        "www.rocketlabusa.com"
+      ],
+      "industry_tags": [
+        "space",
+        "aerospace",
+        "manufacturing"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "space_systems",
+        "software_engineering",
+        "embedded_systems",
+        "mechanical_engineering",
+        "manufacturing_engineering",
+        "testing_verification"
+      ],
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "first_party",
+        "listing_discovery_mode": "static_index",
+        "detail_fetch_mode": "static_http",
+        "detail_extraction_mode": "json_ld_then_html",
+        "sitemap_urls": [],
+        "index_urls": [
+          "https://rocketlabcorp.com/careers/positions/"
+        ],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [
+          "^/careers/positions(?:/[^/]+)?/?$"
+        ],
+        "navigation_hosts": [
+          "rocketlabcorp.com"
+        ],
+        "redirect_hosts": [
+          "www.rocketlabusa.com"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 5,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 100,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24",
+        "provider_configuration": null
+      },
+      "audit_evidence_urls": [
+        "https://www.rocketlabusa.com/careers/",
+        "https://rocketlabcorp.com/careers/positions/"
+      ],
+      "provenance_notes": "Official first-party index lists roles, locations, employment types, and bounded load-more behavior; no provider delegation is used for this source plan.",
+      "first_party_audit": {
+        "canonical_employer_url": "https://rocketlabcorp.com/careers/",
+        "listing_index_urls": [
+          "https://rocketlabcorp.com/careers/positions/"
+        ],
+        "navigation_hosts": [
+          "rocketlabcorp.com"
+        ],
+        "redirect_hosts": [
+          "www.rocketlabusa.com"
+        ],
+        "allowed_listing_path_patterns": [
+          "^/careers/positions/?$"
+        ],
+        "allowed_detail_path_patterns": [
+          "^/careers/positions/[^/]+/?$"
+        ],
+        "robots_decision": "allow",
+        "listing_discovery_mode": "static_index",
+        "detail_fetch_mode": "static_http",
+        "detail_extraction_mode": "json_ld_then_html",
+        "stable_identity_authority": "employer detail URL slug suffix and same-host canonical detail URL",
+        "canonical_detail_url_authority": "same-host canonical link on the employer detail page",
+        "application_url_authority": "Greenhouse-hosted terminal application target linked from the employer detail page",
+        "application_hosts": [
+          {
+            "host": "job-boards.greenhouse.io",
+            "allowed_path_patterns": [
+              "^/rocketlab/jobs/[0-9]+/?$"
+            ],
+            "audit_reason": "The official Rocket Lab detail page links Apply to the public Greenhouse application target; Greenhouse is not configured as a retrieval authority for Rocket Lab."
+          }
+        ],
+        "completeness_boundary": "bounded Load more terminates; no unbounded pagination is followed",
+        "data_authority": "employer_host",
+        "competing_provider_authority": false,
+        "fixture_index_path": "rocket_lab_index.json",
+        "fixture_detail_path": "rocket_lab_detail.json",
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      }
+    },
+    {
+      "source_id": "google",
+      "company_id": "google",
+      "canonical_company_name": "Google",
+      "canonical_domain": "www.google.com",
+      "careers_entry_url": "https://www.google.com/about/careers/applications/jobs/results",
+      "allowed_hosts": [
+        "www.google.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "software",
+        "cloud",
+        "ai"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "ai_machine_learning"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [
+        "https://www.google.com/about/careers/applications/jobs/results"
+      ],
+      "provenance_notes": "Deferred pending robots and bounded listing audit."
+    },
+    {
+      "source_id": "microsoft",
+      "company_id": "microsoft",
+      "canonical_company_name": "Microsoft",
+      "canonical_domain": "careers.microsoft.com",
+      "careers_entry_url": "https://careers.microsoft.com/us/en/search-results",
+      "allowed_hosts": [
+        "careers.microsoft.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "software",
+        "cloud",
+        "ai"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "ai_machine_learning",
+        "hardware_systems"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "amazon",
+      "company_id": "amazon",
+      "canonical_company_name": "Amazon",
+      "canonical_domain": "www.amazon.jobs",
+      "careers_entry_url": "https://www.amazon.jobs/en/",
+      "allowed_hosts": [
+        "www.amazon.jobs"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "software",
+        "cloud",
+        "robotics"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "robotics",
+        "hardware_systems"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "apple",
+      "company_id": "apple",
+      "canonical_company_name": "Apple",
+      "canonical_domain": "jobs.apple.com",
+      "careers_entry_url": "https://jobs.apple.com/en-us/search",
+      "allowed_hosts": [
+        "jobs.apple.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "software",
+        "hardware",
+        "semiconductor"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "embedded_systems",
+        "hardware_systems",
+        "computer_vision"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "meta",
+      "company_id": "meta",
+      "canonical_company_name": "Meta",
+      "canonical_domain": "www.metacareers.com",
+      "careers_entry_url": "https://www.metacareers.com/jobs",
+      "allowed_hosts": [
+        "www.metacareers.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "software",
+        "ai"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "ai_machine_learning",
+        "computer_vision"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "openai",
+      "company_id": "openai",
+      "canonical_company_name": "OpenAI",
+      "canonical_domain": "openai.com",
+      "careers_entry_url": "https://openai.com/careers",
+      "allowed_hosts": [
+        "openai.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "ai",
+        "software"
+      ],
+      "role_family_tags": [
+        "ai_machine_learning",
+        "software_engineering",
+        "data_engineering"
+      ],
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 720,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "browser_api_hosts": [],
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "boston-dynamics",
+      "company_id": "boston-dynamics",
+      "canonical_company_name": "Boston Dynamics",
+      "canonical_domain": "bostondynamics.com",
+      "careers_entry_url": "https://bostondynamics.com/careers/",
+      "allowed_hosts": [
+        "bostondynamics.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "robotics",
+        "industrial"
+      ],
+      "role_family_tags": [
+        "robotics",
+        "mechanical_engineering",
+        "controls",
+        "software_engineering"
+      ],
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "ge-aerospace",
+      "company_id": "ge-aerospace",
+      "canonical_company_name": "GE Aerospace",
+      "canonical_domain": "careers.geaerospace.com",
+      "careers_entry_url": "https://careers.geaerospace.com/",
+      "allowed_hosts": [
+        "careers.geaerospace.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "aerospace",
+        "industrial",
+        "manufacturing"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "mechanical_engineering",
+        "manufacturing_engineering",
+        "testing_verification"
+      ],
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "lockheed-martin",
+      "company_id": "lockheed-martin",
+      "canonical_company_name": "Lockheed Martin",
+      "canonical_domain": "www.lockheedmartinjobs.com",
+      "careers_entry_url": "https://www.lockheedmartinjobs.com/",
+      "allowed_hosts": [
+        "www.lockheedmartinjobs.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "defense",
+        "aerospace"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "avionics",
+        "systems_integration",
+        "software_engineering"
+      ],
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "northrop-grumman",
+      "company_id": "northrop-grumman",
+      "canonical_company_name": "Northrop Grumman",
+      "canonical_domain": "www.northropgrumman.com",
+      "careers_entry_url": "https://www.northropgrumman.com/careers/",
+      "allowed_hosts": [
+        "www.northropgrumman.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "defense",
+        "aerospace"
+      ],
+      "role_family_tags": [
+        "aerospace_engineering",
+        "avionics",
+        "systems_integration",
+        "testing_verification"
+      ],
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "siemens",
+      "company_id": "siemens",
+      "canonical_company_name": "Siemens",
+      "canonical_domain": "www.siemens.com",
+      "careers_entry_url": "https://www.siemens.com/global/en/company/jobs.html",
+      "allowed_hosts": [
+        "www.siemens.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "industrial",
+        "automation",
+        "energy"
+      ],
+      "role_family_tags": [
+        "industrial_automation",
+        "controls",
+        "manufacturing_engineering",
+        "software_engineering"
+      ],
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-24.1",
+        "audit_date": "2026-07-24"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "Deferred pending audit."
+    },
+    {
+      "source_id": "waabi",
+      "company_id": "waabi",
+      "canonical_company_name": "Waabi",
+      "canonical_domain": "waabi.ai",
+      "careers_entry_url": "https://waabi.ai/careers",
+      "allowed_hosts": [
+        "waabi.ai"
+      ],
+      "redirect_hosts": [
+        "jobs.lever.co"
+      ],
+      "industry_tags": [
+        "autonomous_systems",
+        "artificial_intelligence",
+        "automotive"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "ai_machine_learning",
+        "computer_vision",
+        "robotics",
+        "embedded_systems",
+        "controls",
+        "testing_verification"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US"
+        ],
+        "regions": [
+          "Ontario",
+          "North America"
+        ],
+        "localities": [
+          "Toronto",
+          "Pittsburgh",
+          "San Francisco"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "waabi-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://waabi.ai/careers",
+            "note": "office: official Waabi careers roles list Toronto, ON"
+          },
+          {
+            "evidence_id": "waabi-geo-2",
+            "kind": "official_job_location",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://waabi.ai/careers",
+            "note": "job_location: official Lever board lists Toronto, ON engineering roles"
+          }
+        ]
+      },
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "lever",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_configuration": {
+          "connector_type": "lever",
+          "board_token": "waabi",
+          "lever_api_region": "global"
+        },
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [
+          "waabi.ai"
+        ],
+        "redirect_hosts": [
+          "jobs.lever.co"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_fixture_paths": [
+        "waabi_board.json"
+      ],
+      "audit_evidence_urls": [
+        "https://waabi.ai/careers",
+        "https://jobs.lever.co/waabi"
+      ],
+      "provenance_notes": "Official Waabi careers page links to the Lever board; official roles include Toronto engineering, ML, embedded, perception, verification, and systems work. Lever remains the sole retrieval authority."
+    },
+    {
+      "source_id": "tenstorrent",
+      "company_id": "tenstorrent",
+      "canonical_company_name": "Tenstorrent",
+      "canonical_domain": "tenstorrent.com",
+      "careers_entry_url": "https://tenstorrent.com/careers/software",
+      "allowed_hosts": [
+        "tenstorrent.com"
+      ],
+      "redirect_hosts": [
+        "job-boards.greenhouse.io"
+      ],
+      "industry_tags": [
+        "semiconductor",
+        "ai_hardware",
+        "computer_hardware"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "ai_machine_learning",
+        "embedded_systems",
+        "semiconductor",
+        "hardware_systems_integration",
+        "testing_verification",
+        "automotive_engineering"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US"
+        ],
+        "regions": [
+          "Ontario",
+          "North America"
+        ],
+        "localities": [
+          "Toronto",
+          "North York",
+          "Vancouver",
+          "Austin",
+          "Santa Clara"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "tenstorrent-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://tenstorrent.com/careers/software",
+            "note": "office: official Tenstorrent careers page lists Toronto office at 150 Ferrand Dr, North York"
+          },
+          {
+            "evidence_id": "tenstorrent-geo-2",
+            "kind": "official_job_location",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://tenstorrent.com/careers/software",
+            "note": "job_location: official Greenhouse board lists Toronto AI hardware, software, embedded, and verification roles"
+          }
+        ]
+      },
+      "priority_tier": 1,
+      "enabled": true,
+      "audit_state": "approved",
+      "crawl_cadence_minutes": 360,
+      "robots_policy": "allow",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "greenhouse",
+        "listing_discovery_mode": "provider",
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_configuration": {
+          "connector_type": "greenhouse",
+          "board_token": "tenstorrent",
+          "lever_api_region": null
+        },
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [
+          "tenstorrent.com"
+        ],
+        "redirect_hosts": [
+          "job-boards.greenhouse.io"
+        ],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 20,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_fixture_paths": [
+        "tenstorrent_board.json"
+      ],
+      "audit_evidence_urls": [
+        "https://tenstorrent.com/careers/software",
+        "https://job-boards.greenhouse.io/tenstorrent"
+      ],
+      "provenance_notes": "Official Tenstorrent careers surface lists a North York/Toronto office and links published roles to the exact Tenstorrent Greenhouse board. Greenhouse remains the sole retrieval authority."
+    },
+    {
+      "source_id": "cohere",
+      "company_id": "cohere",
+      "canonical_company_name": "Cohere",
+      "canonical_domain": "cohere.com",
+      "careers_entry_url": "https://cohere.com/careers",
+      "allowed_hosts": [
+        "cohere.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "artificial_intelligence",
+        "software"
+      ],
+      "role_family_tags": [
+        "software_engineering",
+        "data_engineering",
+        "ai_machine_learning"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US"
+        ],
+        "regions": [
+          "Ontario",
+          "North America"
+        ],
+        "localities": [
+          "Toronto",
+          "Montreal",
+          "New York",
+          "San Francisco"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "cohere-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://cohere.com/careers",
+            "note": "office: official Cohere careers page lists a Toronto office"
+          }
+        ]
+      },
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [
+        "https://cohere.com/careers",
+        "https://jobs.ashbyhq.com"
+      ],
+      "provenance_notes": "DEFERRED_SOURCE_MECHANISM: official Cohere careers links to Ashby, which is not an approved connector in this checkpoint. Toronto office evidence is recorded, but no autonomous source is authorized."
+    },
+    {
+      "source_id": "mda-space",
+      "company_id": "mda-space",
+      "canonical_company_name": "MDA Space",
+      "canonical_domain": "mda.space",
+      "careers_entry_url": "https://mda.space/careers",
+      "allowed_hosts": [
+        "mda.space"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "aerospace",
+        "space_systems",
+        "robotics"
+      ],
+      "role_family_tags": [
+        "aerospace",
+        "space_systems",
+        "mechanical_engineering",
+        "manufacturing_engineering",
+        "hardware_systems_integration",
+        "testing_verification"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US",
+          "GB"
+        ],
+        "regions": [
+          "Ontario",
+          "North America"
+        ],
+        "localities": [
+          "Brampton",
+          "Toronto",
+          "Montreal",
+          "Richmond"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "mda-space-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Brampton",
+            "source_reference": "https://mda.space/careers",
+            "note": "office: official MDA Space careers opportunity lists Brampton, Ontario office at 7500 Financial Drive"
+          }
+        ]
+      },
+      "priority_tier": 1,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [
+        "https://mda.space/careers",
+        "https://recruiting.ultipro.ca/MAC5000MCDW/JobBoard/664818ff-3594-4bec-9f30-3394e59e19f3/"
+      ],
+      "provenance_notes": "DEFERRED_SOURCE_MECHANISM: official MDA Space careers delegates Canada opportunities to UKG/UltiPro, which is not an approved connector. Brampton engineering presence is evidenced, but no autonomous source is authorized."
+    },
+    {
+      "source_id": "general-motors",
+      "company_id": "general-motors",
+      "canonical_company_name": "General Motors",
+      "canonical_domain": "gm.com",
+      "careers_entry_url": "https://search-careers.gm.com/en/",
+      "allowed_hosts": [
+        "search-careers.gm.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "automotive",
+        "industrial"
+      ],
+      "role_family_tags": [
+        "automotive_engineering",
+        "software_engineering",
+        "controls",
+        "manufacturing_engineering"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "US",
+          "CA"
+        ],
+        "regions": [
+          "North America"
+        ],
+        "localities": [],
+        "toronto_gta_presence": false,
+        "target_user_relevance": "global",
+        "geographic_evidence": []
+      },
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "DEFERRED_SOURCE_MECHANISM: no approved Greenhouse/Lever/first-party retrieval audit completed."
+    },
+    {
+      "source_id": "bombardier",
+      "company_id": "bombardier",
+      "canonical_company_name": "Bombardier",
+      "canonical_domain": "bombardier.com",
+      "careers_entry_url": "https://bombardier.com/en/careers",
+      "allowed_hosts": [
+        "bombardier.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "aerospace",
+        "manufacturing"
+      ],
+      "role_family_tags": [
+        "aerospace",
+        "mechanical_engineering",
+        "manufacturing_engineering",
+        "testing_verification"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US"
+        ],
+        "regions": [
+          "Quebec",
+          "North America"
+        ],
+        "localities": [],
+        "toronto_gta_presence": false,
+        "target_user_relevance": "global",
+        "geographic_evidence": []
+      },
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "DEFERRED_TORONTO_PRESENCE: Toronto/GTA engineering presence was not established in the bounded audit."
+    },
+    {
+      "source_id": "magna",
+      "company_id": "magna",
+      "canonical_company_name": "Magna International",
+      "canonical_domain": "magna.com",
+      "careers_entry_url": "https://www.magna.com/careers",
+      "allowed_hosts": [
+        "www.magna.com"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "automotive",
+        "industrial",
+        "manufacturing"
+      ],
+      "role_family_tags": [
+        "automotive_engineering",
+        "controls",
+        "manufacturing_engineering",
+        "mechanical_engineering",
+        "testing_verification"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA",
+          "US"
+        ],
+        "regions": [
+          "Ontario",
+          "North America"
+        ],
+        "localities": [
+          "Aurora"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "magna-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Aurora",
+            "source_reference": "https://www.magna.com/careers",
+            "note": "office: official company headquarters evidence identifies Aurora, Ontario"
+          }
+        ]
+      },
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "DEFERRED_SOURCE_MECHANISM: GTA office relevance is plausible from Aurora headquarters, but no approved retrieval mechanism was audited."
+    },
+    {
+      "source_id": "untether-ai",
+      "company_id": "untether-ai",
+      "canonical_company_name": "Untether AI",
+      "canonical_domain": "untether.ai",
+      "careers_entry_url": "https://www.untether.ai/careers",
+      "allowed_hosts": [
+        "www.untether.ai"
+      ],
+      "redirect_hosts": [],
+      "industry_tags": [
+        "semiconductor",
+        "ai_hardware"
+      ],
+      "role_family_tags": [
+        "ai_machine_learning",
+        "semiconductor",
+        "hardware_systems_integration",
+        "embedded_systems",
+        "testing_verification"
+      ],
+      "geographic_coverage": {
+        "country_codes": [
+          "CA"
+        ],
+        "regions": [
+          "Ontario"
+        ],
+        "localities": [
+          "Toronto"
+        ],
+        "toronto_gta_presence": true,
+        "target_user_relevance": "toronto_gta",
+        "geographic_evidence": [
+          {
+            "evidence_id": "untether-ai-geo-1",
+            "kind": "official_office",
+            "country_code": "CA",
+            "region": "Ontario",
+            "locality": "Toronto",
+            "source_reference": "https://www.untether.ai/careers",
+            "note": "office: candidate retained for bounded official Toronto hiring audit"
+          }
+        ]
+      },
+      "priority_tier": 2,
+      "enabled": false,
+      "audit_state": "deferred",
+      "crawl_cadence_minutes": 1440,
+      "robots_policy": "defer",
+      "browser_rendering_allowed": false,
+      "source_plan": {
+        "mechanism": "deferred",
+        "listing_discovery_mode": null,
+        "detail_fetch_mode": null,
+        "detail_extraction_mode": null,
+        "provider_source_id": null,
+        "sitemap_urls": [],
+        "index_urls": [],
+        "direct_detail_urls": [],
+        "allowed_job_path_patterns": [],
+        "navigation_hosts": [],
+        "redirect_hosts": [],
+        "browser_resource_hosts": [],
+        "browser_api_hosts": [],
+        "max_listing_pages": 0,
+        "max_browser_listing_pages": 0,
+        "max_browser_actions": 0,
+        "max_job_detail_pages": 0,
+        "max_network_requests": 0,
+        "max_total_render_seconds": 0,
+        "audit_version": "2026-07-25.1",
+        "audit_date": "2026-07-25"
+      },
+      "audit_evidence_urls": [],
+      "provenance_notes": "DEFERRED_IDENTITY_AUTHORITY: Toronto AI-hardware relevance is retained for audit queue, but no approved source authority has been established."
+    },
+    {"source_id":"nvidia","company_id":"nvidia","canonical_company_name":"NVIDIA","canonical_domain":"www.nvidia.com","careers_entry_url":"https://www.nvidia.com/en-us/about-nvidia/careers/","allowed_hosts":["www.nvidia.com"],"redirect_hosts":[],"industry_tags":["semiconductor","ai_hardware"],"role_family_tags":["ai_machine_learning","software_engineering","embedded_systems","semiconductor"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"amd","company_id":"amd","canonical_company_name":"AMD","canonical_domain":"www.amd.com","careers_entry_url":"https://www.amd.com/en/corporate/careers","allowed_hosts":["www.amd.com"],"redirect_hosts":[],"industry_tags":["semiconductor","ai_hardware"],"role_family_tags":["ai_machine_learning","software_engineering","embedded_systems","semiconductor"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"ibm","company_id":"ibm","canonical_company_name":"IBM","canonical_domain":"www.ibm.com","careers_entry_url":"https://www.ibm.com/careers","allowed_hosts":["www.ibm.com"],"redirect_hosts":[],"industry_tags":["software","cloud","ai"],"role_family_tags":["software_engineering","data_engineering","ai_machine_learning"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"intel","company_id":"intel","canonical_company_name":"Intel","canonical_domain":"www.intel.com","careers_entry_url":"https://jobs.intel.com/","allowed_hosts":["jobs.intel.com"],"redirect_hosts":[],"industry_tags":["semiconductor","ai_hardware"],"role_family_tags":["software_engineering","embedded_systems","semiconductor","testing_verification"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"qualcomm","company_id":"qualcomm","canonical_company_name":"Qualcomm","canonical_domain":"www.qualcomm.com","careers_entry_url":"https://www.qualcomm.com/company/careers","allowed_hosts":["www.qualcomm.com"],"redirect_hosts":[],"industry_tags":["semiconductor","ai_hardware"],"role_family_tags":["software_engineering","embedded_systems","semiconductor","computer_vision"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"arm","company_id":"arm","canonical_company_name":"Arm","canonical_domain":"www.arm.com","careers_entry_url":"https://www.arm.com/company/careers","allowed_hosts":["www.arm.com"],"redirect_hosts":[],"industry_tags":["semiconductor","ai_hardware"],"role_family_tags":["software_engineering","embedded_systems","semiconductor"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"salesforce","company_id":"salesforce","canonical_company_name":"Salesforce","canonical_domain":"www.salesforce.com","careers_entry_url":"https://www.salesforce.com/company/careers/","allowed_hosts":["www.salesforce.com"],"redirect_hosts":[],"industry_tags":["software","cloud"],"role_family_tags":["software_engineering","data_engineering","ai_machine_learning"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"oracle","company_id":"oracle","canonical_company_name":"Oracle","canonical_domain":"www.oracle.com","careers_entry_url":"https://www.oracle.com/careers/","allowed_hosts":["www.oracle.com"],"redirect_hosts":[],"industry_tags":["software","cloud"],"role_family_tags":["software_engineering","data_engineering","ai_machine_learning"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"tesla","company_id":"tesla","canonical_company_name":"Tesla","canonical_domain":"www.tesla.com","careers_entry_url":"https://www.tesla.com/careers","allowed_hosts":["www.tesla.com"],"redirect_hosts":[],"industry_tags":["automotive","energy"],"role_family_tags":["automotive_engineering","software_engineering","controls","manufacturing_engineering"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"rivian","company_id":"rivian","canonical_company_name":"Rivian","canonical_domain":"rivian.com","careers_entry_url":"https://rivian.com/careers","allowed_hosts":["rivian.com"],"redirect_hosts":[],"industry_tags":["automotive","robotics"],"role_family_tags":["automotive_engineering","software_engineering","controls","manufacturing_engineering"],"priority_tier":1,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"blue-origin","company_id":"blue-origin","canonical_company_name":"Blue Origin","canonical_domain":"www.blueorigin.com","careers_entry_url":"https://www.blueorigin.com/careers","allowed_hosts":["www.blueorigin.com"],"redirect_hosts":[],"industry_tags":["space","aerospace"],"role_family_tags":["aerospace_engineering","space_systems","software_engineering","manufacturing_engineering"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"boeing","company_id":"boeing","canonical_company_name":"Boeing","canonical_domain":"jobs.boeing.com","careers_entry_url":"https://jobs.boeing.com/","allowed_hosts":["jobs.boeing.com"],"redirect_hosts":[],"industry_tags":["aerospace","manufacturing"],"role_family_tags":["aerospace_engineering","space_systems","software_engineering","manufacturing_engineering"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"rockwell-automation","company_id":"rockwell-automation","canonical_company_name":"Rockwell Automation","canonical_domain":"www.rockwellautomation.com","careers_entry_url":"https://www.rockwellautomation.com/en-us/company/careers.html","allowed_hosts":["www.rockwellautomation.com"],"redirect_hosts":[],"industry_tags":["industrial","automation"],"role_family_tags":["industrial_automation","controls","manufacturing_engineering","software_engineering"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."},
+    {"source_id":"caterpillar","company_id":"caterpillar","canonical_company_name":"Caterpillar","canonical_domain":"www.caterpillar.com","careers_entry_url":"https://www.caterpillar.com/en/careers.html","allowed_hosts":["www.caterpillar.com"],"redirect_hosts":[],"industry_tags":["industrial","manufacturing"],"role_family_tags":["controls","manufacturing_engineering","mechanical_engineering","industrial_automation"],"priority_tier":2,"enabled":false,"audit_state":"deferred","crawl_cadence_minutes":1440,"robots_policy":"defer","browser_rendering_allowed":false,"source_plan":{"mechanism":"deferred","listing_discovery_mode":null,"detail_fetch_mode":null,"detail_extraction_mode":null,"provider_source_id":null,"sitemap_urls":[],"index_urls":[],"direct_detail_urls":[],"allowed_job_path_patterns":[],"navigation_hosts":[],"redirect_hosts":[],"browser_resource_hosts":[],"browser_api_hosts":[],"max_listing_pages":0,"max_browser_listing_pages":0,"max_browser_actions":0,"max_job_detail_pages":0,"max_network_requests":0,"max_total_render_seconds":0,"audit_version":"2026-07-25.1","audit_date":"2026-07-25"},"audit_evidence_urls":[],"provenance_notes":"DEFERRED_SOURCE_MECHANISM: no approved retrieval audit."}
+  ]
+}

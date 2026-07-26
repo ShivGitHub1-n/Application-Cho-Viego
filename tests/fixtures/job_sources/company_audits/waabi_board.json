@@ -1,0 +1,14 @@
+{
+  "fixture_kind": "redacted_lever_board_audit",
+  "official_careers_url": "https://waabi.ai/careers",
+  "provider_board_url": "https://jobs.lever.co/waabi",
+  "connector_type": "lever",
+  "board_token": "waabi",
+  "lever_api_region": "global",
+  "sample_posting_id": "redacted-waabi-posting-id",
+  "sample_hosted_url": "https://jobs.lever.co/waabi/redacted-posting",
+  "toronto_gta_locations": ["Toronto, ON"],
+  "role_families": ["embedded_systems", "ai_machine_learning", "computer_vision", "testing_verification"],
+  "description": "[redacted]",
+  "candidate_data": false
+}
