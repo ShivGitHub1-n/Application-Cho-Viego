@@ -5,8 +5,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 LEGACY_SCHEMA_VERSION = 1
+PREVIOUS_SCHEMA_VERSION = 2
 
 
 def initialize_job_discovery_database(database_path: str | Path) -> None:
@@ -18,8 +19,12 @@ def initialize_job_discovery_database(database_path: str | Path) -> None:
         current = connection.execute("PRAGMA user_version").fetchone()[0]
         if current == 0:
             _create_version_two_schema(connection)
+            _migrate_version_two_to_three(connection)
         elif current == LEGACY_SCHEMA_VERSION:
             _migrate_version_one_to_two(connection)
+            _migrate_version_two_to_three(connection)
+        elif current == PREVIOUS_SCHEMA_VERSION:
+            _migrate_version_two_to_three(connection)
         elif current != SCHEMA_VERSION:
             raise RuntimeError(f"unsupported job-discovery schema version {current}")
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -105,6 +110,64 @@ def _migrate_version_one_to_two(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_job_recommendations_feed_visibility "
         "ON job_recommendations(feed_kind, visibility, run_id, rank)"
     )
+
+
+def _migrate_version_two_to_three(connection: sqlite3.Connection) -> None:
+    """Add runtime observations without copying editable registry authority."""
+
+    statements = [
+        "UPDATE job_search_preferences SET schema_version = 3",
+        "UPDATE discovered_jobs SET schema_version = 3",
+        """
+        CREATE TABLE IF NOT EXISTS source_runtime_state (
+            source_id TEXT PRIMARY KEY,
+            last_attempted_at TEXT,
+            last_successful_at TEXT,
+            last_complete_at TEXT,
+            last_outcome TEXT NOT NULL DEFAULT 'never_run',
+            diagnostic_codes_json TEXT NOT NULL DEFAULT '[]',
+            consecutive_failure_count INTEGER NOT NULL DEFAULT 0,
+            next_eligible_refresh_at TEXT,
+            content_fingerprint TEXT,
+            source_state_fingerprint TEXT,
+            audit_version TEXT,
+            registry_plan_hash TEXT,
+            extraction_profile_hash TEXT,
+            conditional_validators_json TEXT NOT NULL DEFAULT '{}',
+            browser_required INTEGER NOT NULL DEFAULT 0,
+            source_health TEXT NOT NULL DEFAULT 'unknown',
+            incomplete_static INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS job_identity_aliases (
+            alias_id INTEGER PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            identity_kind TEXT NOT NULL,
+            identity_value TEXT NOT NULL,
+            external_identity TEXT,
+            requisition_identity TEXT,
+            application_identity TEXT,
+            canonical_detail_identity TEXT,
+            job_id TEXT,
+            created_at TEXT NOT NULL DEFAULT '',
+            UNIQUE(source_id, identity_kind, identity_value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_job_identity_aliases_job
+            ON job_identity_aliases(job_id, source_id);
+        CREATE TABLE IF NOT EXISTS refresh_locks (
+            source_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            acquired_at TEXT NOT NULL,
+            heartbeat_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_source_runtime_due
+            ON source_runtime_state(next_eligible_refresh_at, source_id);
+        """,
+    ]
+    for statement in statements:
+        for command in statement.split(";"):
+            if command.strip():
+                connection.execute(command)
 
 
 __all__ = [

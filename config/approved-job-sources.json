@@ -577,6 +577,16 @@
         "fixture_detail_path": "rocket_lab_detail.json",
         "audit_version": "2026-07-24.1",
         "audit_date": "2026-07-24"
+      },
+      "extraction_profile": {
+        "profile_id": "rocket-lab-static-index-v1",
+        "allowed_link_path_patterns": [
+          "^/careers/positions/[^/]+/?$"
+        ],
+        "job_card_attributes": {
+          "class": "job-card"
+        },
+        "canonical_url_policy": "canonical_then_source"
       }
     },
     {

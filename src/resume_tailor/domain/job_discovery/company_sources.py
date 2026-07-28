@@ -44,6 +44,24 @@ class DetailExtractionMode(StrEnum):
     DETERMINISTIC_HTML = "deterministic_html"
 
 
+class BrowserActionSpec(BaseModel):
+    """A bounded, declarative action permitted by an audited browser plan."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action_type: Literal["wait_for_selector", "click", "load_more"]
+    selector: str = Field(min_length=1, max_length=256)
+    max_attempts: int = Field(default=1, ge=1, le=10)
+    timeout_ms: int = Field(default=5_000, ge=100, le=30_000)
+
+    @field_validator("selector")
+    @classmethod
+    def validate_selector(cls, value: str) -> str:
+        if any(ord(char) < 32 for char in value) or "javascript:" in value.casefold():
+            raise ValueError("browser selectors must be bounded and declarative")
+        return value
+
+
 class SourceAuditState(StrEnum):
     APPROVED = "approved"
     DEFERRED = "deferred"
@@ -372,8 +390,7 @@ class FirstPartyAuditEvidence(BaseModel):
             return False
         for rule in self.application_hosts:
             if rule.host == host and any(
-                re.search(pattern, path) is not None
-                for pattern in rule.allowed_path_patterns
+                re.search(pattern, path) is not None for pattern in rule.allowed_path_patterns
             ):
                 return True
         return False
@@ -427,6 +444,7 @@ class AuditedSourcePlan(BaseModel):
     redirect_hosts: list[str] = Field(default_factory=list)
     browser_resource_hosts: list[str] = Field(default_factory=list)
     browser_api_hosts: list[str] = Field(default_factory=list)
+    browser_actions: list[BrowserActionSpec] = Field(default_factory=list, max_length=32)
     max_listing_pages: int = 0
     max_browser_listing_pages: int = 0
     max_browser_actions: int = 0
@@ -658,10 +676,15 @@ class CompanyCareerSource(BaseModel):
             raise ValueError("only approved sources can be enabled")
         if self.enabled and self.source_plan.audit_date is None:
             raise ValueError("enabled sources require an audit date")
-        if self.enabled and self.source_plan.mechanism in {
-            SourceMechanism.GREENHOUSE,
-            SourceMechanism.LEVER,
-        } and self.source_plan.provider_configuration is None:
+        if (
+            self.enabled
+            and self.source_plan.mechanism
+            in {
+                SourceMechanism.GREENHOUSE,
+                SourceMechanism.LEVER,
+            }
+            and self.source_plan.provider_configuration is None
+        ):
             raise ValueError("enabled provider sources require typed provider configuration")
         if self.enabled and self.source_plan.mechanism is SourceMechanism.FIRST_PARTY:
             if self.first_party_audit is None:
@@ -801,6 +824,7 @@ def _normalized_audited_path(path: str) -> str:
 __all__ = [
     "AuditedSourcePlan",
     "AuditedHostRule",
+    "BrowserActionSpec",
     "CompanyCareerSource",
     "DetailExtractionMode",
     "ExtractionProfileSpec",

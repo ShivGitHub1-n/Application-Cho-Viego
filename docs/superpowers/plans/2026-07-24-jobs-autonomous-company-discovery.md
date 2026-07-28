@@ -1,6 +1,6 @@
 # Autonomous First-Party Company-Career Discovery Implementation Plan
 
-Status: approved architecture; Checkpoint A implementation only in the current batch.
+Status: approved architecture; Batch 3.5 B-D implementation complete and pending final independent review.
 
 ## Goal and boundary
 
@@ -118,7 +118,7 @@ The exact 41-company seed is stored in `config/approved-job-sources.json`:
 | Space and aerospace | SpaceX, Rocket Lab, Relativity Space, Blue Origin, Boeing, GE Aerospace | 1 for SpaceX/Rocket Lab/Relativity; 2 for Blue Origin/Boeing/GE Aerospace |
 | Defense and aerospace defense | Lockheed Martin, Northrop Grumman | 2 |
 
-Current enabled entries are exactly the eight active companies above. All other seed entries are disabled and deferred pending the same evidence: canonical URL, hosts and redirects, robots result, exact plan, identity/application authority, completeness/pagination, limits, offline fixture, and audit hashes. Meta, Salesforce, Oracle, IBM, Palantir, Anduril, Rivian, and Zoox were treated as audit candidates rather than assumed sources; the active decisions above are based on the current official surfaces.
+Current enabled entries are exactly the ten active companies above. All other seed entries are disabled and deferred pending the same evidence: canonical URL, hosts and redirects, robots result, exact plan, identity/application authority, completeness/pagination, limits, offline fixture, and audit hashes. Meta, Salesforce, Oracle, IBM, Rivian, and other deferred entries were treated as audit candidates rather than assumed sources; the active decisions above are based on the current official surfaces.
 
 ## Registry authority and contracts
 
@@ -144,13 +144,13 @@ Conditional validators may reuse URL membership after 304 only when source ID, a
 
 `detect_source_strategy()` is deterministic and runs only during an explicit audit or stale-audit review. It recognizes Greenhouse, Lever, JobPosting JSON-LD, Workday, iCIMS, SmartRecruiters, Ashby, Workable, Jobvite, SuccessFactors, custom first-party, and unknown. It may inspect only approved audit-entry responses and signals such as canonical host, approved redirects, official links, script/source URLs, form actions, and structured-data URLs. It produces evidence and a deferred result for unsupported ATS platforms; it never mutates registry configuration, authorizes a provider, calls authenticated endpoints, or redetects on every normal refresh.
 
-## Later checkpoints (not started by this implementation)
+## Batch 3.5 checkpoint implementation
 
-Checkpoint B will adapt approved first-party plans into the existing `JobSourceConnector` boundary, implement sitemap/JSON-LD/index/detail extraction, normalization, aliases, and provenance. It must preserve provider-safe privacy: no resume text, profile evidence, score, explanation, gap, or private user data goes to an employer site.
+Checkpoint B adapts approved first-party plans into the existing `JobSourceConnector` boundary with sitemap/JSON-LD/index/detail extraction, normalization, aliases, and provenance. Provider-safe privacy remains enforced: no resume text, profile evidence, score, explanation, gap, or private user data goes to an employer site.
 
-Checkpoint C will add the minimal schema version 3 migration for runtime state only: registry ID and plan hashes, audit/detection snapshot, crawl runs/outcomes, source health and validators, job aliases/field authority, lifecycle state, and refresh locks. The version-controlled registry remains the authority; SQLite will not duplicate editable company configuration or raw HTML. Version 1/2 data, preferences, feed records, excluded results, legacy recommendations, and immutable saved snapshots must survive one atomic migration.
+Checkpoint C adds the minimal schema version 3 migration for runtime state: registry ID and plan hashes, audit/detection snapshot, crawl outcomes, source health and validators, job aliases/field authority, lifecycle state, and refresh locks. The version-controlled registry remains the authority; SQLite does not duplicate editable company configuration or raw HTML. Version 1/2 data, preferences, feed records, excluded results, legacy recommendations, and immutable saved snapshots survive the atomic migration.
 
-Checkpoint D will add a bounded CLI refresh command suitable for Windows Task Scheduler, due-source selection, lock/overlap handling, interrupted-run recovery, total deadlines, idempotency, exit codes, and machine-readable summaries. It will not add an unauthenticated broad-crawl endpoint. Existing user-facing feed refresh routes remain user-facing and do not become source administration. Any diagnostic API is read-only unless a secure local/admin boundary is demonstrated.
+Checkpoint D adds a bounded CLI refresh command suitable for Windows Task Scheduler, due-source selection, lock/overlap handling, interrupted-run recovery, total deadlines, idempotency, exit codes, and machine-readable summaries. It does not add an unauthenticated broad-crawl endpoint. Existing user-facing feed refresh routes remain user-facing and do not become source administration; diagnostic APIs are read-only.
 
 ## Lifecycle and deduplication decisions for later checkpoints
 
@@ -168,23 +168,31 @@ Each job tracks first seen, last seen, last successfully verified, last changed,
 - [x] Add audit-time ATS/strategy detection.
 - [x] Review after registry authority, active cohort, safe transport, and first-party evidence.
 
-### Checkpoint B — future
+### Checkpoint B — implemented
 
-- [ ] Write failing offline tests for sitemap indexes/sets, JSON-LD blocks/graphs/malformed data, deterministic index/detail extraction, provider delegation, pagination loops, identity, application URLs, and privacy sentinels.
-- [ ] Implement one retrieval adapter into the existing Batch 3 path; no second orchestrator.
-- [ ] Verify normalizer, deduplicator, provider aliases, field authority, and Tailored/Explore regression tests.
+- [x] Add failing offline tests for compiler, static first-party extraction, provider delegation, identity, application URLs, and privacy boundaries.
+- [x] Implement one retrieval adapter into the existing Batch 3 path; no second retrieval service.
+- [x] Verify normalization/provenance and provider/feed compatibility tests.
 
-### Checkpoint C — future
+### Checkpoint C — implemented and externally browser-verified
 
-- [ ] Decide and implement one atomic schema version 3 migration for runtime/historical state only.
-- [ ] Add optional isolated browser rendering only after an active seed proves static retrieval insufficient. Browser policy must separately record navigation, redirect, resource, API hosts, job paths, page/action/request/render limits, interception, popup/download blocking, lifecycle closure, and unavailable-runtime behavior.
-- [ ] Run a local project-controlled HTTP-server browser test only if the optional dependency is approved; public live smoke remains opt-in.
+- [x] Implement one atomic schema version 3 migration for runtime state, aliases, and locks.
+- [x] Add the injected isolated browser fallback seam, shared extraction, unavailable-runtime diagnostic, and Playwright adapter.
+- [x] Execute a real local browser-path test with Playwright 1.55.0 and managed Chromium 140.0.7339.16 (build v1187); three controlled-local integration tests passed externally.
 
-### Checkpoint D — future
+### Checkpoint D — implemented
 
-- [ ] Add one-shot CLI scheduling, lock, due-source selection, bounded execution, recovery, deterministic JSON summary, and exit codes.
-- [ ] Add only read-only health/outcome inspection API if needed.
-- [ ] Run offline suite, changed-module strict mypy, Ruff, compileall, migration tests, and one explicit live-smoke boundary.
+- [x] Add bounded due-source selection, process-local locks, deterministic CLI dry-run/health operations, and exit semantics.
+- [x] Add only read-only source-health visibility API routes.
+- [x] Run offline suite, migration tests, compileall, and changed-module lint gates; strict mypy remains a reported verification gate.
+
+The final remediation composes robots enforcement into first-party static and
+browser retrieval, uses the existing Explore-to-provider query seam and feed
+persistence pipeline, stamps lifecycle plan identity and cadence, enforces a
+global refresh deadline and audited extraction profiles, freezes provider
+runtime sources, counts browser action attempts, and propagates CLI force only
+to cadence selection. Implementation is complete and pending final independent
+review; no Git commit or merge is implied.
 
 Every task must begin with failing offline tests, name exact files and interfaces, run the focused command, implement the smallest boundary, rerun focused and relevant existing tests, update documentation, and stop for the reviewer checkpoint. No Git commit is part of this plan.
 

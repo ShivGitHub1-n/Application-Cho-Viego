@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
     JobSourceFetchResult,
+    SourceDefinition,
     SourceJobRecord,
     SupportedJobSource,
 )
@@ -45,7 +48,7 @@ class RetrievalService:
     def __init__(
         self,
         *,
-        sources: Sequence[SupportedJobSource],
+        sources: Sequence[SourceDefinition],
         connectors: ConnectorCollection,
         max_pages: int = 20,
         max_records_per_source: int = 1000,
@@ -63,6 +66,8 @@ class RetrievalService:
         records: list[RetrievedSourceRecord] = []
         outcomes: list[SourceOutcome] = []
         for source in self._sources:
+            if query.source_restrictions and source.source_id not in query.source_restrictions:
+                continue
             outcome, accepted = self._retrieve_source(source, query, fetched_at=fetched_at)
             outcomes.append(outcome)
             records.extend(accepted)
@@ -86,7 +91,7 @@ class RetrievalService:
 
     def _retrieve_source(
         self,
-        source: SupportedJobSource,
+        source: SourceDefinition,
         query: Query,
         *,
         fetched_at: datetime,
@@ -97,7 +102,7 @@ class RetrievalService:
         accepted: list[RetrievedSourceRecord] = []
         try:
             connector = self._connector_for(source)
-            capabilities = connector.capabilities(source)
+            capabilities = connector.capabilities(cast(Any, source))
         except Exception as error:
             errors.append(
                 self._diagnostic(
@@ -167,7 +172,7 @@ class RetrievalService:
             pages_fetched += 1
             try:
                 page = connector.fetch_page(
-                    source,
+                    cast(Any, source),
                     provider_query.model_copy(update={"cursor": cursor_value}),
                     cursor,
                     fetched_at=fetched_at,
@@ -372,7 +377,7 @@ class RetrievalService:
             return False
         return True
 
-    def _connector_for(self, source: SupportedJobSource) -> JobSourceConnector:
+    def _connector_for(self, source: SourceDefinition) -> JobSourceConnector:
         configured = self._connectors.get(source.connector_type)
         if configured is None:
             raise RuntimeError("job source connector is not configured")
@@ -386,7 +391,7 @@ class RetrievalService:
     @staticmethod
     def _diagnostic(
         kind: SourceDiagnosticKind,
-        source: SupportedJobSource,
+        source: SourceDefinition,
         *,
         page: int,
         cursor: str | None,
@@ -407,6 +412,9 @@ class RetrievalService:
 
     @staticmethod
     def _safe_error_code(error: Exception) -> str:
+        source_code = getattr(error, "code", None)
+        if isinstance(source_code, str) and re.fullmatch(r"[a-z0-9_]+", source_code):
+            return source_code
         name = error.__class__.__name__
         return {
             "JobSourceEnvelopeError": "malformed_envelope",
@@ -418,6 +426,23 @@ class RetrievalService:
 
     @staticmethod
     def _safe_error_message(error: Exception) -> str:
+        source_messages = {
+            "robots_denied": "Source robots policy denied this refresh.",
+            "browser_required": "Source requires the approved browser fallback.",
+            "browser_unavailable": "The approved browser runtime is unavailable.",
+            "listing_parse_failed": "Source listing could not be parsed deterministically.",
+            "sitemap_parse_failed": "Source sitemap could not be parsed safely.",
+            "detail_url_rejected": "Source returned a detail URL outside its approved policy.",
+            "detail_fetch_failed": "Source detail retrieval failed.",
+            "content_type_rejected": "Source content type is not approved.",
+            "response_too_large": "Source response exceeded the bounded size limit.",
+            "required_field_missing": "Source detail omitted a required job field.",
+            "identity_missing": "Source detail omitted stable job identity.",
+            "partial_detail_failure": "Some source details failed after partial retrieval.",
+        }
+        source_code = getattr(error, "code", None)
+        if isinstance(source_code, str) and source_code in source_messages:
+            return source_messages[source_code]
         return {
             "JobSourceEnvelopeError": "Provider returned a malformed page envelope.",
             "JobSourceRateLimitedError": "Provider rate limit reached.",
@@ -470,7 +495,7 @@ class _LegacyConnectorAdapter:
     ) -> JobSourcePage:
         if cursor.value is not None:
             raise RuntimeError("legacy source does not support pagination")
-        result = self._connector.fetch(source, fetched_at=fetched_at)
+        result = cast(Any, self._connector).fetch(source, fetched_at=fetched_at)
         if not isinstance(result, JobSourceFetchResult):
             raise TypeError("legacy connector returned an invalid fetch result")
         return JobSourcePage(

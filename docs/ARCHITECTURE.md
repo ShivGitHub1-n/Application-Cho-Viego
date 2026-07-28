@@ -130,3 +130,37 @@ Explore refresh/read/excluded-feed contracts; `/job-discovery/refresh` is a
 Tailored compatibility alias. The policy is development-gate-approved but not
 locked-release-certified; the locked split remains sealed. The dedicated Jobs
 UI belongs to Batch 4.
+
+## Batch 3.5 autonomous source discovery
+
+The approved company registry compiles into immutable provider or first-party
+runtime sources. Rocket Lab is explicit `FIRST_PARTY` and uses the employer
+detail URL as stable identity. Static-first sitemap/index/detail retrieval,
+bounded JobPosting JSON-LD, and declarative HTML extraction feed the existing
+retrieval, normalization, deduplication, evaluator, and Tailored/Explore path.
+Application URLs are terminal provenance and are never fetched.
+
+Browser fallback is an injected isolated capability only after an explicit
+`browser_required` result for an audited first-party plan. Static HTTP pins
+validated destination IPs; browsers retain a DNS TOCTOU residual risk because
+the browser resolves sockets. Host/path/resource interception, isolated
+contexts, bounded requests/actions/render time, and close-on-failure bound that
+risk. The real adapter is Playwright-backed, prefers Playwright-managed
+Chromium, and otherwise locates only trusted system Chrome/Edge paths; registry
+data cannot inject executable paths, launch arguments, scripts, or environment
+variables. Schema version 3 stores runtime observations, separate content and
+source-state fingerprints, aliases, and locks without copying registry
+authority, raw HTML, credentials, or full descriptions. Broad/force refresh is
+CLI-only and source visibility is read-only health data.
+
+Production source-refresh hardening composes one fail-closed robots checker
+into static and browser first-party retrieval without network work during
+startup. The orchestrator uses sanctioned Explore queries and hands retrieved
+records to the existing normalization, frozen evaluation, feed, alias, and
+transactional SQLite persistence boundary. Runtime state stamps compiled
+audit/plan/profile identity, separate content and source-state fingerprints,
+bounded cadence/backoff, and next eligibility. A global deadline prevents new
+source starts after expiry. Static and rendered indexes consume the same
+audited declarative extraction profile; browser action limits count actual
+attempts and stop unchanged bounded load-more DOM. CLI force bypasses cadence
+only.

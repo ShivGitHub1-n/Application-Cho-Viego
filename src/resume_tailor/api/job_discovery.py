@@ -18,6 +18,7 @@ from resume_tailor.application.job_discovery.saved import (
     DiscoveredJobNotFoundError,
     SavedJobNotFoundError,
 )
+from resume_tailor.application.job_discovery.source_health import SourceHealthSummary
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
     DiscoveryRunStatus,
@@ -114,13 +115,15 @@ def _feed_response(
     excluded = [
         item for item in recommendations if item.visibility is RecommendationVisibility.EXCLUDED
     ]
-    items = excluded if excluded_only else [
-        item for item in recommendations if item.visibility is RecommendationVisibility.VISIBLE
-    ]
+    items = (
+        excluded
+        if excluded_only
+        else [
+            item for item in recommendations if item.visibility is RecommendationVisibility.VISIBLE
+        ]
+    )
     policy_versions = {
-        item.evaluation_policy_version
-        for item in recommendations
-        if item.evaluation_policy_version
+        item.evaluation_policy_version for item in recommendations if item.evaluation_policy_version
     }
     return JobFeedResponse(
         feed_kind=feed_kind,
@@ -131,8 +134,7 @@ def _feed_response(
             for item in (run.source_outcomes if run is not None else [])
         ],
         partial_success=(
-            run is not None
-            and run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+            run is not None and run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
         ),
         policy_version=next(iter(policy_versions)) if len(policy_versions) == 1 else None,
         earlier_policy=any(item.earlier_policy for item in recommendations),
@@ -243,9 +245,7 @@ def refresh_tailored_feed(
                 started_at=datetime.now(UTC),
             )
             details = (
-                services.runs.get(request.user_id, run.id)
-                if services.runs is not None
-                else None
+                services.runs.get(request.user_id, run.id) if services.runs is not None else None
             )
         except ProfileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Profile was not found.") from error
@@ -295,9 +295,7 @@ def refresh_explore_feed(
                 started_at=datetime.now(UTC),
             )
             details = (
-                services.runs.get(request.user_id, run.id)
-                if services.runs is not None
-                else None
+                services.runs.get(request.user_id, run.id) if services.runs is not None else None
             )
         except ProfileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Profile was not found.") from error
@@ -328,9 +326,7 @@ def _get_persisted_feed(
 ) -> JobFeedResponse:
     if services.feed_queries is None:
         raise HTTPException(status_code=503, detail="Feed retrieval is unavailable.")
-    details = services.feed_queries.get(
-        user_id, feed_kind, excluded_only=excluded_only
-    )
+    details = services.feed_queries.get(user_id, feed_kind, excluded_only=excluded_only)
     items = details.items
     policy_versions = {
         item.evaluation_policy_version for item in items if item.evaluation_policy_version
@@ -442,6 +438,34 @@ def get_discovery_run(
             run=details.run,
             recommendations=details.recommendations,
         )
+    finally:
+        services.close()
+
+
+@router.get("/sources", response_model=list[SourceHealthSummary])
+def list_source_health(
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> list[SourceHealthSummary]:
+    if services.source_health is None:
+        raise HTTPException(status_code=503, detail="Source health is unavailable.")
+    try:
+        return services.source_health.list()
+    finally:
+        services.close()
+
+
+@router.get("/sources/{source_id}/health", response_model=SourceHealthSummary)
+def get_source_health(
+    source_id: str = Path(min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> SourceHealthSummary:
+    if services.source_health is None:
+        raise HTTPException(status_code=503, detail="Source health is unavailable.")
+    try:
+        try:
+            return services.source_health.get(source_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Job source was not found.") from error
     finally:
         services.close()
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from resume_tailor.infrastructure.job_sources.robots import (
     RobotsCacheEntry,
+    RobotsChecker,
     RobotsDecision,
     evaluate_robots_response,
     parse_robots,
@@ -69,3 +70,25 @@ def test_robots_terminal_wildcard_and_versioned_product_token() -> None:
     )
     assert rules.decide("/private/x", user_agent="Cho-Viego/1.0") is RobotsDecision.DISALLOW
     assert rules.decide("/fallback", user_agent="OtherBot/1.0") is RobotsDecision.DISALLOW
+
+
+def test_composed_robots_checker_is_cached_and_fail_closed() -> None:
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def get_sync(self, url: str, *, headers=None):
+            self.calls.append(url)
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/plain"},
+                text="User-agent: *\nDisallow: /private\nAllow: /careers\n",
+            )
+
+    import httpx
+
+    client = Client()
+    checker = RobotsChecker(client, now=lambda: datetime(2026, 7, 26, tzinfo=UTC))
+    assert checker("https://example.com/careers/positions/")
+    assert not checker("https://example.com/private/secret")
+    assert client.calls == ["https://example.com/robots.txt"]

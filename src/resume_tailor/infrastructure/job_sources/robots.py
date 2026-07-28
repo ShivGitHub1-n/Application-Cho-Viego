@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Protocol
 from urllib.parse import unquote_to_bytes, urlsplit
+
+import httpx
+
+
+class _RobotsHttpClient(Protocol):
+    def get_sync(self, url: str, *, headers: dict[str, str] | None = None) -> httpx.Response: ...
 
 
 class RobotsDecision(StrEnum):
@@ -27,6 +35,54 @@ class RobotsCacheEntry:
 
     def is_fresh(self, now: datetime) -> bool:
         return now - self.fetched_at <= timedelta(hours=24)
+
+
+class RobotsChecker:
+    """One source-aware, fail-closed robots authority for explicit retrieval."""
+
+    def __init__(
+        self,
+        client: _RobotsHttpClient,
+        *,
+        user_agent: str = "Cho-Viego/1.0",
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._client = client
+        self._user_agent = user_agent
+        self._now = now or (lambda: datetime.now(UTC))
+        self._cache: dict[str, RobotsCacheEntry] = {}
+
+    def __call__(self, url: str) -> bool:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+        if parsed.scheme.casefold() != "https" or not host:
+            return False
+        current = self._now()
+        cached = self._cache.get(host)
+        if cached is not None and cached.is_fresh(current):
+            return (
+                cached.rules.decide(parsed.path or "/", user_agent=self._user_agent)
+                is not RobotsDecision.DISALLOW
+            )
+        try:
+            response = self._client.get_sync(
+                f"https://{host}/robots.txt",
+                headers={"User-Agent": self._user_agent},
+            )
+        except Exception:
+            return False
+        result = evaluate_robots_response(
+            response.status_code,
+            response.content,
+            cache=cached,
+            now=current,
+        )
+        if result.rules is not None:
+            self._cache[host] = RobotsCacheEntry(current, result.rules)
+            return result.rules.decide(
+                parsed.path or "/", user_agent=self._user_agent
+            ) is not RobotsDecision.DISALLOW
+        return result.decision is RobotsDecision.ALLOW
 
 
 def _decode_path(value: str) -> str:
@@ -153,6 +209,7 @@ def evaluate_robots_response(
 
 __all__ = [
     "RobotsCacheEntry",
+    "RobotsChecker",
     "RobotsDecision",
     "RobotsFetchResult",
     "RobotsRules",

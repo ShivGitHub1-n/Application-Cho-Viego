@@ -6,7 +6,7 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from pydantic import ValidationError
@@ -24,6 +24,8 @@ from resume_tailor.domain.job_discovery.company_sources import (
 )
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
+    FirstPartySource,
+    LeverApiRegion,
     SupportedJobSource,
 )
 
@@ -42,9 +44,7 @@ def _default_audit_fixture_root() -> Path:
 
 def _resolve_audit_fixture(root: Path, reference: str) -> Path:
     if not reference or "\\" in reference:
-        raise SourceConfigurationError(
-            "audit fixture reference is not a safe POSIX-relative path"
-        )
+        raise SourceConfigurationError("audit fixture reference is not a safe POSIX-relative path")
     candidate_root = root.resolve()
     candidate = (candidate_root / reference).resolve()
     try:
@@ -85,6 +85,8 @@ def _validate_audit_fixtures(registry: CompanySourceRegistry, root: Path) -> Non
             )
         for reference in references:
             _resolve_audit_fixture(root, reference)
+
+
 class SourceConfigurationError(ValueError):
     """Operator configuration does not describe a supported source."""
 
@@ -192,9 +194,7 @@ class CompanySourceRegistry:
         try:
             payload = Path(path).read_text(encoding="utf-8")
         except OSError as exc:
-            raise SourceConfigurationError(
-                f"cannot read company source registry: {path}"
-            ) from exc
+            raise SourceConfigurationError(f"cannot read company source registry: {path}") from exc
         return cls.from_json(payload, legacy_sources=legacy_sources)
 
     def list_all(self) -> list[CompanyCareerSource]:
@@ -209,10 +209,7 @@ class CompanySourceRegistry:
         *,
         reference_date: date,
     ) -> list[SourceAuditFreshnessResult]:
-        return [
-            policy.evaluate(source, reference_date=reference_date)
-            for source in self._sources
-        ]
+        return [policy.evaluate(source, reference_date=reference_date) for source in self._sources]
 
 
 def _validate_company_uniqueness(sources: list[CompanyCareerSource]) -> None:
@@ -255,9 +252,9 @@ def _validate_company_uniqueness(sources: list[CompanyCareerSource]) -> None:
 
 
 def _canonical_json(value: object) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def compute_registry_plan_hash(sources: Iterable[CompanyCareerSource]) -> str:
@@ -443,7 +440,7 @@ def adapt_legacy_sources(
             detail_fetch_mode=None,
             detail_extraction_mode=None,
             provider_configuration=ProviderConnectorConfiguration(
-                connector_type=source.connector_type.value,
+                connector_type=cast(Any, source.connector_type.value),
                 board_token=source.board_token,
                 lever_api_region=(
                     source.lever_api_region.value if source.lever_api_region else None
@@ -528,6 +525,93 @@ def load_approved_source_registry(
     return ApprovedSourceRegistry(company_registry, legacy_sources)
 
 
+def compile_runtime_sources(
+    registry: CompanySourceRegistry | Iterable[CompanyCareerSource],
+) -> list[SupportedJobSource | FirstPartySource]:
+    """Compile the approved registry into immutable connector-facing sources.
+
+    This is deliberately a pure transformation. It does not read configuration
+    again, inspect the network, or perform robots/access checks.
+    """
+
+    sources = registry.list_all() if isinstance(registry, CompanySourceRegistry) else list(registry)
+    enabled = [source for source in sources if source.enabled]
+    provider_keys = [
+        (
+            source.source_plan.provider_configuration.connector_type,
+            source.source_plan.provider_configuration.board_token.casefold(),
+            source.source_plan.provider_configuration.lever_api_region,
+        )
+        for source in sources
+        if source.source_plan.provider_configuration is not None
+    ]
+    if len(provider_keys) != len(set(provider_keys)):
+        raise SourceConfigurationError("duplicate provider-board identities are not allowed")
+
+    compiled: list[SupportedJobSource | FirstPartySource] = []
+    for source in sorted(enabled, key=lambda item: item.source_id):
+        if source.audit_state is not SourceAuditState.APPROVED:
+            continue
+        if source.source_plan.audit_date is None:
+            continue
+        plan_hash = compute_registry_plan_hash([source])
+        extraction_hash = compute_extraction_profile_hash([source])
+        if source.source_plan.mechanism is SourceMechanism.FIRST_PARTY:
+            compiled.append(
+                FirstPartySource(
+                    source_id=source.source_id,
+                    company_id=source.company_id,
+                    company_name=source.canonical_company_name,
+                    canonical_domain=source.canonical_domain,
+                    official_base_url=source.careers_entry_url,
+                    allowed_hosts=tuple(source.allowed_hosts),
+                    redirect_hosts=tuple(source.redirect_hosts),
+                    priority_tier=source.priority_tier,
+                    geographic_coverage=source.geographic_coverage,
+                    robots_policy=source.robots_policy,
+                    browser_rendering_allowed=source.browser_rendering_allowed,
+                    crawl_cadence_minutes=source.crawl_cadence_minutes,
+                    source_plan=source.source_plan,
+                    first_party_audit=source.first_party_audit,
+                    extraction_profile=source.extraction_profile,
+                    audit_version=source.source_plan.audit_version,
+                    registry_plan_hash=plan_hash,
+                    extraction_profile_hash=extraction_hash,
+                )
+            )
+            continue
+        configuration = source.source_plan.provider_configuration
+        if configuration is None:
+            raise SourceConfigurationError(f"approved source {source.source_id} has no connector")
+        provider_base = (
+            f"https://job-boards.greenhouse.io/{configuration.board_token}"
+            if configuration.connector_type == "greenhouse"
+            else f"https://jobs.lever.co/{configuration.board_token}"
+        )
+        compiled.append(
+            SupportedJobSource(
+                source_id=source.source_id,
+                connector_type=ConnectorType(configuration.connector_type),
+                company_name=source.canonical_company_name,
+                board_token=configuration.board_token,
+                enabled=True,
+                official_base_url=cast(Any, provider_base),
+                lever_api_region=(
+                    LeverApiRegion(configuration.lever_api_region)
+                    if configuration.lever_api_region is not None
+                    else None
+                ),
+                audit_version=source.source_plan.audit_version,
+                registry_plan_hash=plan_hash,
+                extraction_profile_hash=extraction_hash,
+                priority_tier=source.priority_tier,
+                toronto_gta_relevance=source.geographic_coverage.toronto_gta_presence,
+                crawl_cadence_minutes=source.crawl_cadence_minutes,
+            )
+        )
+    return compiled
+
+
 __all__ = [
     "ApprovedSourceRegistry",
     "CompanySourceRegistry",
@@ -535,6 +619,7 @@ __all__ = [
     "SourceRegistry",
     "compute_extraction_profile_hash",
     "compute_registry_plan_hash",
+    "compile_runtime_sources",
     "load_company_source_registry",
     "load_approved_source_registry",
     "load_source_registry",

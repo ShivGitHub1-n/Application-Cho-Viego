@@ -53,14 +53,14 @@ def _create_version_one_database(path) -> None:
     connection.close()
 
 
-def test_fresh_initialization_is_version_two_and_idempotent(tmp_path) -> None:
+def test_fresh_initialization_is_version_three_and_idempotent(tmp_path) -> None:
     database = tmp_path / "fresh.sqlite3"
 
     migrations.initialize_job_discovery_database(database)
     migrations.initialize_job_discovery_database(database)
 
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert "feed_kind" in {
             row[1] for row in connection.execute("PRAGMA table_info(job_recommendations)")
         }
@@ -69,20 +69,24 @@ def test_fresh_initialization_is_version_two_and_idempotent(tmp_path) -> None:
         }
 
 
-def test_version_one_migration_preserves_saved_snapshot_and_adds_feed_metadata(tmp_path) -> None:
+def test_version_one_migration_preserves_saved_snapshot_and_adds_runtime_metadata(tmp_path) -> None:
     database = tmp_path / "version-one.sqlite3"
     _create_version_one_database(database)
 
     migrations.initialize_job_discovery_database(database)
 
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute(
             "SELECT snapshot_json, snapshot_schema_version FROM saved_jobs WHERE saved_id='saved-1'"
         ).fetchone() == ('{"immutable":true}', 1)
+        assert (
+            connection.execute("SELECT feed_kind, visibility FROM job_recommendations").fetchall()
+            == []
+        )
         assert connection.execute(
-            "SELECT feed_kind, visibility FROM job_recommendations"
-        ).fetchall() == []
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='source_runtime_state'"
+        ).fetchone() == ("source_runtime_state",)
 
 
 def test_version_one_migration_rolls_back_schema_changes_on_failure(tmp_path, monkeypatch) -> None:
@@ -104,4 +108,3 @@ def test_version_one_migration_rolls_back_schema_changes_on_failure(tmp_path, mo
         assert "transient" not in {
             row[1] for row in connection.execute("PRAGMA table_info(discovery_runs)")
         }
-

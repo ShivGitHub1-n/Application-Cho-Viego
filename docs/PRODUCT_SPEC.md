@@ -82,3 +82,23 @@ Feed persistence uses one transactional schema-version-2 migration and keeps
 legacy Strong/Good/Stretch/Provisional records labeled as earlier-policy
 results. The dedicated Jobs UI is deferred to Batch 4; this batch changes
 compatibility wiring and API contracts only.
+
+### Batch 3.5 source-discovery boundary
+
+Approved first-party pages use one static-first, bounded connector shared with
+the existing provider-neutral pipeline. Rocket Lab remains the only active
+first-party source; Greenhouse remains terminal application authority only.
+JSON-LD and constrained HTML supply observed facts only. Browser fallback is
+optional and authorized only after an explicit static browser-required result.
+When authorized, the isolated Playwright adapter executes only bounded,
+allowlisted first-party browser work; it never authenticates, submits an
+application, inherits a user profile, or accepts registry-controlled launch
+configuration.
+No arbitrary scraping, private endpoints, resume/profile transfer, scoring
+changes, automatic applications, or resume, cover-letter, rendering, DOCX, or
+Jobs UI behavior is introduced.
+
+Runtime health, lifecycle timestamps, separate fingerprints, aliases, and
+refresh locks use schema version 3. The registry remains the only editable
+source-plan authority. Broad and force refresh are CLI-only; the API exposes
+safe read-only source summaries and health.

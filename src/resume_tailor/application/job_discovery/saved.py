@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
+from typing import cast
 
 from resume_tailor.domain.job_discovery.ids import saved_job_id
 from resume_tailor.domain.job_discovery.models import (
@@ -88,7 +89,7 @@ class CheckSavedJobAvailabilityService:
             raise SavedJobNotFoundError(f"Saved job {saved_id!r} was not found.")
 
         availability = SavedJobAvailability.UNKNOWN
-        source = self._configured_source(saved.posting_snapshot.source)
+        source = self._configured_source(cast(SupportedJobSource, saved.posting_snapshot.source))
         checker = self._checker_for(source) if source is not None else None
         if checker is not None and source is not None:
             try:
@@ -119,9 +120,7 @@ class CheckSavedJobAvailabilityService:
                 return source.model_copy(deep=True)
         return None
 
-    def _checker_for(
-        self, source: SupportedJobSource
-    ) -> JobSourceAvailabilityChecker | None:
+    def _checker_for(self, source: SupportedJobSource) -> JobSourceAvailabilityChecker | None:
         configured = self._checkers.get(source.connector_type)
         if configured is None:
             return None

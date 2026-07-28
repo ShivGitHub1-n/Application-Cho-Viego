@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
@@ -17,6 +18,10 @@ from resume_tailor.domain.job_discovery.models import (
     SavedJobAvailability,
     SupportedJobSource,
 )
+from resume_tailor.domain.job_discovery.source_lifecycle import (
+    SourceIdentityAlias,
+    SourceRuntimeState,
+)
 from resume_tailor.infrastructure.job_discovery_migrations import (
     SCHEMA_VERSION,
     initialize_job_discovery_database,
@@ -29,6 +34,8 @@ from resume_tailor.ports.job_discovery import (
     JobSearchPreferencesRepository,
     PreferenceVersionConflictError,
     SavedJobRepository,
+    SourceIdentityAliasRepository,
+    SourceRuntimeStateRepository,
     SupportedJobSourceRepository,
 )
 
@@ -46,9 +53,10 @@ class CorruptStoredJobDiscoveryError(JobDiscoveryStoreError):
 
 
 class _SQLiteJobDiscoveryRepository:
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, *, initialize: bool = True) -> None:
         self._database_path = Path(database_path)
-        initialize_job_discovery_database(self._database_path)
+        if initialize:
+            initialize_job_discovery_database(self._database_path)
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._database_path)
@@ -127,9 +135,7 @@ class SQLiteJobSearchPreferencesRepository(
                 raise
 
 
-class SQLiteDiscoveredJobRepository(
-    _SQLiteJobDiscoveryRepository, DiscoveredJobRepository
-):
+class SQLiteDiscoveredJobRepository(_SQLiteJobDiscoveryRepository, DiscoveredJobRepository):
     def upsert(self, job: DiscoveredJob) -> None:
         validated = _validate_model(DiscoveredJob, job)
         payload_json = _dump_model(validated)
@@ -176,9 +182,7 @@ class SQLiteDiscoveredJobRepository(
             ).fetchone()
         if row is None:
             return None
-        job = _load_versioned_model(
-            DiscoveredJob, row[0], row[1], f"discovered job {job_id!r}"
-        )
+        job = _load_versioned_model(DiscoveredJob, row[0], row[1], f"discovered job {job_id!r}")
         if job.id != job_id:
             raise CorruptStoredJobDiscoveryError(
                 f"Stored discovered job {job.id!r} does not match requested ID {job_id!r}"
@@ -186,9 +190,7 @@ class SQLiteDiscoveredJobRepository(
         return job
 
 
-class SQLiteDiscoveryRunRepository(
-    _SQLiteJobDiscoveryRepository, DiscoveryRunRepository
-):
+class SQLiteDiscoveryRunRepository(_SQLiteJobDiscoveryRepository, DiscoveryRunRepository):
     def create(self, run: DiscoveryRun) -> None:
         validated = _validate_model(DiscoveryRun, run)
         payload_json = _dump_model(validated)
@@ -275,15 +277,10 @@ class SQLiteDiscoveryRunRepository(
         return run
 
 
-class SQLiteJobRecommendationRepository(
-    _SQLiteJobDiscoveryRepository, JobRecommendationRepository
-):
-    def replace_for_run(
-        self, run_id: str, recommendations: list[JobRecommendation]
-    ) -> None:
+class SQLiteJobRecommendationRepository(_SQLiteJobDiscoveryRepository, JobRecommendationRepository):
+    def replace_for_run(self, run_id: str, recommendations: list[JobRecommendation]) -> None:
         validated = [
-            _validate_model(JobRecommendation, recommendation)
-            for recommendation in recommendations
+            _validate_model(JobRecommendation, recommendation) for recommendation in recommendations
         ]
         for recommendation in validated:
             if recommendation.run_id != run_id:
@@ -292,9 +289,7 @@ class SQLiteJobRecommendationRepository(
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                _raise_for_reused_recommendation_identity(
-                    connection, run_id, validated
-                )
+                _raise_for_reused_recommendation_identity(connection, run_id, validated)
                 connection.execute(
                     "DELETE FROM job_recommendations WHERE run_id = ?",
                     (run_id,),
@@ -370,9 +365,7 @@ class SQLiteJobRecommendationRepository(
             rows = connection.execute(query, parameters).fetchall()
         results: list[JobRecommendation] = []
         for payload_json, group_name, stored_feed_kind, visibility in rows:
-            recommendation = _load_model(
-                JobRecommendation, payload_json, "feed recommendation"
-            )
+            recommendation = _load_model(JobRecommendation, payload_json, "feed recommendation")
             if (
                 recommendation.user_id == user_id
                 and recommendation.group.value == group_name
@@ -393,12 +386,12 @@ class SQLiteAtomicJobDiscoveryPersistence(
         run: DiscoveryRun,
         jobs: list[DiscoveredJob],
         recommendations: list[JobRecommendation],
+        aliases: list[SourceIdentityAlias] | None = None,
     ) -> None:
         validated_run = _validate_model(DiscoveryRun, run)
         validated_jobs = [_validate_model(DiscoveredJob, job) for job in jobs]
         validated_recommendations = [
-            _validate_model(JobRecommendation, recommendation)
-            for recommendation in recommendations
+            _validate_model(JobRecommendation, recommendation) for recommendation in recommendations
         ]
         if any(item.run_id != validated_run.id for item in validated_recommendations):
             raise ValueError("Recommendation run_id must match persisted run")
@@ -412,6 +405,17 @@ class SQLiteAtomicJobDiscoveryPersistence(
                         payload_json, started_at, completed_at, warning_count,
                         error_json, source_outcomes_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(run_id) DO UPDATE SET
+                        user_id=excluded.user_id,
+                        profile_id=excluded.profile_id,
+                        preference_version=excluded.preference_version,
+                        status=excluded.status,
+                        payload_json=excluded.payload_json,
+                        started_at=excluded.started_at,
+                        completed_at=excluded.completed_at,
+                        warning_count=excluded.warning_count,
+                        error_json=excluded.error_json,
+                        source_outcomes_json=excluded.source_outcomes_json
                     """,
                     _run_row(validated_run, _dump_model(validated_run)),
                 )
@@ -467,6 +471,40 @@ class SQLiteAtomicJobDiscoveryPersistence(
                         for item in validated_recommendations
                     ],
                 )
+                for alias in aliases or []:
+                    validated_alias = _validate_model(SourceIdentityAlias, alias)
+                    if (
+                        validated_alias.identity_kind == "canonical_detail"
+                        and not validated_alias.canonical_detail_identity
+                    ):
+                        raise ValueError("canonical detail identity is required")
+                    connection.execute(
+                        """
+                        INSERT INTO job_identity_aliases(
+                            source_id, identity_kind, identity_value, external_identity,
+                            requisition_identity, application_identity, canonical_detail_identity,
+                            job_id, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(source_id, identity_kind, identity_value) DO UPDATE SET
+                            external_identity=excluded.external_identity,
+                            requisition_identity=excluded.requisition_identity,
+                            application_identity=excluded.application_identity,
+                            canonical_detail_identity=excluded.canonical_detail_identity,
+                            job_id=excluded.job_id,
+                            created_at=excluded.created_at
+                        """,
+                        (
+                            validated_alias.source_id,
+                            validated_alias.identity_kind,
+                            validated_alias.identity_value,
+                            validated_alias.external_identity,
+                            validated_alias.requisition_identity,
+                            validated_alias.application_identity,
+                            validated_alias.canonical_detail_identity,
+                            validated_alias.job_id,
+                            _optional_datetime(validated_alias.created_at) or "",
+                        ),
+                    )
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -644,6 +682,204 @@ class SQLiteSupportedJobSourceRepository(
         return [_load_source(row) for row in rows]
 
 
+class SQLiteSourceRuntimeStateRepository(
+    _SQLiteJobDiscoveryRepository, SourceRuntimeStateRepository
+):
+    def get(self, source_id: str) -> SourceRuntimeState | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT source_id, last_attempted_at, last_successful_at, last_complete_at,
+                       last_outcome, diagnostic_codes_json, consecutive_failure_count,
+                       next_eligible_refresh_at, content_fingerprint, source_state_fingerprint,
+                       audit_version, registry_plan_hash, extraction_profile_hash,
+                       conditional_validators_json, browser_required, source_health,
+                       incomplete_static, updated_at
+                FROM source_runtime_state WHERE source_id = ?
+                """,
+                (source_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return SourceRuntimeState.model_validate(
+                {
+                    "source_id": row[0],
+                    "last_attempted_at": row[1],
+                    "last_successful_at": row[2],
+                    "last_complete_at": row[3],
+                    "last_outcome": row[4],
+                    "diagnostic_codes": json.loads(row[5]),
+                    "consecutive_failure_count": row[6],
+                    "next_eligible_refresh_at": row[7],
+                    "content_fingerprint": row[8],
+                    "source_state_fingerprint": row[9],
+                    "audit_version": row[10],
+                    "registry_plan_hash": row[11],
+                    "extraction_profile_hash": row[12],
+                    "conditional_validators": json.loads(row[13]),
+                    "browser_required": bool(row[14]),
+                    "source_health": row[15],
+                    "incomplete_static": bool(row[16]),
+                    "updated_at": row[17] or None,
+                }
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise CorruptStoredJobDiscoveryError("Stored source runtime state is invalid") from exc
+
+    def upsert(self, state: SourceRuntimeState) -> None:
+        validated = _validate_model(SourceRuntimeState, state).with_state_fingerprint()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO source_runtime_state(
+                        source_id, last_attempted_at, last_successful_at, last_complete_at,
+                        last_outcome, diagnostic_codes_json, consecutive_failure_count,
+                        next_eligible_refresh_at, content_fingerprint, source_state_fingerprint,
+                        audit_version, registry_plan_hash, extraction_profile_hash,
+                        conditional_validators_json, browser_required, source_health,
+                        incomplete_static, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_id) DO UPDATE SET
+                        last_attempted_at=excluded.last_attempted_at,
+                        last_successful_at=excluded.last_successful_at,
+                        last_complete_at=excluded.last_complete_at,
+                        last_outcome=excluded.last_outcome,
+                        diagnostic_codes_json=excluded.diagnostic_codes_json,
+                        consecutive_failure_count=excluded.consecutive_failure_count,
+                        next_eligible_refresh_at=excluded.next_eligible_refresh_at,
+                        content_fingerprint=excluded.content_fingerprint,
+                        source_state_fingerprint=excluded.source_state_fingerprint,
+                        audit_version=excluded.audit_version,
+                        registry_plan_hash=excluded.registry_plan_hash,
+                        extraction_profile_hash=excluded.extraction_profile_hash,
+                        conditional_validators_json=excluded.conditional_validators_json,
+                        browser_required=excluded.browser_required,
+                        source_health=excluded.source_health,
+                        incomplete_static=excluded.incomplete_static,
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        validated.source_id,
+                        _optional_datetime(validated.last_attempted_at),
+                        _optional_datetime(validated.last_successful_at),
+                        _optional_datetime(validated.last_complete_at),
+                        validated.last_outcome.value,
+                        _dump_json_list(validated.diagnostic_codes),
+                        validated.consecutive_failure_count,
+                        _optional_datetime(validated.next_eligible_refresh_at),
+                        validated.content_fingerprint,
+                        validated.source_state_fingerprint,
+                        validated.audit_version,
+                        validated.registry_plan_hash,
+                        validated.extraction_profile_hash,
+                        json.dumps(validated.conditional_validators, sort_keys=True),
+                        1 if validated.browser_required else 0,
+                        validated.source_health.value,
+                        1 if validated.incomplete_static else 0,
+                        _optional_datetime(validated.updated_at) or "",
+                    ),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+
+def read_existing_source_runtime_states(
+    database_path: str | Path, source_ids: Sequence[str]
+) -> dict[str, SourceRuntimeState]:
+    """Read runtime state for preview selection without initializing or mutating storage."""
+
+    path = Path(database_path)
+    if not path.is_file():
+        return {}
+    repository = SQLiteSourceRuntimeStateRepository(path, initialize=False)
+    try:
+        return {
+            source_id: state
+            for source_id in source_ids
+            if (state := repository.get(source_id)) is not None
+        }
+    except sqlite3.OperationalError:
+        return {}
+
+
+class SQLiteSourceIdentityAliasRepository(
+    _SQLiteJobDiscoveryRepository, SourceIdentityAliasRepository
+):
+    def upsert(self, alias: SourceIdentityAlias) -> None:
+        validated = _validate_model(SourceIdentityAlias, alias)
+        if (
+            validated.identity_kind == "canonical_detail"
+            and not validated.canonical_detail_identity
+        ):
+            raise ValueError("canonical detail identity is required for canonical aliases")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO job_identity_aliases(
+                        source_id, identity_kind, identity_value, external_identity,
+                        requisition_identity, application_identity, canonical_detail_identity,
+                        job_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_id, identity_kind, identity_value) DO UPDATE SET
+                        external_identity=excluded.external_identity,
+                        requisition_identity=excluded.requisition_identity,
+                        application_identity=excluded.application_identity,
+                        canonical_detail_identity=excluded.canonical_detail_identity,
+                        job_id=excluded.job_id,
+                        created_at=excluded.created_at
+                    """,
+                    (
+                        validated.source_id,
+                        validated.identity_kind,
+                        validated.identity_value,
+                        validated.external_identity,
+                        validated.requisition_identity,
+                        validated.application_identity,
+                        validated.canonical_detail_identity,
+                        validated.job_id,
+                        _optional_datetime(validated.created_at) or "",
+                    ),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    def list_for_source(self, source_id: str) -> list[SourceIdentityAlias]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT source_id, identity_kind, identity_value, external_identity,
+                       requisition_identity, application_identity, canonical_detail_identity,
+                       job_id, created_at
+                FROM job_identity_aliases WHERE source_id = ?
+                ORDER BY identity_kind, identity_value
+                """,
+                (source_id,),
+            ).fetchall()
+        return [
+            SourceIdentityAlias(
+                source_id=row[0],
+                identity_kind=row[1],
+                identity_value=row[2],
+                external_identity=row[3],
+                requisition_identity=row[4],
+                application_identity=row[5],
+                canonical_detail_identity=row[6],
+                job_id=row[7],
+                created_at=row[8] or None,
+            )
+            for row in rows
+        ]
+
+
 def _run_row(run: DiscoveryRun, payload_json: str) -> tuple[Any, ...]:
     return (
         run.id,
@@ -674,8 +910,7 @@ def _raise_for_reused_recommendation_identity(
         (run_id,),
     ).fetchall()
     existing_job_ids_by_recommendation_id = {
-        recommendation_id: job_id
-        for recommendation_id, job_id in existing_rows
+        recommendation_id: job_id for recommendation_id, job_id in existing_rows
     }
     for recommendation in recommendations:
         existing_job_id = existing_job_ids_by_recommendation_id.get(recommendation.id)
@@ -697,7 +932,7 @@ def _dump_json_list(values: list[str]) -> str:
     return json.dumps(values, separators=(",", ":"), sort_keys=True)
 
 
-def _dump_model_list(values: list[object]) -> str:
+def _dump_model_list(values: Sequence[object]) -> str:
     return json.dumps(values, separators=(",", ":"), sort_keys=True)
 
 
@@ -771,8 +1006,7 @@ def _load_saved(row: tuple[Any, ...], label: str) -> SavedJob:
     ) = row
     if snapshot_schema_version != SAVED_SNAPSHOT_SCHEMA_VERSION:
         raise CorruptStoredJobDiscoveryError(
-            f"Stored {label} uses unsupported snapshot schema version "
-            f"{snapshot_schema_version}"
+            f"Stored {label} uses unsupported snapshot schema version {snapshot_schema_version}"
         )
     snapshot = _load_model(DiscoveredJob, snapshot_json, f"{label} snapshot")
     try:

@@ -347,9 +347,10 @@ class SafeHttpClient:
             decoded_size += len(decoded)
             if decoded_size > self.max_response_bytes:
                 raise SafeTransportError("response exceeds maximum size")
-            if decompressor is not None and decoded_size > max(
-                encoded_size, 1
-            ) * self.max_expansion_ratio:
+            if (
+                decompressor is not None
+                and decoded_size > max(encoded_size, 1) * self.max_expansion_ratio
+            ):
                 raise SafeTransportError("response expansion ratio exceeds maximum")
             output.extend(decoded)
         if decompressor is not None:
@@ -438,9 +439,7 @@ class SafeHttpClient:
                                     await asyncio.sleep(retry_delay)
                                 continue
                             content_type = (
-                                response.headers.get("content-type", "")
-                                .split(";", 1)[0]
-                                .strip()
+                                response.headers.get("content-type", "").split(";", 1)[0].strip()
                             )
                             if content_type not in self.allowed_content_types:
                                 raise SafeTransportError("content type is not allowed")
@@ -464,6 +463,14 @@ class SafeHttpClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    def get_sync(self, url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
+        """Synchronous bridge for the existing synchronous connector port."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.get(url, headers=headers))
+        raise RuntimeError("SafeHttpClient.get_sync cannot run inside an event loop")
 
     def close(self) -> None:
         """Synchronous cleanup hook; async callers must use ``aclose``."""

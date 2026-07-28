@@ -222,3 +222,27 @@ pagination, and offline-testability requirement with an approved configuration
 in this batch. LinkedIn, Indeed, generic ATS HTML, search engines, browser
 scraping, reverse-engineered endpoints, and authenticated user-session scraping
 are not candidates and are not implemented.
+
+## Batch 3.5 first-party runtime limitations
+
+Rocket Lab is compiled as `FIRST_PARTY`, not Greenhouse. Static retrieval uses
+the audited employer index and `/careers/positions/...` detail paths. JSON-LD
+is bounded and deterministic; HTML fallback is declarative and excludes
+scripts, styles, hidden content, arbitrary anchors, and full-document text.
+Greenhouse application URLs are terminal provenance and are never retrieved.
+
+Browser fallback is allowed only after static `browser_required` for an
+explicitly audited first-party plan. It uses an isolated context, no cookies,
+authentication, profiles, extensions, downloads, uploads, or application
+navigation, plus bounded requests/actions/render time and host/path/resource
+allowlisting. Static HTTP validates destination IPs; browser execution retains
+a DNS TOCTOU residual risk because the browser owns socket resolution. The
+mitigation is interception and rejection of unapproved navigation, redirects,
+frames, XHR/fetch, scripts, popups, and application hosts. This is not claimed
+to be equivalent to static SSRF controls. Playwright `1.55.0` is a direct
+ dependency; Chromium installation is explicit and separate from Python package
+installation. The local real-browser gate was externally verified with managed
+Chromium 140.0.7339.16 (build v1187); three controlled-local tests passed,
+including JavaScript-rendered listing/detail extraction. Browser fallback
+remains first-party-only, static-first, bounded, and subject to the same robots
+and source-plan policy. Greenhouse and Lever never use it.

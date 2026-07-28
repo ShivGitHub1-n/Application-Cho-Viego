@@ -65,6 +65,16 @@ class SQLiteMasterProfileRepository(MasterProfileRepository):
             )
         return profile
 
+    def list_all(self) -> list[MasterProfile]:
+        try:
+            with sqlite3.connect(self._database_path) as connection:
+                rows = connection.execute(
+                    "SELECT profile_id FROM master_profiles ORDER BY profile_id ASC"
+                ).fetchall()
+        except sqlite3.Error as error:
+            raise ProfileStoreError(f"Unable to list profiles: {error}") from error
+        return [profile for row in rows if (profile := self.get(row[0])) is not None]
+
     def save(self, profile: MasterProfile) -> None:
         validated = MasterProfile.model_validate(profile.model_dump(mode="json"))
         try:

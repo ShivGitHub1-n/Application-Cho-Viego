@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
@@ -16,6 +18,48 @@ from resume_tailor.domain.job_discovery.models import (
 from resume_tailor.domain.job_discovery.normalization import _canonical_url
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
+
+
+@dataclass(frozen=True)
+class _Origin:
+    scheme: str
+    hostname: str
+    port: int
+
+
+def _normalize_origin(value: str) -> _Origin | None:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme.casefold() not in {"http", "https"}
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or parsed.hostname is None
+        or parsed.hostname.casefold().rstrip(".") not in {"127.0.0.1", "localhost"}
+    ):
+        return None
+    try:
+        port = parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
+    except ValueError:
+        return None
+    if not 1 <= port <= 65535:
+        return None
+    return _Origin(parsed.scheme.casefold(), parsed.hostname.casefold().rstrip("."), port)
+
+
+def _url_origin(value: str) -> _Origin | None:
+    parsed = urlsplit(value)
+    if parsed.username or parsed.password or parsed.hostname is None:
+        return None
+    try:
+        port = parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
+    except ValueError:
+        return None
+    if not 1 <= port <= 65535:
+        return None
+    return _Origin(parsed.scheme.casefold(), parsed.hostname.casefold().rstrip("."), port)
 
 
 def parse_timestamp(value: Any) -> tuple[datetime | None, bool]:
@@ -82,6 +126,7 @@ def build_record(
     company_name: str,
     description: str,
     official_url: AnyHttpUrl,
+    application_url: AnyHttpUrl | None = None,
     location_raw: str | None,
     work_arrangement: WorkArrangement,
     posted_at: datetime | None,
@@ -95,6 +140,7 @@ def build_record(
         company_name=company_name,
         description=description,
         official_url=official_url,
+        application_url=application_url,
         location_raw=location_raw,
         work_arrangement=work_arrangement,
         posted_at=posted_at,
