@@ -1,76 +1,411 @@
 from __future__ import annotations
 
-from datetime import date
+import json
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
-import re
-from typing import Protocol
+from tempfile import TemporaryDirectory
+from time import perf_counter
 
+from resume_tailor.application.company_research import BoundedCompanyResearchService
+from resume_tailor.application.cover_letter_evidence import CoverLetterEvidencePortfolio
+from resume_tailor.application.cover_letter_page_fit import (
+    CoverLetterPageFitter,
+)
+from resume_tailor.application.cover_letter_policy import (
+    COVER_LETTER_PROVIDER_CONTRACT_VERSION,
+    COVER_LETTER_TEMPLATE_IDENTITY,
+    COVER_LETTER_VALIDATION_POLICY_VERSION,
+    COVER_LETTER_WRITING_CONSTRAINTS,
+    COVER_LETTER_WRITING_POLICY_VERSION,
+)
+from resume_tailor.application.cover_letter_validation import (
+    CoverLetterValidationResult,
+    CoverLetterValidator,
+    DeterministicCoverLetterComposer,
+)
+from resume_tailor.application.generated_artifact import content_fingerprint
+from resume_tailor.domain.company_research import (
+    CompanyFactConfidence,
+    CompanyResearchBundle,
+    CompanyResearchRequest,
+    CompanyResearchStatus,
+)
 from resume_tailor.domain.cover_letter import (
     CoverLetter,
-    CoverLetterClaim,
-    CoverLetterExportStatus,
+    CoverLetterArtifactFingerprintInputs,
+    CoverLetterCallCounts,
+    CoverLetterCandidateValidationDiagnostic,
+    CoverLetterClaimDiagnostic,
+    CoverLetterDownload,
+    CoverLetterEvidenceRecord,
+    CoverLetterFallbackReason,
     CoverLetterLayoutProfile,
-    CoverLetterParagraph,
+    CoverLetterPageFitDiagnostic,
+    CoverLetterPageFitStatus,
     CoverLetterParagraphPurpose,
+    CoverLetterProviderDiagnostic,
+    CoverLetterProviderStatus,
+    CoverLetterQualityGateResult,
+    CoverLetterQualityGateStatus,
     CoverLetterRecipient,
-    CoverLetterReviewStatus,
-    normalize_paragraph_purpose,
+    CoverLetterResumeConsistencyFinding,
+    CoverLetterReviewState,
+    GeneratedCoverLetterArtifact,
 )
+from resume_tailor.domain.generated_artifact import GenerationStage, StageTiming
 from resume_tailor.domain.llm_models import (
+    CoverLetterCompanyFact,
+    CoverLetterDraftOutput,
+    CoverLetterDraftParagraph,
     CoverLetterDraftRequest,
     CoverLetterDraftResult,
     CoverLetterEvidence,
     LanguageModelError,
     LanguageModelErrorKind,
 )
-from resume_tailor.domain.models import ClaimConfidence, JobPosting, MasterProfile, TailoringPlan
+from resume_tailor.domain.models import JobPosting, MasterProfile, StructuredResume, TailoringPlan
+from resume_tailor.ports.cover_letter_rendering import CoverLetterBatchRenderer
 from resume_tailor.ports.interfaces import ResumeLanguageModel
+
+Clock = Callable[[], float]
+Now = Callable[[], datetime]
 
 
 class CoverLetterValidationError(ValueError):
     pass
 
 
+class CoverLetterCandidateRejectionError(CoverLetterValidationError):
+    """Expose safe component-level reasons when every candidate is rejected."""
+
+    def __init__(
+        self,
+        diagnostics: list[CoverLetterCandidateValidationDiagnostic],
+    ) -> None:
+        self.diagnostics = diagnostics
+        summaries = []
+        for diagnostic in diagnostics:
+            failed = []
+            for label, status in (
+                ("structural", diagnostic.structural_validation),
+                ("company", diagnostic.company_validation),
+                ("narrative", diagnostic.narrative_validation),
+                ("claim", diagnostic.claim_validation),
+            ):
+                if status is CoverLetterQualityGateStatus.FAILED:
+                    failed.append(label)
+            codes = ", ".join(diagnostic.rejection_codes[:3]) or "unspecified rejection"
+            summaries.append(
+                f"candidate {diagnostic.candidate_index + 1}: "
+                f"{'/'.join(failed) or 'validation'} failed ({codes})"
+            )
+        super().__init__("No cover-letter candidate passed validation. " + "; ".join(summaries))
+
+
 class CoverLetterPageFitError(ValueError):
     pass
 
 
-class CoverLetterRenderCandidate(Protocol):
-    docx_path: Path
-
-    @property
-    def measurement(self) -> "CoverLetterPageMeasurement": ...
-
-
-class CoverLetterPageMeasurement(Protocol):
-    page_count: int
-    exact: bool
-
-
-class CoverLetterRendererPort(Protocol):
-    def render_candidate(self, letter: CoverLetter, output_directory: Path) -> CoverLetterRenderCandidate: ...
+@dataclass(frozen=True)
+class _CandidateOutput:
+    generation_source: str
+    output: CoverLetterDraftOutput
 
 
 class CoverLetterService:
-    """Builds and validates evidence-grounded cover letters from an existing plan."""
+    """Orchestrate one bounded, evidence-grounded cover-letter artifact build."""
 
     def __init__(
         self,
         language_model: ResumeLanguageModel | None = None,
         layout_profile: CoverLetterLayoutProfile | None = None,
-        renderer: CoverLetterRendererPort | None = None,
+        renderer: CoverLetterBatchRenderer | None = None,
+        *,
+        company_research: BoundedCompanyResearchService | None = None,
+        evidence_portfolio: CoverLetterEvidencePortfolio | None = None,
+        validator: CoverLetterValidator | None = None,
+        deterministic_composer: DeterministicCoverLetterComposer | None = None,
+        provider_name: str = "unconfigured",
+        model_name: str = "unconfigured",
+        provider_unavailable_reason: str | None = None,
+        clock: Clock = perf_counter,
+        now: Now | None = None,
     ) -> None:
         self._language_model = language_model
         self._layout_profile = layout_profile or CoverLetterLayoutProfile()
         self._renderer = renderer
-        self._draft_cache: dict[str, CoverLetter] = {}
-        self._compact_cache: dict[str, CoverLetter] = {}
-        self._contexts: dict[str, tuple[MasterProfile, JobPosting, TailoringPlan, CoverLetterRecipient | None, str | None]] = {}
+        self._research = company_research or BoundedCompanyResearchService()
+        self._evidence = evidence_portfolio or CoverLetterEvidencePortfolio()
+        self._validator = validator or CoverLetterValidator()
+        self._fallback = deterministic_composer or DeterministicCoverLetterComposer()
+        self._provider_name = provider_name
+        self._model_name = model_name
+        self._provider_unavailable_reason = provider_unavailable_reason
+        self._clock = clock
+        self._now = now or (lambda: datetime.now(UTC))
+        self._provider_cache: dict[str, CoverLetterDraftResult] = {}
+        self._artifact_cache: dict[str, GeneratedCoverLetterArtifact] = {}
+        self._artifact_version = 0
 
     @property
     def layout_profile(self) -> CoverLetterLayoutProfile:
         return self._layout_profile
+
+    def generate_artifact(
+        self,
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan,
+        *,
+        recipient: CoverLetterRecipient | None = None,
+        final_resume: StructuredResume | None = None,
+        research_request: CompanyResearchRequest | None = None,
+        explicit_motivation: str | None = None,
+        date_text: str | None = None,
+    ) -> GeneratedCoverLetterArtifact:
+        if self._renderer is None:
+            raise CoverLetterValidationError(
+                "A cover-letter renderer is required for artifact generation"
+            )
+        self._validate_inputs(profile, posting, plan)
+        build_started = self._clock()
+        timings: list[StageTiming] = []
+        recipient = recipient or CoverLetterRecipient(company=posting.company_name)
+        research_request = self._bind_research_request(posting, research_request)
+        resolved_date_text = date_text or date.today().strftime("%B %d, %Y").replace(" 0", " ")
+
+        started = self._clock()
+        research = self._research.research(research_request)
+        timings.append(self._timing(GenerationStage.COMPANY_RESEARCH, started))
+
+        started = self._clock()
+        evidence, evidence_diagnostic = self._evidence.select(
+            profile,
+            posting,
+            plan,
+            final_resume=final_resume,
+            explicit_motivation=explicit_motivation,
+        )
+        timings.append(self._timing(GenerationStage.COVER_LETTER_EVIDENCE_SELECTION, started))
+        if not evidence:
+            raise CoverLetterValidationError("No reviewed evidence is available for a cover letter")
+        request = self._create_request(posting, plan, evidence, research, final_resume)
+        cache_identity = self._build_fingerprint_inputs(
+            profile,
+            posting,
+            plan,
+            final_resume,
+            research_request,
+            research,
+            evidence,
+            recipient,
+            explicit_motivation,
+            resolved_date_text,
+        )
+        artifact_key = self._artifact_fingerprint(cache_identity)
+        cached_artifact = self._artifact_cache.get(artifact_key)
+        if cached_artifact is not None:
+            return cached_artifact
+
+        provider_started = self._clock()
+        provider_result, provider_diagnostic = self._provider_output(request)
+        timings.append(self._timing(GenerationStage.PROVIDER_REQUEST, provider_started))
+
+        validation_started = self._clock()
+        outputs, fallback_reason, rejected, review_required, consistency = self._validated_outputs(
+            provider_result.output if provider_result is not None else None,
+            evidence,
+            research,
+            posting,
+            final_resume,
+            provider_diagnostic.fallback_reason,
+        )
+        timings.append(self._timing(GenerationStage.CLAIM_VALIDATION, validation_started))
+
+        quality_started = self._clock()
+        candidates: list[CoverLetter] = []
+        candidate_validations: list[CoverLetterValidationResult] = []
+        candidate_diagnostics: list[CoverLetterCandidateValidationDiagnostic] = []
+        eligible_diagnostic_indexes: list[int] = []
+        for candidate_index, candidate in enumerate(outputs):
+            output = candidate.output
+            validated = self._validator.validate_output(
+                output,
+                evidence,
+                research,
+                posting,
+                final_resume=final_resume,
+            )
+            candidate_diagnostics.append(
+                self._candidate_validation_diagnostic(
+                    candidate_index,
+                    candidate,
+                    validated,
+                    posting,
+                    recipient,
+                    research,
+                    evidence,
+                    final_resume,
+                )
+            )
+            if not self._required_content_gates_pass(validated.quality_gates):
+                continue
+            eligible_diagnostic_indexes.append(candidate_index)
+            candidates.append(
+                self._assemble_letter(
+                    profile,
+                    posting,
+                    plan,
+                    recipient,
+                    validated,
+                    resolved_date_text,
+                )
+            )
+            candidate_validations.append(validated)
+        if not candidates:
+            source_bound = _CandidateOutput(
+                generation_source="deterministic:source_bound_fallback",
+                output=self._fallback.source_bound_fallback(evidence, research, posting),
+            )
+            source_bound_index = len(outputs)
+            source_bound_validation = self._validator.validate_output(
+                source_bound.output,
+                evidence,
+                research,
+                posting,
+                final_resume=final_resume,
+            )
+            candidate_diagnostics.append(
+                self._candidate_validation_diagnostic(
+                    source_bound_index,
+                    source_bound,
+                    source_bound_validation,
+                    posting,
+                    recipient,
+                    research,
+                    evidence,
+                    final_resume,
+                )
+            )
+            if self._required_content_gates_pass(source_bound_validation.quality_gates):
+                eligible_diagnostic_indexes.append(source_bound_index)
+                candidates.append(
+                    self._assemble_letter(
+                        profile,
+                        posting,
+                        plan,
+                        recipient,
+                        source_bound_validation,
+                        resolved_date_text,
+                    )
+                )
+                candidate_validations.append(source_bound_validation)
+                outputs.append(source_bound)
+        if not candidates:
+            raise CoverLetterCandidateRejectionError(candidate_diagnostics)
+        for diagnostic_index in eligible_diagnostic_indexes:
+            candidate_diagnostics[diagnostic_index] = candidate_diagnostics[
+                diagnostic_index
+            ].model_copy(update={"rendering_attempted": True})
+        timings.append(self._timing(GenerationStage.COVER_LETTER_QUALITY_GATES, quality_started))
+
+        fit_started = self._clock()
+        with TemporaryDirectory(prefix="cover-letter-page-fit-") as directory:
+            fitted = CoverLetterPageFitter(self._renderer).fit(candidates, Path(directory))
+        timings.append(
+            StageTiming(
+                stage=GenerationStage.DOCX_RENDERING,
+                elapsed_seconds=fitted.render_elapsed_seconds,
+                invocation_count=len(candidates),
+                detail="Bounded candidate-batch DOCX rendering and pagination measurement.",
+            )
+        )
+        timings.append(self._timing(GenerationStage.COVER_LETTER_PAGE_FIT, fit_started))
+        selected_index = int(fitted.diagnostic.selected_candidate_id.rsplit(":", 1)[-1])
+        selected_validation = candidate_validations[selected_index]
+        gates = [
+            *selected_validation.quality_gates,
+            self._page_fit_gate(fitted.diagnostic),
+            self._research_gate(research),
+        ]
+        ready = not any(gate.status is CoverLetterQualityGateStatus.FAILED for gate in gates)
+        state = (
+            CoverLetterReviewState.GENERATED_AWAITING_REVIEW
+            if ready
+            else CoverLetterReviewState.RESEARCH_LIMITED
+            if any(
+                gate.gate == "company_research"
+                and gate.status is CoverLetterQualityGateStatus.FAILED
+                for gate in gates
+            )
+            else CoverLetterReviewState.GENERATION_FAILED
+        )
+        self._artifact_version += 1
+        call_counts = CoverLetterCallCounts(
+            research_calls=1,
+            research_network_requests=research.network_request_count,
+            provider_calls=provider_diagnostic.request_count,
+            provider_repairs=provider_diagnostic.repair_count,
+            claim_validations=sum(len(candidate.output.paragraphs) for candidate in outputs),
+            composition_searches=1,
+            docx_renders=len(candidates),
+            pagination_attempts=min(1, self._renderer.pagination_attempt_count),
+        )
+        provider_diagnostic = provider_diagnostic.model_copy(
+            update={
+                "fallback_reason": fallback_reason or provider_diagnostic.fallback_reason,
+                **(
+                    {
+                        "status": CoverLetterProviderStatus.VALIDATION_FALLBACK,
+                        "safe_detail": (
+                            "Provider prose failed semantic validation; locally grounded "
+                            "deterministic paragraphs were selected."
+                        ),
+                    }
+                    if fallback_reason is CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+                    else {}
+                ),
+            }
+        )
+        storage_started = self._clock()
+        artifact = GeneratedCoverLetterArtifact(
+            artifact_fingerprint=artifact_key,
+            artifact_version=self._artifact_version,
+            fingerprint_inputs=cache_identity,
+            generation_timestamp=self._aware_now(),
+            review_state=state,
+            ready_for_review=ready,
+            letter=fitted.letter,
+            evidence_records=evidence,
+            company_research=research,
+            evidence_selection=evidence_diagnostic,
+            quality_gates=gates,
+            candidate_validations=candidate_diagnostics,
+            rejected_claims=[*rejected, *selected_validation.rejected_claims],
+            review_required_claims=[
+                *review_required,
+                *selected_validation.review_required_claims,
+            ],
+            resume_consistency=consistency or selected_validation.resume_consistency,
+            provider_diagnostic=provider_diagnostic,
+            page_fit=fitted.diagnostic,
+            call_counts=call_counts,
+            stage_timings=timings,
+            total_build_seconds=0,
+            docx_bytes=fitted.render.docx_bytes,
+        )
+        timings.append(self._timing(GenerationStage.GENERATED_ARTIFACT_STORAGE, storage_started))
+        artifact = artifact.model_copy(
+            update={
+                "stage_timings": timings,
+                "total_build_seconds": max(0.0, self._clock() - build_started),
+            }
+        )
+        self._artifact_cache[artifact_key] = artifact
+        return artifact
 
     def create_request(
         self,
@@ -78,309 +413,744 @@ class CoverLetterService:
         posting: JobPosting,
         plan: TailoringPlan,
         *,
-        recipient: CoverLetterRecipient | None = None,
-        compact: bool = False,
+        final_resume: StructuredResume | None = None,
+        research_request: CompanyResearchRequest | None = None,
+        explicit_motivation: str | None = None,
     ) -> CoverLetterDraftRequest:
-        selected_entry_ids = list(plan.selected_entity_ids)
-        if plan.composition_selection is not None:
-            selected_entry_ids = list(plan.composition_selection.selected_entry_ids)
-        if not selected_entry_ids:
-            selected_entry_ids = [item.id for item in plan.selected_experiences + plan.selected_projects]
-        selected_ids = set(plan.selected_claim_ids)
-        if plan.composition_selection is not None:
-            selected_ids = set(plan.composition_selection.selected_evidence_ids)
-        else:
-            selected_ids = {
-                evidence_id
-                for candidate in plan.claim_candidates
-                if candidate.id in selected_ids
-                for evidence_id in candidate.evidence_ids
-            }
-        evidence = [
-            CoverLetterEvidence(
-                evidence_id=item.id,
-                entity_id=item.entity_id,
-                source_text=item.source_text,
-                technologies=item.technologies,
-                outcomes=item.outcomes,
+        self._validate_inputs(profile, posting, plan)
+        research = self._research.research(self._bind_research_request(posting, research_request))
+        evidence, _ = self._evidence.select(
+            profile,
+            posting,
+            plan,
+            final_resume=final_resume,
+            explicit_motivation=explicit_motivation,
+        )
+        return self._create_request(posting, plan, evidence, research, final_resume)
+
+    def approve_artifact(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
+        *,
+        expected_fingerprint: str,
+        manual_word_inspection_confirmed: bool = False,
+    ) -> GeneratedCoverLetterArtifact:
+        if artifact.artifact_fingerprint != expected_fingerprint or not artifact.current:
+            raise CoverLetterValidationError(
+                "The cover-letter artifact is stale and must be regenerated"
             )
-            for item in profile.evidence
-            if item.confirmed
-            and item.entity_id in selected_entry_ids
-            and (not selected_ids or item.id in selected_ids)
-        ]
-        if not evidence:
-            raise CoverLetterValidationError("The tailoring plan has no selected confirmed evidence for a cover letter.")
-        strategy = plan.strategy.primary_focus if plan.strategy else "the target role"
-        recipient = recipient or CoverLetterRecipient(company=posting.company_name)
-        contact_values = [profile.contact.location, profile.contact.phone, profile.contact.email, *profile.contact.links]
-        contact_length = sum(len(value or "") for value in contact_values) + max(0, len(contact_values) - 1) * 3
-        header_lines = 2 if contact_length > 105 else 1
-        return CoverLetterDraftRequest(
-            job_title=posting.title,
-            company_name=posting.company_name,
-            job_description=posting.description,
-            strategy=strategy,
-            selected_entry_ids=selected_entry_ids,
-            selected_evidence=evidence,
-            selected_skills=plan.selected_skills,
-            selected_coursework=plan.selected_coursework,
-            recipient_name=recipient.name,
-            recipient_title=recipient.title,
-            recipient_address_lines=recipient.address_lines,
-            approximate_body_lines=self._layout_profile.approximate_body_lines(header_lines=header_lines),
-            compact=compact,
-            writing_constraints=[
-                "Every material experience claim must link to supplied evidence IDs.",
-                "Use a neutral Dear Hiring Manager salutation when recipient information is absent.",
-                "Do not invent company facts or candidate facts.",
-                "Prefer a concise complete letter over filler or repetition.",
-            ],
+        if not artifact.ready_for_review:
+            raise CoverLetterValidationError("The cover-letter artifact has failed quality gates")
+        if (
+            artifact.page_fit.manual_word_inspection_required
+            and not manual_word_inspection_confirmed
+        ):
+            raise CoverLetterValidationError(
+                "Manual Microsoft Word inspection is required before approval when "
+                "pagination is unverified"
+            )
+        return artifact.model_copy(
+            update={
+                "review_state": CoverLetterReviewState.APPROVED,
+                "approved_at": self._aware_now(),
+            }
         )
 
-    def draft(
+    def prepare_download(
         self,
+        artifact: GeneratedCoverLetterArtifact,
+        *,
+        expected_fingerprint: str,
+    ) -> CoverLetterDownload:
+        started = self._clock()
+        if artifact.artifact_fingerprint != expected_fingerprint or not artifact.current:
+            raise CoverLetterValidationError("A stale cover-letter artifact cannot be downloaded")
+        if artifact.review_state not in {
+            CoverLetterReviewState.APPROVED,
+            CoverLetterReviewState.DOWNLOADED,
+        }:
+            raise CoverLetterValidationError(
+                "Approve the current cover-letter artifact before download"
+            )
+        return CoverLetterDownload(
+            artifact_fingerprint=artifact.artifact_fingerprint,
+            artifact_version=artifact.artifact_version,
+            docx_bytes=artifact.docx_bytes,
+            elapsed_seconds=max(0.0, self._clock() - started),
+            generation_call_counts=CoverLetterCallCounts(download_preparations=1),
+        )
+
+    @staticmethod
+    def mark_downloaded(
+        artifact: GeneratedCoverLetterArtifact,
+    ) -> GeneratedCoverLetterArtifact:
+        if artifact.review_state is not CoverLetterReviewState.APPROVED:
+            raise CoverLetterValidationError(
+                "Only an approved cover letter can be marked downloaded"
+            )
+        return artifact.model_copy(update={"review_state": CoverLetterReviewState.DOWNLOADED})
+
+    def artifact_is_current(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
         profile: MasterProfile,
         posting: JobPosting,
         plan: TailoringPlan,
         *,
-        recipient: CoverLetterRecipient | None = None,
-        compact: bool = False,
+        recipient: CoverLetterRecipient,
+        final_resume: StructuredResume | None,
+        research_request: CompanyResearchRequest,
+        explicit_motivation: str | None,
         date_text: str | None = None,
-    ) -> CoverLetter:
-        request = self.create_request(profile, posting, plan, recipient=recipient, compact=compact)
-        cache_key = self._cache_key(profile, posting, plan, request, compact)
-        cache = self._compact_cache if compact else self._draft_cache
-        if cache_key in cache:
-            cached = cache[cache_key]
-            self._contexts[cached.plan_fingerprint] = (profile, posting, plan, recipient, date_text)
-            return cached
-        if self._language_model is None:
-            raise LanguageModelError(
-                LanguageModelErrorKind.CONFIGURATION,
-                "Cover-letter drafting requires a configured language model.",
+    ) -> bool:
+        inputs = artifact.fingerprint_inputs
+        resolved_date_text = date_text or date.today().strftime("%B %d, %Y").replace(" 0", " ")
+        bound_research_request = self._bind_research_request(posting, research_request)
+        return all(
+            (
+                inputs.reviewed_profile_fingerprint == content_fingerprint(profile),
+                inputs.posting_fingerprint == content_fingerprint(posting),
+                inputs.plan_fingerprint == content_fingerprint(plan),
+                inputs.final_resume_fingerprint
+                == (content_fingerprint(final_resume) if final_resume is not None else None),
+                inputs.research_request_fingerprint == content_fingerprint(bound_research_request),
+                inputs.recipient_fingerprint == content_fingerprint(recipient),
+                inputs.motivation_fingerprint
+                == (content_fingerprint(explicit_motivation) if explicit_motivation else None),
+                inputs.date_text == resolved_date_text,
             )
-        result = self._language_model.draft_cover_letter(request)
-        letter = self._assemble(profile, posting, plan, request, result, recipient, date_text)
-        cache[cache_key] = letter
-        self._contexts[letter.plan_fingerprint] = (profile, posting, plan, recipient, date_text)
-        return letter
-
-    def approve(
-        self, letter: CoverLetter, approved_claim_ids: set[str], *, reviewed: bool
-    ) -> CoverLetter:
-        known_pending = {claim.id for claim in letter.pending_claims}
-        approved = sorted(known_pending.intersection(approved_claim_ids))
-        rejected = sorted(known_pending - set(approved)) if reviewed else list(letter.rejected_claim_ids)
-        status = CoverLetterReviewStatus.REVIEWED if reviewed else CoverLetterReviewStatus.PENDING_APPROVAL
-        return letter.model_copy(
-            update={
-                "approved_claim_ids": approved,
-                "rejected_claim_ids": rejected,
-                "complete_review_confirmed": reviewed,
-                "review_status": status,
-                "export_status": CoverLetterExportStatus.NOT_EXPORTED,
-                "export_path": None,
-                "page_count": None,
-            }
         )
-
-    def export(self, letter: CoverLetter, output_directory: Path) -> CoverLetter:
-        if not letter.complete_review_confirmed or letter.pending_claims:
-            raise CoverLetterValidationError("Review and approve all pending cover-letter claims before export.")
-        if self._renderer is None:
-            raise CoverLetterValidationError("A cover-letter renderer is required for export.")
-        output_directory = Path(output_directory)
-        output_directory.mkdir(parents=True, exist_ok=True)
-        candidate = self._remove_unapproved_paragraphs(letter)
-        result = self._try_render(candidate, output_directory)
-        if result is None:
-            reduced = self._reduce(candidate, output_directory)
-            if reduced is not None:
-                candidate, result = reduced
-        if result is None and self._language_model is not None:
-            compact = self._compact_for_letter(candidate)
-            if compact is not None:
-                compact = self.approve(compact, set(compact.approved_claim_ids), reviewed=True)
-                result = self._try_render(compact, output_directory)
-                if result is None:
-                    reduced = self._reduce(compact, output_directory)
-                    if reduced is not None:
-                        compact, result = reduced
-                if result is not None:
-                    candidate = compact
-        if result is None:
-            raise CoverLetterPageFitError("The cover letter could not be fitted to exactly one page without shrinking or truncating it.")
-        measurement = result.measurement
-        return candidate.model_copy(
-            update={
-                "review_status": CoverLetterReviewStatus.REVIEWED,
-                "export_status": CoverLetterExportStatus.VERIFIED_ONE_PAGE,
-                "export_path": str(result.docx_path),
-                "page_count": measurement.page_count,
-            }
-        )
-
-    def _try_render(self, letter: CoverLetter, output_directory: Path):
-        renderer = self._renderer
-        if renderer is None:
-            raise CoverLetterValidationError("A cover-letter renderer is required for export.")
-        result = renderer.render_candidate(letter, output_directory)
-        return result if result.measurement.exact and result.measurement.page_count == 1 else None
-
-    def _reduce(self, letter: CoverLetter, output_directory: Path) -> tuple[CoverLetter, CoverLetterRenderCandidate] | None:
-        paragraphs = list(letter.paragraphs)
-        removable = sorted(
-            (p for p in paragraphs if p.optional or p.purpose == CoverLetterParagraphPurpose.EVIDENCE),
-            key=lambda p: p.reduction_priority,
-        )
-        for paragraph in removable:
-            if len(paragraphs) <= 2:
-                break
-            paragraphs.remove(paragraph)
-            candidate = letter.model_copy(update={"paragraphs": paragraphs})
-            result = self._try_render(candidate, output_directory)
-            if result is not None:
-                return candidate, result
-        return None
-
-    def _compact_for_letter(self, letter: CoverLetter) -> CoverLetter | None:
-        plan_fingerprint = letter.plan_fingerprint
-        key = f"{plan_fingerprint}:{letter.profile_id}:{letter.posting_id}:compact"
-        if key in self._compact_cache:
-            return self._compact_cache[key]
-        context = self._contexts.get(plan_fingerprint)
-        if context is None:
-            return None
-        profile, posting, plan, recipient, date_text = context
-        compact = self.draft(profile, posting, plan, recipient=recipient, compact=True, date_text=date_text)
-        self._compact_cache[key] = compact
-        return compact
 
     @staticmethod
-    def _remove_unapproved_paragraphs(letter: CoverLetter) -> CoverLetter:
-        paragraphs = [
-            paragraph
-            for paragraph in letter.paragraphs
-            if not any(
-                claim.confidence == ClaimConfidence.STRONGLY_IMPLIED
-                and claim.id not in letter.approved_claim_ids
-                for claim in paragraph.claims
-            )
-        ]
-        if len(paragraphs) < 2:
-            raise CoverLetterValidationError("Rejecting an unapproved claim would leave an incomplete letter.")
-        return letter.model_copy(update={"paragraphs": paragraphs})
+    def default_research_request(posting: JobPosting) -> CompanyResearchRequest:
+        return CompanyResearchRequest(
+            company_name=posting.company_name,
+            role_title=posting.title,
+            job_url=posting.source_url,
+            posting_fingerprint=content_fingerprint(posting),
+            posting_description=posting.description,
+            enabled=True,
+        )
 
-    def _assemble(
+    @staticmethod
+    def _bind_research_request(
+        posting: JobPosting,
+        request: CompanyResearchRequest | None,
+    ) -> CompanyResearchRequest:
+        """Keep optional research controls while restoring active-posting authority."""
+
+        if request is None:
+            return CoverLetterService.default_research_request(posting)
+        return request.model_copy(
+            update={
+                "company_name": request.company_name or posting.company_name,
+                "role_title": posting.title,
+                "job_url": posting.source_url,
+                "posting_fingerprint": content_fingerprint(posting),
+                "posting_description": posting.description,
+            }
+        )
+
+    def _create_request(
+        self,
+        posting: JobPosting,
+        plan: TailoringPlan,
+        evidence: list[CoverLetterEvidenceRecord],
+        research: CompanyResearchBundle,
+        final_resume: StructuredResume | None,
+    ) -> CoverLetterDraftRequest:
+        source_by_id = {source.id: source for source in research.sources}
+        facts = [
+            fact
+            for fact in research.facts
+            if fact.confidence is not CompanyFactConfidence.CONFLICTING
+        ]
+        return CoverLetterDraftRequest(
+            job_title=posting.title,
+            company_name=posting.company_name,
+            job_description=posting.description,
+            strategy=plan.strategy.primary_focus if plan.strategy else posting.title,
+            selected_entry_ids=list(
+                dict.fromkeys(item.entity_id for item in evidence if item.entity_id)
+            ),
+            selected_evidence=[
+                CoverLetterEvidence(
+                    evidence_id=item.id,
+                    evidence_kind=item.kind.value,
+                    source_text=item.source_text,
+                    entity_id=item.entity_id,
+                    entry_title=item.entry_title,
+                    technologies=item.technologies,
+                    outcomes=item.outcomes,
+                    matched_requirements=item.matched_requirements,
+                    selected_in_final_resume=item.selected_in_final_resume,
+                )
+                for item in evidence
+            ],
+            company_research=[
+                CoverLetterCompanyFact(
+                    research_id=fact.id,
+                    fact=fact.fact,
+                    supported_claim=fact.supported_claim,
+                    source_title=source_by_id[fact.source_id].title,
+                    source_type=source_by_id[fact.source_id].source_type.value,
+                )
+                for fact in facts
+            ],
+            final_resume_evidence_ids=sorted(self._resume_evidence_ids(final_resume)),
+            approximate_body_lines=self._approximate_body_lines(),
+            writing_constraints=list(COVER_LETTER_WRITING_CONSTRAINTS),
+        )
+
+    def _provider_output(
+        self,
+        request: CoverLetterDraftRequest,
+    ) -> tuple[CoverLetterDraftResult | None, CoverLetterProviderDiagnostic]:
+        started = self._clock()
+        key = self._provider_cache_key(request)
+        cached = self._provider_cache.get(key)
+        if cached is not None:
+            return cached, CoverLetterProviderDiagnostic(
+                provider=cached.metadata.provider,
+                model=cached.metadata.model,
+                status=CoverLetterProviderStatus.CACHE_HIT,
+                request_count=0,
+                repair_count=0,
+                cache_hit_count=1,
+                elapsed_seconds=max(0.0, self._clock() - started),
+                finish_reason=cached.metadata.finish_reason,
+                safe_detail="Validated provider response reused from the cover-letter cache.",
+            )
+        if self._language_model is None:
+            reason = (
+                CoverLetterFallbackReason.CREDENTIALS_ABSENT
+                if self._provider_unavailable_reason
+                else CoverLetterFallbackReason.PROVIDER_DISABLED
+            )
+            return None, CoverLetterProviderDiagnostic(
+                provider=self._provider_name,
+                model=self._model_name,
+                status=(
+                    CoverLetterProviderStatus.CONFIGURATION_UNAVAILABLE
+                    if self._provider_unavailable_reason
+                    else CoverLetterProviderStatus.DISABLED
+                ),
+                request_count=0,
+                repair_count=0,
+                cache_hit_count=0,
+                elapsed_seconds=max(0.0, self._clock() - started),
+                fallback_reason=reason,
+                safe_detail=self._provider_unavailable_reason
+                or "Cover-letter provider is disabled.",
+            )
+        calls = 0
+        repairs = 0
+        try:
+            calls += 1
+            result = self._language_model.draft_cover_letter(request)
+        except LanguageModelError as error:
+            if error.kind is LanguageModelErrorKind.MALFORMED_RESPONSE:
+                repairs = 1
+                repair = request.model_copy(
+                    update={
+                        "repair_instruction": (
+                            "Return the same intended letter using only the required typed schema. "
+                            "Do not add fields or explanatory text."
+                        )
+                    }
+                )
+                try:
+                    calls += 1
+                    result = self._language_model.draft_cover_letter(repair)
+                except LanguageModelError:
+                    return None, self._provider_failure(
+                        started,
+                        calls,
+                        repairs,
+                        CoverLetterProviderStatus.MALFORMED_OUTPUT,
+                        CoverLetterFallbackReason.PROVIDER_MALFORMED_AFTER_REPAIR,
+                        "Provider output remained malformed after one repair request.",
+                    )
+            else:
+                return None, self._provider_error_diagnostic(started, calls, error)
+        self._provider_cache[key] = result
+        cache_hit = result.metadata.cache_hit
+        return result, CoverLetterProviderDiagnostic(
+            provider=result.metadata.provider,
+            model=result.metadata.model,
+            status=(
+                CoverLetterProviderStatus.CACHE_HIT
+                if cache_hit
+                else CoverLetterProviderStatus.SUCCEEDED
+            ),
+            request_count=0 if cache_hit else calls,
+            repair_count=repairs,
+            cache_hit_count=1 if cache_hit else 0,
+            elapsed_seconds=max(0.0, self._clock() - started),
+            finish_reason=result.metadata.finish_reason,
+            safe_detail="Provider returned typed paragraph content for local validation.",
+        )
+
+    def _validated_outputs(
+        self,
+        provider_output: CoverLetterDraftOutput | None,
+        evidence: list[CoverLetterEvidenceRecord],
+        research: CompanyResearchBundle,
+        posting: JobPosting,
+        final_resume: StructuredResume | None,
+        provider_fallback: CoverLetterFallbackReason | None,
+    ) -> tuple[
+        list[_CandidateOutput],
+        CoverLetterFallbackReason | None,
+        list[CoverLetterClaimDiagnostic],
+        list[CoverLetterClaimDiagnostic],
+        list[CoverLetterResumeConsistencyFinding],
+    ]:
+        deterministic = self._fallback.variants(evidence, research, posting)
+        rejected: list[CoverLetterClaimDiagnostic] = []
+        review_required: list[CoverLetterClaimDiagnostic] = []
+        consistency: list[CoverLetterResumeConsistencyFinding] = []
+        outputs: list[_CandidateOutput] = []
+        fallback_reason = provider_fallback
+        if provider_output is not None:
+            validated = self._validator.validate_output(
+                provider_output,
+                evidence,
+                research,
+                posting,
+                final_resume=final_resume,
+            )
+            rejected.extend(validated.rejected_claims)
+            review_required.extend(validated.review_required_claims)
+            consistency.extend(validated.resume_consistency)
+            if validated.paragraphs:
+                valid_text = {paragraph.text for paragraph in validated.paragraphs}
+                fallback_by_purpose = {
+                    paragraph.purpose: paragraph for paragraph in deterministic[-1].paragraphs
+                }
+                merged = []
+                for paragraph in provider_output.paragraphs:
+                    if " ".join(paragraph.text.split()) in valid_text:
+                        merged.append(paragraph)
+                    elif paragraph.purpose in fallback_by_purpose:
+                        merged.append(fallback_by_purpose[paragraph.purpose])
+                purposes = {paragraph.purpose for paragraph in merged}
+                for required in (
+                    CoverLetterParagraphPurpose.OPENING,
+                    CoverLetterParagraphPurpose.CLOSING,
+                ):
+                    if required not in purposes:
+                        merged.append(fallback_by_purpose[required])
+                merged.sort(key=self._purpose_order)
+                try:
+                    repaired_output = CoverLetterDraftOutput(paragraphs=merged)
+                except ValueError:
+                    repaired_output = deterministic[-1]
+                repaired_validation = self._validator.validate_output(
+                    repaired_output,
+                    evidence,
+                    research,
+                    posting,
+                    final_resume=final_resume,
+                )
+                if self._required_content_gates_pass(repaired_validation.quality_gates):
+                    outputs.append(
+                        _CandidateOutput(
+                            generation_source="provider_with_deterministic_repair",
+                            output=repaired_output,
+                        )
+                    )
+            if not outputs:
+                fallback_reason = CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+        outputs.extend(
+            _CandidateOutput(
+                generation_source=(
+                    "deterministic:"
+                    f"{output.paragraphs[0].length_class.value if output.paragraphs else 'unknown'}"
+                ),
+                output=output,
+            )
+            for output in deterministic
+        )
+        unique: list[_CandidateOutput] = []
+        seen: set[str] = set()
+        for candidate in outputs:
+            key = candidate.output.model_dump_json()
+            if key not in seen:
+                unique.append(candidate)
+                seen.add(key)
+        return unique, fallback_reason, rejected, review_required, consistency
+
+    def _assemble_letter(
         self,
         profile: MasterProfile,
         posting: JobPosting,
         plan: TailoringPlan,
-        request: CoverLetterDraftRequest,
-        result: CoverLetterDraftResult,
-        recipient: CoverLetterRecipient | None,
+        recipient: CoverLetterRecipient,
+        validated: CoverLetterValidationResult,
         date_text: str | None,
     ) -> CoverLetter:
-        evidence_ids = {item.evidence_id for item in request.selected_evidence}
-        evidence_text_by_id = {
-            item.evidence_id: " ".join([item.source_text, *item.technologies, *item.outcomes])
-            for item in request.selected_evidence
-        }
-        paragraphs: list[CoverLetterParagraph] = []
-        for index, generated in enumerate(result.output.paragraphs):
-            try:
-                purpose = normalize_paragraph_purpose(generated.purpose)
-            except ValueError as error:
-                raise CoverLetterValidationError(f"Unsupported paragraph purpose: {generated.purpose}") from error
-            claims = [
-                CoverLetterClaim(
-                    id=f"cover-claim:{sha256(f'{index}:{claim.text}'.encode()).hexdigest()[:12]}",
-                    text=claim.text,
-                    evidence_ids=claim.evidence_ids,
-                    confidence=claim.confidence,
-                    optional=claim.optional,
-                    reduction_priority=claim.reduction_priority,
-                )
-                for claim in generated.claims
-            ]
-            for claim in claims:
-                if not set(claim.evidence_ids).issubset(evidence_ids):
-                    raise CoverLetterValidationError(f"Claim {claim.id} references unselected evidence.")
-                if claim.confidence == ClaimConfidence.UNSUPPORTED:
-                    raise CoverLetterValidationError(f"Unsupported claim rejected: {claim.text}")
-                source_text = " ".join(evidence_text_by_id[item] for item in claim.evidence_ids).casefold()
-                claim_numbers = set(re.findall(r"\b\d+(?:\.\d+)?%?\b", claim.text))
-                if not claim_numbers.issubset(set(re.findall(r"\b\d+(?:\.\d+)?%?\b", source_text))):
-                    raise CoverLetterValidationError(f"Claim {claim.id} introduces an unsupported number.")
-            paragraphs.append(
-                CoverLetterParagraph(
-                    id=f"cover-paragraph:{index}",
-                    purpose=purpose,
-                    text=generated.text,
-                    claims=claims,
-                    optional=generated.optional,
-                    reduction_priority=generated.reduction_priority,
-                )
-            )
-        self._quality_check(paragraphs)
-        recipient = recipient or CoverLetterRecipient(company=posting.company_name)
-        letter = CoverLetter(
+        return CoverLetter(
             profile_id=profile.id,
             profile_version=profile.version,
             posting_id=posting.id,
-            plan_fingerprint=sha256(plan.model_dump_json().encode()).hexdigest(),
-            layout_profile=self._layout_profile,
+            plan_fingerprint=content_fingerprint(plan),
             candidate_name=profile.display_name,
             contact=profile.contact,
             date_text=date_text or date.today().strftime("%B %d, %Y").replace(" 0", " "),
             job_title=posting.title,
             company_name=posting.company_name,
             recipient=recipient,
-            salutation=(f"Dear {recipient.name}," if recipient.name else "Dear Hiring Manager,"),
-            paragraphs=paragraphs,
-            closing="Thank you for your consideration. I would welcome the opportunity to discuss how my experience could contribute to this role.",
-            signoff="Sincerely,",
+            salutation=f"Dear {recipient.name}," if recipient.name else "Dear Hiring Manager,",
+            paragraphs=validated.paragraphs,
             signoff_name=profile.display_name,
-            review_status=CoverLetterReviewStatus.PENDING_APPROVAL,
+            layout_profile=self._layout_profile,
         )
-        if not letter.pending_claims:
-            letter = letter.model_copy(update={"review_status": CoverLetterReviewStatus.DRAFT})
-        return letter
 
-    @staticmethod
-    def _quality_check(paragraphs: list[CoverLetterParagraph]) -> None:
-        if not paragraphs or paragraphs[0].purpose != CoverLetterParagraphPurpose.INTRODUCTION:
-            raise CoverLetterValidationError("A cover letter requires an opening paragraph.")
-        if paragraphs[-1].purpose != CoverLetterParagraphPurpose.CLOSING:
-            raise CoverLetterValidationError("A cover letter requires a closing paragraph.")
-        normalized = [re.sub(r"\s+", " ", paragraph.text.casefold()).strip() for paragraph in paragraphs]
-        if any(not text or text in {"[placeholder]", "todo", "lorem ipsum"} for text in normalized):
-            raise CoverLetterValidationError("Cover letter contains an empty or placeholder paragraph.")
-        if len(normalized) != len(set(normalized)):
-            raise CoverLetterValidationError("Cover letter contains repeated paragraphs.")
-        sentences = [sentence.strip().casefold() for text in normalized for sentence in re.split(r"[.!?]+", text) if sentence.strip()]
-        if len(sentences) != len(set(sentences)):
-            raise CoverLetterValidationError("Cover letter contains duplicate sentences.")
-        combined = " ".join(normalized)
-        if "i am the perfect candidate" in combined or "[company name]" in combined:
-            raise CoverLetterValidationError("Cover letter contains generic or placeholder language.")
-        if re.search(r"\b(?:[A-Z][a-z]+,\s*){3,}[A-Z][a-z]+\b", " ".join(p.text for p in paragraphs)):
-            raise CoverLetterValidationError("Cover letter contains a suspicious technology or proper-noun list.")
-        for paragraph in paragraphs:
-            if len(paragraph.text) > 2400:
-                raise CoverLetterValidationError("Cover-letter paragraph exceeds the supported length.")
-
-    def _cache_key(
+    def _build_fingerprint_inputs(
         self,
         profile: MasterProfile,
         posting: JobPosting,
         plan: TailoringPlan,
-        request: CoverLetterDraftRequest,
-        compact: bool,
-    ) -> str:
-        payload = "|".join([
-            profile.model_dump_json(), posting.model_dump_json(), plan.model_dump_json(),
-            request.model_dump_json(), self._layout_profile.model_dump_json(), str(compact),
-        ])
-        return sha256(payload.encode()).hexdigest()
+        final_resume: StructuredResume | None,
+        research_request: CompanyResearchRequest,
+        research: CompanyResearchBundle,
+        evidence: list[CoverLetterEvidenceRecord],
+        recipient: CoverLetterRecipient,
+        explicit_motivation: str | None,
+        date_text: str,
+    ) -> CoverLetterArtifactFingerprintInputs:
+        return CoverLetterArtifactFingerprintInputs(
+            reviewed_profile_fingerprint=content_fingerprint(profile),
+            posting_fingerprint=content_fingerprint(posting),
+            plan_fingerprint=content_fingerprint(plan),
+            final_resume_fingerprint=(
+                content_fingerprint(final_resume) if final_resume is not None else None
+            ),
+            research_request_fingerprint=content_fingerprint(research_request),
+            research_fingerprint=research.research_fingerprint,
+            evidence_fingerprint=content_fingerprint(
+                [item.model_dump(mode="json") for item in evidence]
+            ),
+            recipient_fingerprint=content_fingerprint(recipient),
+            date_text=date_text,
+            motivation_fingerprint=(
+                content_fingerprint(explicit_motivation) if explicit_motivation else None
+            ),
+            writing_policy_version=COVER_LETTER_WRITING_POLICY_VERSION,
+            provider_contract_version=COVER_LETTER_PROVIDER_CONTRACT_VERSION,
+            validation_policy_version=COVER_LETTER_VALIDATION_POLICY_VERSION,
+            template_identity=COVER_LETTER_TEMPLATE_IDENTITY,
+            provider=self._provider_name,
+            model=self._model_name,
+        )
+
+    def _provider_error_diagnostic(
+        self,
+        started: float,
+        calls: int,
+        error: LanguageModelError,
+    ) -> CoverLetterProviderDiagnostic:
+        fallback = {
+            LanguageModelErrorKind.CONFIGURATION: CoverLetterFallbackReason.CREDENTIALS_ABSENT,
+            LanguageModelErrorKind.TIMEOUT: CoverLetterFallbackReason.PROVIDER_TIMEOUT,
+            LanguageModelErrorKind.RATE_LIMITED: CoverLetterFallbackReason.PROVIDER_RATE_LIMIT,
+        }.get(error.kind, CoverLetterFallbackReason.PROVIDER_UNAVAILABLE)
+        return self._provider_failure(
+            started,
+            calls,
+            0,
+            CoverLetterProviderStatus.REQUEST_FAILED,
+            fallback,
+            f"Provider failed with typed status {error.kind.value}; deterministic fallback used.",
+        )
+
+    def _provider_failure(
+        self,
+        started: float,
+        calls: int,
+        repairs: int,
+        status: CoverLetterProviderStatus,
+        fallback: CoverLetterFallbackReason,
+        detail: str,
+    ) -> CoverLetterProviderDiagnostic:
+        return CoverLetterProviderDiagnostic(
+            provider=self._provider_name,
+            model=self._model_name,
+            status=status,
+            request_count=calls,
+            repair_count=repairs,
+            cache_hit_count=0,
+            elapsed_seconds=max(0.0, self._clock() - started),
+            fallback_reason=fallback,
+            safe_detail=detail,
+        )
+
+    @staticmethod
+    def _candidate_validation_diagnostic(
+        candidate_index: int,
+        candidate: _CandidateOutput,
+        validated: CoverLetterValidationResult,
+        posting: JobPosting,
+        recipient: CoverLetterRecipient,
+        research: CompanyResearchBundle,
+        evidence: list[CoverLetterEvidenceRecord],
+        final_resume: StructuredResume | None,
+    ) -> CoverLetterCandidateValidationDiagnostic:
+        output = candidate.output
+        gates = {gate.gate: gate for gate in validated.quality_gates}
+
+        def aggregate(names: set[str]) -> CoverLetterQualityGateStatus:
+            statuses = [gates[name].status for name in names if name in gates]
+            if CoverLetterQualityGateStatus.FAILED in statuses:
+                return CoverLetterQualityGateStatus.FAILED
+            if CoverLetterQualityGateStatus.REVIEW_REQUIRED in statuses:
+                return CoverLetterQualityGateStatus.REVIEW_REQUIRED
+            return CoverLetterQualityGateStatus.PASSED
+
+        failed_gates = [
+            gate
+            for gate in validated.quality_gates
+            if gate.status is CoverLetterQualityGateStatus.FAILED
+        ]
+        rejected_codes = [code for claim in validated.rejected_claims for code in claim.codes]
+        rejected_summaries = [
+            *[gate.detail for gate in failed_gates],
+            *[claim.detail for claim in validated.rejected_claims],
+        ]
+        output_evidence_ids = {
+            evidence_id
+            for paragraph in output.paragraphs
+            for evidence_id in paragraph.candidate_evidence_ids
+        }
+        candidate_payload = output.model_dump_json()
+        return CoverLetterCandidateValidationDiagnostic(
+            candidate_id=(
+                f"cover-candidate:{candidate_index}:"
+                f"{sha256(candidate_payload.encode()).hexdigest()[:12]}"
+            ),
+            candidate_index=candidate_index,
+            generation_source=candidate.generation_source,
+            paragraph_count=len(output.paragraphs),
+            sentence_count=sum(
+                len(CoverLetterValidator._sentences(paragraph.text))
+                for paragraph in output.paragraphs
+            ),
+            source_bound_sentence_count=sum(
+                len(paragraph.source_bound_sentences)
+                for paragraph in output.paragraphs
+            ),
+            unbound_sentence_count=sum(
+                len(CoverLetterValidator._sentences(paragraph.text))
+                - len(paragraph.source_bound_sentences)
+                for paragraph in output.paragraphs
+            ),
+            character_count=sum(len(paragraph.text) for paragraph in output.paragraphs),
+            posting_fingerprint=content_fingerprint(posting),
+            company_name=posting.company_name,
+            recipient_company=recipient.company,
+            posting_authority_fact_count=sum(
+                fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+                for fact in research.facts
+            ),
+            verified_company_fact_count=sum(
+                fact.confidence
+                in {CompanyFactConfidence.VERIFIED, CompanyFactConfidence.USER_AUTHORITY}
+                for fact in research.facts
+            ),
+            selected_evidence_ids=sorted(
+                item.id for item in evidence if item.id in output_evidence_ids
+            ),
+            accepted_resume_narrative_fingerprint=(
+                content_fingerprint(final_resume) if final_resume is not None else None
+            ),
+            structural_validation=aggregate(
+                {
+                    "generic_language",
+                    "paragraph_structure",
+                    "posting_reference",
+                    "closing_structure",
+                }
+            ),
+            company_validation=aggregate({"company_grounding", "interchangeability"}),
+            narrative_validation=aggregate(
+                {"narrative_structure", "resume_complement", "resume_consistency"}
+            ),
+            claim_validation=aggregate({"candidate_grounding"}),
+            rejection_codes=list(
+                dict.fromkeys([*[gate.code for gate in failed_gates], *rejected_codes])
+            ),
+            rejection_summaries=list(dict.fromkeys(rejected_summaries)),
+            rejected_paragraph_indexes=sorted(
+                {
+                    claim.paragraph_index
+                    for claim in validated.rejected_claims
+                    if claim.paragraph_index is not None
+                }
+            ),
+            rejected_sentence_indexes=sorted(
+                {
+                    claim.sentence_index
+                    for claim in validated.rejected_claims
+                    if claim.sentence_index is not None
+                }
+            ),
+        )
+
+    def _page_fit_gate(
+        self,
+        diagnostic: CoverLetterPageFitDiagnostic,
+    ) -> CoverLetterQualityGateResult:
+        status = diagnostic.status
+        balanced = (
+            diagnostic.page_count == 1
+            and not diagnostic.blank_trailing_page
+            and diagnostic.underfill_or_overflow == "balanced_one_page"
+        )
+        if status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED:
+            gate_status = CoverLetterQualityGateStatus.REVIEW_REQUIRED
+            detail = (
+                "Exact pagination is unavailable. The rendered DOCX was retained for "
+                "review, and manual Word inspection is required before approval."
+            )
+        elif balanced:
+            gate_status = CoverLetterQualityGateStatus.PASSED
+            detail = "The selected DOCX is one professionally filled page."
+        else:
+            gate_status = CoverLetterQualityGateStatus.FAILED
+            detail = "The selected DOCX is underfilled, overflowing, or has a blank trailing page."
+        return CoverLetterQualityGateResult(
+            gate="page_fit",
+            status=gate_status,
+            code=status.value,
+            detail=detail,
+        )
+
+    @staticmethod
+    def _research_gate(research: CompanyResearchBundle) -> CoverLetterQualityGateResult:
+        usable = bool(
+            [
+                fact
+                for fact in research.facts
+                if fact.confidence is not CompanyFactConfidence.CONFLICTING
+            ]
+        )
+        if usable:
+            status = (
+                CoverLetterQualityGateStatus.PASSED
+                if research.status is CompanyResearchStatus.VERIFIED
+                else CoverLetterQualityGateStatus.REVIEW_REQUIRED
+            )
+            detail = (
+                "Verified official or user-authorized company facts are available."
+                if status is CoverLetterQualityGateStatus.PASSED
+                else (
+                    "Company specificity relies on the validated job posting; research "
+                    "limitations remain visible."
+                )
+            )
+        else:
+            status = CoverLetterQualityGateStatus.FAILED
+            detail = "No verified company or posting fact supports a company-specific connection."
+        return CoverLetterQualityGateResult(
+            gate="company_research",
+            status=status,
+            code=research.status.value,
+            detail=detail,
+        )
+
+    def _timing(self, stage: GenerationStage, started: float) -> StageTiming:
+        return StageTiming(
+            stage=stage,
+            elapsed_seconds=max(0.0, self._clock() - started),
+        )
+
+    def _approximate_body_lines(self) -> int:
+        usable_points = self._layout_profile.usable_height_inches * 72
+        line_height = self._layout_profile.body_size_pt * self._layout_profile.line_spacing
+        return max(20, round(usable_points / line_height) - 12)
+
+    @staticmethod
+    def _required_content_gates_pass(gates: list[CoverLetterQualityGateResult]) -> bool:
+        required = {
+            "candidate_grounding",
+            "company_grounding",
+            "interchangeability",
+            "generic_language",
+            "narrative_structure",
+            "resume_complement",
+            "paragraph_structure",
+            "posting_reference",
+            "closing_structure",
+            "resume_consistency",
+        }
+        return not any(
+            gate.gate in required and gate.status is CoverLetterQualityGateStatus.FAILED
+            for gate in gates
+        )
+
+    @staticmethod
+    def _purpose_order(paragraph: CoverLetterDraftParagraph) -> int:
+        order = {
+            CoverLetterParagraphPurpose.OPENING: 0,
+            CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION: 1,
+            CoverLetterParagraphPurpose.CONTRIBUTION: 2,
+            CoverLetterParagraphPurpose.ROLE_FIT: 3,
+            CoverLetterParagraphPurpose.CLOSING: 4,
+        }
+        return order[paragraph.purpose]
+
+    @staticmethod
+    def _resume_evidence_ids(final_resume: StructuredResume | None) -> set[str]:
+        if final_resume is None:
+            return set()
+        return {
+            evidence_id
+            for bullets in [
+                *final_resume.experience_bullets.values(),
+                *final_resume.project_bullets.values(),
+            ]
+            for bullet in bullets
+            for evidence_id in bullet.evidence_ids
+        }
+
+    @staticmethod
+    def _provider_cache_key(request: CoverLetterDraftRequest) -> str:
+        payload = request.model_dump(mode="json", exclude={"repair_instruction"})
+        return sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _artifact_fingerprint(inputs: CoverLetterArtifactFingerprintInputs) -> str:
+        return sha256(
+            json.dumps(
+                inputs.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _validate_inputs(
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan,
+    ) -> None:
+        if plan.profile_id != profile.id or plan.profile_version != profile.version:
+            raise CoverLetterValidationError("Tailoring plan does not match the reviewed profile")
+        if plan.posting_id != posting.id or plan.posting != posting:
+            raise CoverLetterValidationError("Tailoring plan does not match the active posting")
+        if plan.strategy is None:
+            raise CoverLetterValidationError("A validated resume strategy is required")
+
+    def _aware_now(self) -> datetime:
+        value = self._now()
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+__all__ = [
+    "CoverLetterPageFitError",
+    "CoverLetterService",
+    "CoverLetterValidationError",
+]

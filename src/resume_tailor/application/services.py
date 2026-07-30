@@ -15,7 +15,12 @@ from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.plan_validation import DeterministicPlanIntegrityValidator
 from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.resume_retrieval import InProcessResumeEvidenceRetriever
-from resume_tailor.domain.cover_letter import CoverLetter, CoverLetterRecipient
+from resume_tailor.domain.company_research import CompanyResearchRequest
+from resume_tailor.domain.cover_letter import (
+    CoverLetter,
+    CoverLetterRecipient,
+    GeneratedCoverLetterArtifact,
+)
 from resume_tailor.domain.generated_artifact import (
     ArtifactFingerprintInputs,
     GeneratedResumeArtifact,
@@ -516,19 +521,29 @@ class TailorResumeService:
             raise ValueError("Generated-resume artifact identity is not configured")
         return self._generation_configuration
 
-    def draft_cover_letter(
+    def generate_cover_letter_artifact(
         self,
         profile: MasterProfile,
         posting: JobPosting,
         plan: TailoringPlan,
         *,
         recipient: CoverLetterRecipient | None = None,
-        compact: bool = False,
-    ) -> CoverLetter:
+        final_resume: StructuredResume | None = None,
+        research_request: CompanyResearchRequest | None = None,
+        explicit_motivation: str | None = None,
+        date_text: str | None = None,
+    ) -> GeneratedCoverLetterArtifact:
         if self._cover_letter_service is None:
             raise ValueError("Cover-letter service is not configured")
-        return self._cover_letter_service.draft(
-            profile, posting, plan, recipient=recipient, compact=compact
+        return self._cover_letter_service.generate_artifact(
+            profile,
+            posting,
+            plan,
+            recipient=recipient,
+            final_resume=final_resume,
+            research_request=research_request,
+            explicit_motivation=explicit_motivation,
+            date_text=date_text,
         )
 
     def approve_cover_letter(

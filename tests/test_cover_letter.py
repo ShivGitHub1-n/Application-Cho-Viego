@@ -5,216 +5,438 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from resume_tailor.application.cover_letter import CoverLetterService, CoverLetterValidationError
+from resume_tailor.application.cover_letter import (
+    CoverLetterCandidateRejectionError,
+    CoverLetterService,
+    CoverLetterValidationError,
+)
+from resume_tailor.application.cover_letter_validation import DeterministicCoverLetterComposer
 from resume_tailor.application.llm_prompts import task_prompt
 from resume_tailor.application.workflow_state import get_active_posting
-from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose
+from resume_tailor.domain.cover_letter import (
+    CoverLetterFallbackReason,
+    CoverLetterParagraphPurpose,
+    CoverLetterProviderStatus,
+    CoverLetterQualityGateStatus,
+    CoverLetterReviewState,
+)
+from resume_tailor.domain.generated_artifact import GenerationStage
 from resume_tailor.domain.llm_models import (
-    CoverLetterDraftClaim,
     CoverLetterDraftOutput,
     CoverLetterDraftParagraph,
-    CoverLetterDraftResult,
+    LanguageModelError,
+    LanguageModelErrorKind,
     LlmOperation,
-    ModelCallMetadata,
 )
-from resume_tailor.domain.models import EntityKind, EvidenceItem, JobPosting, MasterProfile, ResumeItem, TemplateConstraints
-from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderResult
-from resume_tailor.infrastructure.rendering import PageCountMeasurement
-from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer
+from tests.cover_letter_helpers import (
+    ControlledCoverLetterRenderer,
+    cover_letter_case,
+    provider_result,
+    recipient,
+    rich_cover_letter_case,
+)
 from tests.fakes import FakeResumeLanguageModel
 
 
-def _metadata() -> ModelCallMetadata:
-    return ModelCallMetadata(provider="fake", model="fake", operation=LlmOperation.COVER_LETTER_DRAFT, latency_ms=1)
+def test_minimal_provider_request_reuses_ranked_reviewed_evidence() -> None:
+    profile, posting, plan = cover_letter_case()
+    service = CoverLetterService()
 
-
-def _fixture():
-    profile = MasterProfile(
-        id="cover-profile",
-        user_id="user",
-        display_name="Candidate Name",
-        contact={"location": "Toronto, ON", "email": "candidate@example.com", "links": ["https://github.com/candidate"]},
-        experiences=[ResumeItem(id="entry-1", title="Firmware Intern", kind=EntityKind.EXPERIENCE)],
-        evidence=[
-            EvidenceItem(
-                id="evidence-1",
-                entity_id="entry-1",
-                source_text="Developed STM32 firmware and validated SPI sensor communication at 30 FPS.",
-                technologies=["STM32", "SPI"],
-                outcomes=["30 FPS"],
-            )
-        ],
-    )
-    posting = JobPosting(id="cover-posting", title="Embedded Firmware Intern", company_name="Example Robotics", description="Develop STM32 firmware and validate sensors.")
-    plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints(max_experience_lines=4))
-    return profile, posting, plan
-
-
-def _response(
-    *,
-    confidence="explicitly_supported",
-    purpose="evidence",
-    compact=False,
-    role="Embedded Firmware Intern",
-    company="Example Robotics",
-):
-    return CoverLetterDraftResult(
-        metadata=_metadata(),
-        output=CoverLetterDraftOutput(
-            paragraphs=[
-                CoverLetterDraftParagraph(
-                    purpose="introduction",
-                    text=f"I am applying for the {role} role at {company}.",
-                    claims=[CoverLetterDraftClaim(text="I am applying for the role.", evidence_ids=["evidence-1"], confidence="explicitly_supported")],
-                ),
-                CoverLetterDraftParagraph(
-                    purpose=purpose,
-                    text=("My firmware and sensor validation experience would help me contribute to this work." if not compact else "My firmware experience supports this work."),
-                    claims=[CoverLetterDraftClaim(text="Developed firmware and validated sensors.", evidence_ids=["evidence-1"], confidence=confidence, optional=True, reduction_priority=10)],
-                    optional=True,
-                    reduction_priority=10,
-                ),
-                CoverLetterDraftParagraph(purpose="closing", text="I would welcome the opportunity to discuss my fit for the role."),
-            ]
-        ),
-    )
-
-
-class _FakeRenderer:
-    def __init__(self, counts: list[int]):
-        self.counts = counts
-        self.calls = 0
-
-    def render_candidate(self, letter, output_directory: Path) -> CoverLetterRenderResult:
-        self.calls += 1
-        path = Path(output_directory) / "cover-letter.docx"
-        path.write_bytes(b"docx")
-        measurement = PageCountMeasurement(self.counts.pop(0), "fake", "exact", True)
-        return CoverLetterRenderResult(path, measurement)
-
-
-def test_request_reuses_selected_plan_evidence_and_draft_is_cached() -> None:
-    profile, posting, plan = _fixture()
-    fake = FakeResumeLanguageModel(draft_cover_letter=_response())
-    service = CoverLetterService(fake)
     request = service.create_request(profile, posting, plan)
-    assert request.selected_entry_ids == ["entry-1"]
-    assert [item.evidence_id for item in request.selected_evidence] == ["evidence-1"]
-    service.draft(profile, posting, plan)
-    service.draft(profile, posting, plan)
-    assert fake.calls["draft_cover_letter"] == 1
+
+    assert 1 <= len(request.selected_evidence) <= 4
+    assert set(item.evidence_id for item in request.selected_evidence) <= {
+        item.id for item in profile.evidence
+    }
+    assert request.company_research
+    assert not hasattr(request, "diagnostics")
+    assert not hasattr(request, "docx_formatting")
 
 
-def test_canonical_introduction_purpose_is_accepted() -> None:
-    profile, posting, plan = _fixture()
-    service = CoverLetterService(FakeResumeLanguageModel(draft_cover_letter=_response()))
+def test_all_candidate_rejection_reports_validator_separation_and_stays_fatal() -> None:
+    profile, posting, plan = rich_cover_letter_case()
 
-    letter = service.draft(profile, posting, plan)
+    class UnsupportedCandidateComposer:
+        @staticmethod
+        def _reject(
+            output: CoverLetterDraftOutput,
+            company_name: str,
+        ) -> CoverLetterDraftOutput:
+            paragraphs = list(output.paragraphs)
+            paragraph = paragraphs[0]
+            rejected_text = (
+                f"{company_name} operates an unsupported CUDA production fleet. "
+                "I built STM32 firmware."
+            )
+            if paragraph.source_bound_sentences:
+                sentences = list(paragraph.source_bound_sentences)
+                sentences[0] = sentences[0].model_copy(update={"text": rejected_text})
+                paragraphs[0] = paragraph.model_copy(
+                    update={
+                        "text": " ".join(sentence.text for sentence in sentences),
+                        "source_bound_sentences": sentences,
+                    }
+                )
+            else:
+                paragraphs[0] = paragraph.model_copy(update={"text": rejected_text})
+            return output.model_copy(update={"paragraphs": paragraphs})
 
-    assert letter.paragraphs[0].purpose == CoverLetterParagraphPurpose.INTRODUCTION
-    assert "Embedded Firmware Intern" in letter.paragraphs[0].text
-    assert "Example Robotics" in letter.paragraphs[0].text
+        def variants(self, evidence, research, active_posting):
+            outputs = DeterministicCoverLetterComposer().variants(
+                evidence, research, active_posting
+            )
+            return [
+                self._reject(output, active_posting.company_name or "Example Robotics")
+                for output in outputs
+            ]
+
+        def source_bound_fallback(self, evidence, research, active_posting):
+            output = DeterministicCoverLetterComposer().source_bound_fallback(
+                evidence, research, active_posting
+            )
+            return self._reject(
+                output,
+                active_posting.company_name or "Example Robotics",
+            )
+
+    renderer = ControlledCoverLetterRenderer([0.94])
+    service = CoverLetterService(
+        renderer=renderer,
+        deterministic_composer=UnsupportedCandidateComposer(),
+    )
+
+    with pytest.raises(CoverLetterCandidateRejectionError) as captured:
+        service.generate_artifact(profile, posting, plan, recipient=recipient(posting))
+
+    diagnostics = captured.value.diagnostics
+    assert len(diagnostics) == 3
+    assert all(
+        diagnostic.claim_validation is CoverLetterQualityGateStatus.FAILED
+        for diagnostic in diagnostics
+    )
+    assert all(
+        "company_fact_not_verified" in diagnostic.rejection_codes for diagnostic in diagnostics
+    )
+    assert all(diagnostic.rejected_paragraph_indexes == [0] for diagnostic in diagnostics)
+    assert all(not diagnostic.rendering_attempted for diagnostic in diagnostics)
+    assert "candidate 1" in str(captured.value)
+    assert renderer.render_calls == 0
 
 
-def test_cover_letter_prompt_requires_machine_readable_purposes() -> None:
-    profile, posting, plan = _fixture()
-    service = CoverLetterService(FakeResumeLanguageModel(draft_cover_letter=_response()))
+def test_source_bound_fallback_is_used_only_after_richer_candidates_fail() -> None:
+    profile, posting, plan = rich_cover_letter_case()
 
-    prompt = task_prompt(LlmOperation.COVER_LETTER_DRAFT, service.create_request(profile, posting, plan))
+    class RichCandidatesRejectedComposer(DeterministicCoverLetterComposer):
+        def variants(self, evidence, research, active_posting):
+            outputs = super().variants(evidence, research, active_posting)
+            rejected = []
+            for output in outputs:
+                paragraphs = list(output.paragraphs)
+                paragraphs[0] = paragraphs[0].model_copy(
+                    update={
+                        "text": (
+                            f"{active_posting.description} This copied posting language "
+                            "does not form a grounded connection."
+                        )
+                    }
+                )
+                rejected.append(output.model_copy(update={"paragraphs": paragraphs}))
+            return rejected
 
-    assert "introduction, evidence, closing" in prompt
-    assert "role-specific or company-specific descriptions in paragraph text" in prompt
+    renderer = ControlledCoverLetterRenderer([0.94])
+    service = CoverLetterService(
+        renderer=renderer,
+        deterministic_composer=RichCandidatesRejectedComposer(),
+    )
+
+    artifact = service.generate_artifact(
+        profile,
+        posting,
+        plan,
+        recipient=recipient(posting),
+    )
+
+    source_bound = next(
+        diagnostic
+        for diagnostic in artifact.candidate_validations
+        if diagnostic.generation_source == "deterministic:source_bound_fallback"
+    )
+    assert source_bound.structural_validation is CoverLetterQualityGateStatus.PASSED
+    assert source_bound.company_validation is CoverLetterQualityGateStatus.PASSED
+    assert source_bound.narrative_validation is CoverLetterQualityGateStatus.PASSED
+    assert source_bound.claim_validation is CoverLetterQualityGateStatus.PASSED
+    assert source_bound.source_bound_sentence_count == source_bound.sentence_count
+    assert source_bound.unbound_sentence_count == 0
+    assert source_bound.rendering_attempted
+    assert len(artifact.letter.paragraphs) == 5
+    assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
+    assert all(
+        sentence.posting_fact_ids
+        or sentence.candidate_evidence_ids
+        or sentence.verified_company_fact_ids
+        or sentence.canonical_metadata
+        for paragraph in artifact.letter.paragraphs
+        for sentence in paragraph.sentence_authorities
+    )
+    assert artifact.ready_for_review
 
 
-@pytest.mark.parametrize(
-    ("role", "company"),
-    [("Robotics Co-op", "Northstar Automation"), ("Controls Engineer", "Harbor Systems")],
-)
-def test_role_and_company_variation_does_not_change_introduction_purpose(role: str, company: str) -> None:
-    profile, posting, plan = _fixture()
-    response = _response(role=role, company=company)
-    service = CoverLetterService(FakeResumeLanguageModel(draft_cover_letter=response))
+def test_cover_letter_prompt_requires_coherent_grounded_narrative() -> None:
+    profile, posting, plan = cover_letter_case()
+    request = CoverLetterService().create_request(profile, posting, plan)
 
-    letter = service.draft(profile, posting, plan)
+    prompt = task_prompt(LlmOperation.COVER_LETTER_DRAFT, request)
 
-    assert letter.paragraphs[0].purpose == CoverLetterParagraphPurpose.INTRODUCTION
-    assert role in letter.paragraphs[0].text
-    assert company in letter.paragraphs[0].text
+    assert "why this company" in prompt.casefold()
+    assert "authorized candidate evidence IDs" in prompt
+    assert "company research IDs" in prompt
+    assert "Do not return diagnostics" in prompt
 
 
-def test_evidence_and_closing_purposes_remain_canonical() -> None:
-    profile, posting, plan = _fixture()
-    service = CoverLetterService(FakeResumeLanguageModel(draft_cover_letter=_response()))
-
-    letter = service.draft(profile, posting, plan)
-
-    assert letter.paragraphs[1].purpose == CoverLetterParagraphPurpose.EVIDENCE
-    assert letter.paragraphs[-1].purpose == CoverLetterParagraphPurpose.CLOSING
-
-
-def test_former_opening_identifier_normalizes_deterministically() -> None:
+def test_paragraph_purpose_normalizes_legacy_names_but_rejects_unknown() -> None:
     paragraph = CoverLetterDraftParagraph(
         purpose="  OPENING ",
-        text="I am applying for this role.",
+        text="A specific technical opening.",
     )
-
-    assert paragraph.purpose == CoverLetterParagraphPurpose.INTRODUCTION
-
-
-def test_unknown_paragraph_purpose_is_rejected_by_typed_schema() -> None:
+    assert paragraph.purpose is CoverLetterParagraphPurpose.OPENING
     with pytest.raises(ValidationError, match="Unsupported paragraph purpose"):
         CoverLetterDraftParagraph(
-            purpose="Introduction and interest in any role",
-            text="I am applying for this role.",
+            purpose="company praise and enthusiasm",
+            text="Generic prose.",
         )
 
 
-def test_streamlit_style_rerun_uses_authoritative_posting_for_drafting() -> None:
-    profile, posting, plan = _fixture()
-    session_state: dict[str, object] = {"posting": posting}
-    service = CoverLetterService(FakeResumeLanguageModel(draft_cover_letter=_response()))
+def test_no_provider_builds_reviewable_deterministic_artifact() -> None:
+    profile, posting, plan = cover_letter_case()
+    renderer = ControlledCoverLetterRenderer([0.90])
+    service = CoverLetterService(renderer=renderer)
 
-    rerun_posting = get_active_posting(session_state)
-    assert rerun_posting is posting
-    letter = service.draft(profile, rerun_posting, plan)
+    artifact = service.generate_artifact(profile, posting, plan)
 
-    assert letter.posting_id == posting.id
-    assert letter.job_title == posting.title
-
-
-def test_strong_inference_requires_review_and_rejection_is_excluded(tmp_path: Path) -> None:
-    profile, posting, plan = _fixture()
-    fake = FakeResumeLanguageModel(draft_cover_letter=_response(confidence="strongly_implied"))
-    service = CoverLetterService(fake)
-    letter = service.draft(profile, posting, plan)
-    assert len(letter.pending_claims) == 1
-    reviewed = service.approve(letter, set(), reviewed=True)
-    assert not reviewed.pending_claims
-    renderer = _FakeRenderer([1])
-    export_service = CoverLetterService(fake, renderer=renderer)
-    export_service._contexts[letter.plan_fingerprint] = (profile, posting, plan, None, letter.date_text)
-    exported = export_service.export(reviewed, tmp_path)
-    assert exported.page_count == 1
+    assert artifact.review_state is CoverLetterReviewState.GENERATED_AWAITING_REVIEW
+    assert artifact.provider_diagnostic.status is CoverLetterProviderStatus.DISABLED
+    assert (
+        artifact.provider_diagnostic.fallback_reason is CoverLetterFallbackReason.PROVIDER_DISABLED
+    )
+    assert artifact.page_fit.estimated_utilization == 0.90
+    assert artifact.page_fit.preferred_density_reachable
+    assert artifact.call_counts.provider_calls == 0
+    assert artifact.call_counts.research_network_requests == 0
+    assert artifact.docx_bytes.startswith(b"PK\x03\x04")
+    stages = {timing.stage for timing in artifact.stage_timings}
+    assert {
+        GenerationStage.COVER_LETTER_QUALITY_GATES,
+        GenerationStage.DOCX_RENDERING,
+        GenerationStage.COVER_LETTER_PAGE_FIT,
+        GenerationStage.GENERATED_ARTIFACT_STORAGE,
+    } <= stages
 
 
-def test_overlong_letter_reduces_without_second_draft_call(tmp_path: Path) -> None:
-    profile, posting, plan = _fixture()
-    fake = FakeResumeLanguageModel(draft_cover_letter=_response())
-    renderer = _FakeRenderer([2, 1])
-    service = CoverLetterService(fake, renderer=renderer)
-    letter = service.approve(service.draft(profile, posting, plan), set(), reviewed=True)
-    exported = service.export(letter, tmp_path)
-    assert exported.page_count == 1
+def test_absent_credentials_exposes_typed_fallback() -> None:
+    profile, posting, plan = cover_letter_case()
+    service = CoverLetterService(
+        renderer=ControlledCoverLetterRenderer([0.94]),
+        provider_name="gemini",
+        model_name="configured-model",
+        provider_unavailable_reason="GEMINI_API_KEY is missing.",
+    )
+
+    artifact = service.generate_artifact(profile, posting, plan)
+
+    assert (
+        artifact.provider_diagnostic.status is CoverLetterProviderStatus.CONFIGURATION_UNAVAILABLE
+    )
+    assert (
+        artifact.provider_diagnostic.fallback_reason is CoverLetterFallbackReason.CREDENTIALS_ABSENT
+    )
+    assert artifact.provider_diagnostic.request_count == 0
+
+
+def test_provider_response_is_cached_without_duplicate_request() -> None:
+    profile, posting, plan = cover_letter_case()
+    fake = FakeResumeLanguageModel(draft_cover_letter=provider_result(profile, posting, plan))
+    service = CoverLetterService(
+        language_model=fake,
+        renderer=ControlledCoverLetterRenderer([0.94]),
+        provider_name="fake",
+        model_name="fake-model",
+    )
+
+    first = service.generate_artifact(profile, posting, plan, date_text="July 21, 2026")
+    second = service.generate_artifact(profile, posting, plan, date_text="July 22, 2026")
+
+    assert first is not second
     assert fake.calls["draft_cover_letter"] == 1
+    assert second.provider_diagnostic.status is CoverLetterProviderStatus.CACHE_HIT
 
 
-def test_unsupported_claim_is_rejected_before_export() -> None:
-    profile, posting, plan = _fixture()
-    fake = FakeResumeLanguageModel(draft_cover_letter=_response(confidence="unsupported"))
-    service = CoverLetterService(fake)
-    try:
-        service.draft(profile, posting, plan)
-    except CoverLetterValidationError as error:
-        assert "Unsupported claim" in str(error)
-    else:
-        raise AssertionError("Unsupported cover-letter claim was accepted")
+def test_one_repair_is_allowed_only_for_malformed_output() -> None:
+    profile, posting, plan = cover_letter_case()
+    malformed = LanguageModelError(LanguageModelErrorKind.MALFORMED_RESPONSE, "bad json")
+    result = provider_result(profile, posting, plan)
+    fake = FakeResumeLanguageModel(draft_cover_letter=[malformed, result])
+    service = CoverLetterService(
+        language_model=fake,
+        renderer=ControlledCoverLetterRenderer([0.94]),
+    )
+
+    artifact = service.generate_artifact(profile, posting, plan)
+
+    assert fake.calls["draft_cover_letter"] == 2
+    assert artifact.provider_diagnostic.repair_count == 1
+    repair_request = fake.requests["draft_cover_letter"][1]
+    assert repair_request.repair_instruction
+
+
+def test_semantically_invalid_typed_output_uses_local_fallback_without_repair() -> None:
+    profile, posting, plan = cover_letter_case()
+    result = provider_result(profile, posting, plan)
+    paragraphs = list(result.output.paragraphs)
+    paragraphs[0] = paragraphs[0].model_copy(
+        update={"text": "I am thrilled to apply for this exciting opportunity."}
+    )
+    for index in range(1, len(paragraphs) - 1):
+        paragraphs[index] = paragraphs[index].model_copy(
+            update={"text": "I deployed CUDA globally in production for millions of users."}
+        )
+    paragraphs[-1] = paragraphs[-1].model_copy(
+        update={"text": "I look forward to the opportunity to make a meaningful impact."}
+    )
+    invalid = result.model_copy(
+        update={"output": result.output.model_copy(update={"paragraphs": paragraphs})}
+    )
+    fake = FakeResumeLanguageModel(draft_cover_letter=invalid)
+    service = CoverLetterService(
+        language_model=fake,
+        renderer=ControlledCoverLetterRenderer([0.94]),
+    )
+
+    artifact = service.generate_artifact(profile, posting, plan)
+
+    assert fake.calls["draft_cover_letter"] == 1
+    assert artifact.provider_diagnostic.repair_count == 0
+    assert artifact.provider_diagnostic.status is CoverLetterProviderStatus.VALIDATION_FALLBACK
+    assert (
+        artifact.provider_diagnostic.fallback_reason
+        is CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "fallback"),
+    [
+        (LanguageModelErrorKind.TIMEOUT, CoverLetterFallbackReason.PROVIDER_TIMEOUT),
+        (LanguageModelErrorKind.RATE_LIMITED, CoverLetterFallbackReason.PROVIDER_RATE_LIMIT),
+    ],
+)
+def test_provider_timeout_or_rate_limit_falls_back_once(
+    kind: LanguageModelErrorKind,
+    fallback: CoverLetterFallbackReason,
+) -> None:
+    profile, posting, plan = cover_letter_case()
+    fake = FakeResumeLanguageModel(
+        draft_cover_letter=LanguageModelError(kind, "provider unavailable")
+    )
+    service = CoverLetterService(
+        language_model=fake,
+        renderer=ControlledCoverLetterRenderer([0.94]),
+    )
+
+    artifact = service.generate_artifact(profile, posting, plan)
+
+    assert fake.calls["draft_cover_letter"] == 1
+    assert artifact.provider_diagnostic.fallback_reason is fallback
+
+
+def test_approval_and_download_reuse_exact_stored_bytes_with_zero_generation_calls() -> None:
+    profile, posting, plan = cover_letter_case()
+    renderer = ControlledCoverLetterRenderer([0.94])
+    service = CoverLetterService(renderer=renderer)
+    artifact = service.generate_artifact(profile, posting, plan)
+    approved = service.approve_artifact(
+        artifact,
+        expected_fingerprint=artifact.artifact_fingerprint,
+    )
+    render_calls = renderer.render_calls
+
+    download = service.prepare_download(
+        approved,
+        expected_fingerprint=approved.artifact_fingerprint,
+    )
+
+    assert download.docx_bytes == approved.docx_bytes
+    assert download.generation_call_counts.provider_calls == 0
+    assert download.generation_call_counts.research_calls == 0
+    assert download.generation_call_counts.claim_validations == 0
+    assert download.generation_call_counts.docx_renders == 0
+    assert download.generation_call_counts.pagination_attempts == 0
+    assert renderer.render_calls == render_calls
+    assert service.mark_downloaded(approved).review_state is CoverLetterReviewState.DOWNLOADED
+
+
+def test_stale_or_unapproved_artifact_cannot_download() -> None:
+    profile, posting, plan = cover_letter_case()
+    service = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.94]))
+    artifact = service.generate_artifact(profile, posting, plan)
+    with pytest.raises(CoverLetterValidationError, match="Approve"):
+        service.prepare_download(
+            artifact,
+            expected_fingerprint=artifact.artifact_fingerprint,
+        )
+    stale = artifact.model_copy(update={"current": False})
+    with pytest.raises(CoverLetterValidationError, match="stale"):
+        service.prepare_download(
+            stale,
+            expected_fingerprint=stale.artifact_fingerprint,
+        )
+
+
+def test_changed_date_or_recipient_invalidates_current_artifact() -> None:
+    profile, posting, plan = cover_letter_case()
+    service = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.94]))
+    request = service.default_research_request(posting)
+    current_recipient = recipient(posting)
+    artifact = service.generate_artifact(
+        profile,
+        posting,
+        plan,
+        recipient=current_recipient,
+        research_request=request,
+        date_text="July 21, 2026",
+    )
+
+    assert service.artifact_is_current(
+        artifact,
+        profile,
+        posting,
+        plan,
+        recipient=current_recipient,
+        final_resume=None,
+        research_request=request,
+        explicit_motivation=None,
+        date_text="July 21, 2026",
+    )
+    assert not service.artifact_is_current(
+        artifact,
+        profile,
+        posting,
+        plan,
+        recipient=current_recipient,
+        final_resume=None,
+        research_request=request,
+        explicit_motivation=None,
+        date_text="July 22, 2026",
+    )
+
+
+def test_streamlit_rerun_uses_authoritative_active_posting() -> None:
+    _profile, posting, _plan = cover_letter_case()
+    assert get_active_posting({"posting": posting}) is posting
+
+
+def test_renderer_protocol_does_not_require_output_path_persistence(tmp_path: Path) -> None:
+    profile, posting, plan = cover_letter_case()
+    renderer = ControlledCoverLetterRenderer([0.94])
+    artifact = CoverLetterService(renderer=renderer).generate_artifact(profile, posting, plan)
+    assert artifact.docx_bytes
+    assert not list(tmp_path.iterdir())
