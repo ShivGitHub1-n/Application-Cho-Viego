@@ -4,8 +4,6 @@ import json
 import os
 from collections.abc import MutableMapping
 from hashlib import sha256
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from time import perf_counter
 from typing import Any, cast
 
@@ -37,7 +35,7 @@ from resume_tailor.application.profile_editor import (
 )
 from resume_tailor.application.skill_categories import propose_reviewed_skill_categories
 from resume_tailor.application.workflow_state import (
-    ACTIVE_POSTING_KEY,
+    COVER_LETTER_DERIVED_KEYS,
     GENERATED_RESUME_APPROVED_CLAIMS_KEY,
     GENERATED_RESUME_ARTIFACT_VERSION_KEY,
     GENERATED_RESUME_GENERATED_APPROVALS_KEY,
@@ -46,14 +44,13 @@ from resume_tailor.application.workflow_state import (
     GENERATED_RESUME_REBUILD_REQUIRED_KEY,
     GENERATED_RESUME_REVIEW_STATE_KEY,
     GENERATED_RESUME_WORDING_DIRTY_KEY,
-    POSTING_FINGERPRINT_KEY,
     GeneratedResumeReviewState,
     get_active_posting,
     has_cover_letter_prerequisites,
     invalidate_posting_derived_workflow,
     invalidate_profile_derived_workflow,
+    set_active_opportunity,
 )
-from resume_tailor.domain.cover_letter import CoverLetterRecipient
 from resume_tailor.domain.generated_artifact import (
     GeneratedResumeArtifact,
     GenerationStage,
@@ -71,6 +68,7 @@ from resume_tailor.domain.profile_completeness import (
     ProfileCompletenessReport,
     validate_master_profile_completeness,
 )
+from resume_tailor.frontend.cover_letter_view import render_cover_letter_view
 from resume_tailor.frontend.job_discovery_view import (
     ApplicationJobDiscoveryDeliveryApi,
     render_job_discovery_view,
@@ -197,6 +195,10 @@ _PROGRESS_LABELS = {
     GenerationStage.DOCX_RENDERING: "Rendering document",
     GenerationStage.EXACT_WORD_PAGINATION: "Verifying pagination",
     GenerationStage.ESTIMATED_PAGINATION_FALLBACK: "Verifying pagination",
+    GenerationStage.COMPANY_RESEARCH: "Checking company sources",
+    GenerationStage.COVER_LETTER_EVIDENCE_SELECTION: "Selecting narrative evidence",
+    GenerationStage.COVER_LETTER_QUALITY_GATES: "Checking letter quality",
+    GenerationStage.COVER_LETTER_PAGE_FIT: "Fitting cover letter",
 }
 
 
@@ -563,15 +565,7 @@ def _comma_text(value: list[str]) -> str:
 
 
 def _clear_cover_letter_state() -> None:
-    for key in (
-        "cover_letter",
-        "cover_letter_reviewed",
-        "cover_letter_profile_fingerprint",
-        "cover_letter_posting_fingerprint",
-        "cover_letter_plan_fingerprint",
-        "cover_letter_evidence_fingerprint",
-        "cover_letter_recipient_fingerprint",
-    ):
+    for key in COVER_LETTER_DERIVED_KEYS:
         st.session_state.pop(key, None)
 
 
@@ -1791,6 +1785,12 @@ def _render_tailor_page(service: Any) -> None:
                 key="job_title_input",
                 placeholder="Role title",
             )
+            st.text_input(
+                "Company (optional)",
+                value=(active_posting.company_name if active_posting is not None else "") or "",
+                key="job_company_input",
+                placeholder="Company named in the posting",
+            )
             st.text_area(
                 "Job description",
                 key="job_description_input",
@@ -1828,6 +1828,7 @@ def _render_tailor_page(service: Any) -> None:
                     "local-posting",
                     st.session_state.get("job_title_input", ""),
                     st.session_state.get("job_description_input", ""),
+                    company_name=st.session_state.get("job_company_input", ""),
                 )
             previous_posting = _active_posting()
             if (
@@ -1836,10 +1837,8 @@ def _render_tailor_page(service: Any) -> None:
             ):
                 invalidate_posting_derived_workflow(_state())
             plan = service.create_plan(profile, posting, TemplateConstraints())
-            st.session_state[ACTIVE_POSTING_KEY] = posting
-            st.session_state[POSTING_FINGERPRINT_KEY] = posting.model_dump_json()
+            set_active_opportunity(_state(), posting, plan)
             st.session_state["workflow_profile_fingerprint"] = profile_change_fingerprint(profile)
-            st.session_state["plan"] = plan
             st.session_state.pop("resume", None)
             st.session_state.pop("generated_resume_artifact", None)
             _request_generated_content_review_reset()
@@ -2055,128 +2054,22 @@ def _render_tailor_page(service: Any) -> None:
 def _render_cover_letter_page(service: Any) -> None:
     st.title("Cover letter")
     if not has_cover_letter_prerequisites(_state()):
-        st.info("Create a reviewed profile and resume strategy before drafting a cover letter.")
+        st.info("Create a reviewed profile and resume strategy before generating a cover letter.")
         return
-    profile = st.session_state["profile"]
-    plan = st.session_state["plan"]
     posting = _active_posting()
     if posting is None:
-        st.info("Create a reviewed profile and resume strategy before drafting a cover letter.")
+        st.info("Create a reviewed profile and resume strategy before generating a cover letter.")
         return
-    st.caption("The draft reuses the active plan and confirmed evidence.")
-    with st.container(border=True):
-        recipient_name = st.text_input(
-            "Recipient name",
-            key="cover_recipient_name",
-        )
-        recipient_title = st.text_input(
-            "Recipient title",
-            key="cover_recipient_title",
-        )
-        recipient_company = st.text_input(
-            "Company override",
-            value=posting.company_name or "",
-            key="cover_recipient_company",
-        )
-        recipient = CoverLetterRecipient(
-            name=recipient_name.strip() or None,
-            title=recipient_title.strip() or None,
-            company=recipient_company.strip() or posting.company_name,
-        )
-        evidence_fingerprint = ":".join(
-            sorted(
-                item.id
-                for item in profile.evidence
-                if item.confirmed and item.entity_id in set(plan.selected_entity_ids)
-            )
-        )
-        current_fingerprints = {
-            "cover_letter_profile_fingerprint": profile_change_fingerprint(profile),
-            "cover_letter_posting_fingerprint": posting.model_dump_json(),
-            "cover_letter_plan_fingerprint": plan.model_dump_json(),
-            "cover_letter_evidence_fingerprint": evidence_fingerprint,
-            "cover_letter_recipient_fingerprint": recipient.model_dump_json(),
-        }
-        if any(
-            st.session_state.get(key) is not None and st.session_state.get(key) != value
-            for key, value in current_fingerprints.items()
-        ):
-            _clear_cover_letter_state()
-        if st.button(
-            "Generate cover-letter draft",
-            type="primary",
-            icon=":material/article:",
-        ):
-            try:
-                st.session_state["cover_letter"] = service.draft_cover_letter(
-                    profile,
-                    posting,
-                    plan,
-                    recipient=recipient,
-                )
-                st.session_state["cover_letter_reviewed"] = False
-                st.session_state.update(current_fingerprints)
-            except (ValueError, LanguageModelError):
-                st.error("Cover-letter drafting failed. Review configuration and inputs.")
-    letter = st.session_state.get("cover_letter")
-    if letter is None:
-        return
-    with st.container(border=True):
-        st.subheader("Draft review")
-        st.write(letter.date_text)
-        st.write(letter.salutation)
-        for paragraph in letter.paragraphs:
-            st.write(paragraph.text)
-            for claim in paragraph.claims:
-                st.caption(
-                    f"{claim.confidence.value.replace('_', ' ').title()} · "
-                    f"evidence: {', '.join(claim.evidence_ids)}"
-                )
-        st.write(letter.closing)
-        st.write(letter.signoff)
-        st.write(f"**{letter.signoff_name}**")
-    pending = {
-        claim.id
-        for claim in letter.pending_claims
-        if st.checkbox(
-            f"Approve strongly implied claim: {claim.text}",
-            key=f"cover-approve-{claim.id}",
-        )
-    }
-    reviewed = st.checkbox(
-        "I reviewed the complete cover letter and its evidence.",
-        key="cover_letter_reviewed",
+    render_cover_letter_view(
+        service,
+        cast(MasterProfile, st.session_state["profile"]),
+        posting,
+        st.session_state["plan"],
+        cast(
+            GeneratedResumeArtifact | None,
+            st.session_state.get("generated_resume_artifact"),
+        ),
     )
-    if st.button(
-        "Confirm cover-letter review",
-        disabled=not reviewed,
-    ):
-        st.session_state["cover_letter"] = service.approve_cover_letter(
-            letter,
-            pending,
-            reviewed=reviewed,
-        )
-        st.success("Cover-letter review recorded.")
-    letter = st.session_state.get("cover_letter")
-    can_export = bool(letter and letter.complete_review_confirmed and not letter.pending_claims)
-    if st.button(
-        "Export reviewed cover letter",
-        type="primary",
-        icon=":material/download:",
-        disabled=not can_export,
-    ):
-        try:
-            with TemporaryDirectory() as directory:
-                exported = service.export_cover_letter(letter, Path(directory))
-                st.session_state["cover_letter"] = exported
-                st.download_button(
-                    "Download cover-letter DOCX",
-                    Path(exported.export_path).read_bytes(),
-                    "cover-letter.docx",
-                )
-                st.success(f"Verified exactly {exported.page_count} page via DOCX measurement.")
-        except (ValueError, PageOverflowError) as error:
-            st.error(str(error))
 
 
 def _render_job_search_page(

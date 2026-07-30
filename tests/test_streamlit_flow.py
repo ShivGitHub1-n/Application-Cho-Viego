@@ -1,20 +1,27 @@
 import json
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 import resume_tailor.infrastructure.dependencies as dependencies
-from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
+from resume_tailor.application.cover_letter import CoverLetterService
+from resume_tailor.application.generated_artifact import (
+    ResumeGenerationConfiguration,
+    content_fingerprint,
+)
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.job_intake import build_job_posting
 from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.resume_composition import DeterministicResumeComposer
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.application.workflow_state import (
+    COVER_LETTER_ARTIFACT_KEY,
     get_active_posting,
     has_cover_letter_prerequisites,
     invalidate_posting_derived_workflow,
     invalidate_profile_derived_workflow,
+    set_active_opportunity,
 )
 from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_CONTRACT_VERSION,
@@ -31,6 +38,7 @@ from resume_tailor.domain.llm_models import (
 )
 from resume_tailor.domain.models import MasterProfile, TemplateConstraints
 from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
+from resume_tailor.frontend.cover_letter_view import _artifact_after_build
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.optimization import (
@@ -39,6 +47,7 @@ from resume_tailor.infrastructure.optimization import (
 )
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
+from tests.cover_letter_helpers import ControlledCoverLetterRenderer, cover_letter_case
 from tests.fakes import FakeResumeLanguageModel, metadata
 from tests.test_resume_composition import ParagraphLimitPageProvider
 
@@ -75,6 +84,7 @@ def _workflow_state() -> dict[str, object]:
         "resume": "resume-artifact",
         "generated_content_reviewed": True,
         "cover_letter": "cover-letter-draft",
+        COVER_LETTER_ARTIFACT_KEY: "immutable-cover-letter-artifact",
         "cover_letter_reviewed": True,
         "cover_letter_download": "download-state",
         "workflow_profile_fingerprint": "profile-v1",
@@ -101,6 +111,26 @@ def test_active_posting_survives_rerun_without_original_local_variable() -> None
     assert get_active_posting(state).company_name == "Example Robotics"
 
 
+def test_legacy_rerun_recovers_normalized_posting_from_accepted_plan() -> None:
+    profile, posting, plan = cover_letter_case()
+    state: dict[str, object] = {"profile": profile, "plan": plan}
+
+    recovered = get_active_posting(state)
+
+    assert recovered is posting or recovered == posting
+    assert state["posting"] == plan.posting
+    assert state["workflow_posting_fingerprint"] == content_fingerprint(posting)
+    assert has_cover_letter_prerequisites(state)
+
+
+def test_active_opportunity_rejects_contradictory_strategy_posting() -> None:
+    _profile, posting, plan = cover_letter_case()
+    changed = posting.model_copy(update={"description": posting.description + " Changed."})
+
+    with pytest.raises(ValueError, match="same opportunity"):
+        set_active_opportunity({}, changed, plan)
+
+
 def test_authoritative_posting_supplies_company_and_role_defaults() -> None:
     state = _workflow_state()
     posting = get_active_posting(state)
@@ -120,6 +150,7 @@ def test_job_description_invalidation_removes_all_posting_derived_state() -> Non
     assert "resume" not in state
     assert "generated_content_reviewed" not in state
     assert "cover_letter" not in state
+    assert COVER_LETTER_ARTIFACT_KEY not in state
     assert "cover_letter_reviewed" not in state
     assert "workflow_posting_fingerprint" not in state
 
@@ -153,6 +184,7 @@ def test_changed_canonical_profile_invalidates_dependents_but_preserves_posting(
     assert "plan" not in state
     assert "resume" not in state
     assert "cover_letter" not in state
+    assert COVER_LETTER_ARTIFACT_KEY not in state
     assert "generated_content_reviewed" not in state
     assert "cover_letter_reviewed" not in state
 
@@ -180,6 +212,64 @@ def test_repeated_invalidation_is_safe_and_deterministic() -> None:
     invalidate_posting_derived_workflow(state)
 
     assert state == first_result
+
+
+def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    profile, posting, plan = cover_letter_case()
+    cover_service = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.94]))
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        cover_letter_service=cover_service,
+    )
+    monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
+    monkeypatch.setattr(
+        dependencies,
+        "create_profile_repository",
+        lambda: SQLiteMasterProfileRepository(tmp_path / "cover-letter-ui.sqlite3"),
+    )
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+    app = AppTest.from_file(str(app_path)).run()
+    app.session_state["profile"] = profile
+    app.session_state["posting"] = posting
+    app.session_state["plan"] = plan
+
+    app.radio(key="navigation_selection").set_value("Cover Letter").run()
+    next(button for button in app.button if button.label == "Generate cover letter").click().run()
+
+    artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
+    assert artifact.ready_for_review
+    assert artifact.docx_bytes.startswith(b"PK\x03\x04")
+    assert any(expander.label == "Evidence, sources, and diagnostics" for expander in app.expander)
+    next(
+        checkbox
+        for checkbox in app.checkbox
+        if checkbox.label.startswith("I reviewed the complete letter")
+    ).check().run()
+    next(button for button in app.button if button.label == "Approve cover letter").click().run()
+
+    approved = app.session_state[COVER_LETTER_ARTIFACT_KEY]
+    assert approved.review_state.value == "approved"
+    assert any(button.label == "Download approved DOCX" for button in app.get("download_button"))
+
+
+def test_failed_cover_letter_rebuild_preserves_prior_valid_artifact() -> None:
+    profile, posting, plan = cover_letter_case()
+    valid = CoverLetterService(
+        renderer=ControlledCoverLetterRenderer([0.94])
+    ).generate_artifact(profile, posting, plan)
+    failed = CoverLetterService(
+        renderer=ControlledCoverLetterRenderer([0.50])
+    ).generate_artifact(profile, posting, plan)
+
+    stored, committed = _artifact_after_build(valid, failed)
+
+    assert failed.ready_for_review is False
+    assert stored is valid
+    assert committed is False
 
 
 def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -> None:
@@ -396,9 +486,7 @@ def test_streamlit_approved_wording_rebuild_resets_widget_state_and_reuses_artif
     assert len(review_ids) == 2
     state["generated_content_reviewed"] = True
     state.widget_keys.add("generated_content_reviewed")
-    rebuilt = frontend_app._build_and_store_resume_artifact(
-        service, plan, profile, review_ids
-    )
+    rebuilt = frontend_app._build_and_store_resume_artifact(service, plan, profile, review_ids)
     assert fake.calls["rewrite_bullets"] == 1
     assert rebuilt.pagination_diagnostic.attempt_count <= 1
     rendered_text = "\n".join(
@@ -500,15 +588,12 @@ def test_streamlit_shows_collapsed_typed_composition_diagnostic(
         "Candidates excluded by relevance or redundancy thresholds" in element.value
         for element in app.markdown
     )
-    artifact_fingerprint = app.session_state[
-        "generated_resume_artifact"
-    ].artifact_fingerprint
+    artifact_fingerprint = app.session_state["generated_resume_artifact"].artifact_fingerprint
 
     app.radio(key="navigation_selection").set_value("Settings / Diagnostics").run()
 
     assert (
-        app.session_state["generated_resume_artifact"].artifact_fingerprint
-        == artifact_fingerprint
+        app.session_state["generated_resume_artifact"].artifact_fingerprint == artifact_fingerprint
     )
 
     app.radio(key="navigation_selection").set_value("Tailor Resume").run()

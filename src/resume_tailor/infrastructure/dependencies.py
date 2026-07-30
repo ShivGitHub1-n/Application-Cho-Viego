@@ -8,6 +8,7 @@ from typing import Any, cast
 import httpx
 
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle
+from resume_tailor.application.company_research import BoundedCompanyResearchService
 from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
@@ -55,6 +56,7 @@ from resume_tailor.infrastructure.application_data import (
     repository_local_legacy_database,
 )
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
+from resume_tailor.infrastructure.company_research import HttpxOfficialCompanySourceFetcher
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
@@ -90,6 +92,7 @@ from resume_tailor.infrastructure.optimization import (
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.infrastructure.rendering import ExactDocxPageCountProvider
 from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
+from resume_tailor.ports.cover_letter_rendering import CoverLetterBatchRenderer
 from resume_tailor.ports.interfaces import ResumeLanguageModel, RoleClassificationCache
 
 
@@ -162,7 +165,26 @@ def create_tailor_service(
     )
     cover_letter_service = CoverLetterService(
         language_model=language_model if resolved_settings.llm_enable_cover_letter else None,
-        renderer=cast(Any, CoverLetterRenderer()),
+        renderer=cast(
+            CoverLetterBatchRenderer,
+            CoverLetterRenderer(
+                page_count_provider=ExactDocxPageCountProvider(
+                    word_timeout_seconds=resolved_settings.word_pagination_timeout_seconds
+                )
+            ),
+        ),
+        company_research=BoundedCompanyResearchService(
+            HttpxOfficialCompanySourceFetcher(
+                timeout_seconds=resolved_settings.llm_timeout_seconds,
+            )
+        ),
+        provider_name=resolved_settings.llm_provider,
+        model_name=resolved_settings.gemini_model or "unconfigured",
+        provider_unavailable_reason=(
+            _cover_letter_provider_unavailable_reason(resolved_settings)
+            if language_model is None
+            else None
+        ),
     )
     return TailorResumeService(
         optimizer,
@@ -424,6 +446,26 @@ def _provider_unavailable_reason(settings: Settings) -> str:
     return (
         "Gemini bullet writing is enabled and configured, but the provider adapter "
         "could not initialize; reviewed source bullets were retained."
+    )
+
+
+def _cover_letter_provider_unavailable_reason(settings: Settings) -> str:
+    if not settings.llm_enable_cover_letter:
+        return "Gemini cover-letter writing is disabled; deterministic grounded writing used."
+    api_key = settings.gemini_api_key or os.getenv(settings.llm_api_key_env_var)
+    if not api_key:
+        return (
+            "Gemini cover-letter writing is enabled, but credentials are missing. "
+            f"Configure {settings.llm_api_key_env_var}; deterministic grounded writing used."
+        )
+    if not settings.gemini_model:
+        return (
+            "Gemini cover-letter writing is enabled and credentials are present, but "
+            "GEMINI_MODEL is missing; deterministic grounded writing used."
+        )
+    return (
+        "Gemini cover-letter writing is configured, but the provider adapter could not "
+        "initialize; deterministic grounded writing used."
     )
 
 

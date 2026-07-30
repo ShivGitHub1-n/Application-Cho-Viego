@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 
 from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.generated_artifact import (
@@ -17,7 +16,7 @@ from resume_tailor.application.resume_composition import DeterministicResumeComp
 from resume_tailor.application.resume_retrieval import InProcessResumeEvidenceRetriever
 from resume_tailor.domain.company_research import CompanyResearchRequest
 from resume_tailor.domain.cover_letter import (
-    CoverLetter,
+    CoverLetterDownload,
     CoverLetterRecipient,
     GeneratedCoverLetterArtifact,
 )
@@ -546,14 +545,73 @@ class TailorResumeService:
             date_text=date_text,
         )
 
-    def approve_cover_letter(
-        self, letter: CoverLetter, approved_claim_ids: set[str], *, reviewed: bool
-    ) -> CoverLetter:
+    def approve_cover_letter_artifact(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
+        *,
+        expected_fingerprint: str,
+        manual_word_inspection_confirmed: bool = False,
+    ) -> GeneratedCoverLetterArtifact:
         if self._cover_letter_service is None:
             raise ValueError("Cover-letter service is not configured")
-        return self._cover_letter_service.approve(letter, approved_claim_ids, reviewed=reviewed)
+        return self._cover_letter_service.approve_artifact(
+            artifact,
+            expected_fingerprint=expected_fingerprint,
+            manual_word_inspection_confirmed=manual_word_inspection_confirmed,
+        )
 
-    def export_cover_letter(self, letter: CoverLetter, output_directory: Path) -> CoverLetter:
+    def prepare_cover_letter_download(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
+        *,
+        expected_fingerprint: str,
+    ) -> CoverLetterDownload:
         if self._cover_letter_service is None:
             raise ValueError("Cover-letter service is not configured")
-        return self._cover_letter_service.export(letter, output_directory)
+        return self._cover_letter_service.prepare_download(
+            artifact,
+            expected_fingerprint=expected_fingerprint,
+        )
+
+    def mark_cover_letter_downloaded(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
+    ) -> GeneratedCoverLetterArtifact:
+        if self._cover_letter_service is None:
+            raise ValueError("Cover-letter service is not configured")
+        return self._cover_letter_service.mark_downloaded(artifact)
+
+    def cover_letter_artifact_is_current(
+        self,
+        artifact: GeneratedCoverLetterArtifact,
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan,
+        *,
+        recipient: CoverLetterRecipient,
+        final_resume: StructuredResume | None,
+        research_request: CompanyResearchRequest,
+        explicit_motivation: str | None,
+        date_text: str | None = None,
+    ) -> bool:
+        if self._cover_letter_service is None:
+            return False
+        return self._cover_letter_service.artifact_is_current(
+            artifact,
+            profile,
+            posting,
+            plan,
+            recipient=recipient,
+            final_resume=final_resume,
+            research_request=research_request,
+            explicit_motivation=explicit_motivation,
+            date_text=date_text,
+        )
+
+    def default_cover_letter_research_request(
+        self,
+        posting: JobPosting,
+    ) -> CompanyResearchRequest:
+        if self._cover_letter_service is None:
+            raise ValueError("Cover-letter service is not configured")
+        return self._cover_letter_service.default_research_request(posting)

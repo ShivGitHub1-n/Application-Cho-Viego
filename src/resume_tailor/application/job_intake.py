@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from resume_tailor.domain.models import JobPosting
 
 
@@ -22,12 +24,40 @@ def normalize_job_description(text: str) -> str:
     return result
 
 
-def build_job_posting(posting_id: str, title: str, description: str) -> JobPosting:
+def build_job_posting(
+    posting_id: str,
+    title: str,
+    description: str,
+    *,
+    company_name: str | None = None,
+) -> JobPosting:
     normalized_title = title.strip()
     if not normalized_title:
         raise InvalidJobDescriptionError("Job title must not be empty")
+    normalized_description = normalize_job_description(description)
     return JobPosting(
         id=posting_id,
         title=normalized_title,
-        description=normalize_job_description(description),
+        description=normalized_description,
+        company_name=(
+            company_name.strip()
+            if company_name and company_name.strip()
+            else _explicit_company_name(normalized_description)
+        ),
     )
+
+
+def _explicit_company_name(description: str) -> str | None:
+    """Read only explicitly labelled company metadata from pasted posting text."""
+
+    lines = [line.strip() for line in description.splitlines()]
+    for index, line in enumerate(lines):
+        inline = re.fullmatch(r"(?:company|company name|employer)\s*:\s*(.+)", line, re.I)
+        if inline is not None:
+            value = inline.group(1).strip()
+            return value or None
+        if re.fullmatch(r"(?:company|company name|employer)\s*:?", line, re.I):
+            for following in lines[index + 1 :]:
+                if following:
+                    return following
+    return None

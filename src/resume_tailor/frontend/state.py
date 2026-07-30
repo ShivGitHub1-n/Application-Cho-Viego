@@ -26,6 +26,8 @@ def initialize_frontend_state(state: MutableMapping[str, Any]) -> None:
     state.setdefault("profile_load_status", "No reviewed profile is loaded.")
     state.setdefault("generated_content_reviewed", False)
     state.setdefault("cover_letter_reviewed", False)
+    state.setdefault("cover_letter_review_state", "not_generated")
+    state.setdefault("cover_letter_manual_word_inspection", False)
 
 
 def populate_profile_editor_state(

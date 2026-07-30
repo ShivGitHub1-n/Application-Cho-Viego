@@ -1,0 +1,37 @@
+Company:
+TITAN Haptics
+
+Role:
+Mechatronics Integration Engineer
+
+Core work:
+- Architect and build end-to-end hardware prototypes.
+- Develop PCB layouts, mechanical assemblies, and enclosure mockups.
+- Select sensors, microcontrollers, connectors, and 3D-printed parts.
+- Collaborate with hardware, firmware, and software teams.
+- Integrate drivers, test real hardware, and iterate performance.
+- Support customer design-in projects.
+- Define requirements and troubleshoot integration issues.
+- Create reference code and integration examples.
+- Design electrical, waveform, durability, and reliability tests.
+- Perform root-cause investigations.
+- Maintain schematics, BOMs, integration guides, and test reports.
+- Translate customer feedback into design improvements.
+
+Candidate requirements:
+- Hands-on hardware prototypes.
+- SolidWorks or Fusion 360.
+- PCB breadboarding and circuit assembly.
+- 3D printing.
+- Microcontrollers including STM32.
+- C/C++.
+- Mechanical, electrical, and firmware integration.
+- Engineering documentation.
+- Git.
+- Lab and prototyping tools.
+- Electronics, robotics, or IoT side projects.
+
+Culture, benefits, and compensation:
+- Collaborative multidisciplinary team.
+- Competitive benefits and compensation.
+- General personality and culture language.
