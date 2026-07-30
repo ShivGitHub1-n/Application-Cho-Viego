@@ -1,4 +1,10 @@
-# MVP Validation Status
+# Historical MVP validation status
+
+This is a dated validation snapshot, not the current release contract. The
+current status, roadmap, and limitations are maintained in
+[PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), and
+[RESUME_ENGINE_CLOSEOUT.md](RESUME_ENGINE_CLOSEOUT.md). Its historical counts
+and paths must not be read as current acceptance claims.
 
 Last validated: 2026-07-13
 

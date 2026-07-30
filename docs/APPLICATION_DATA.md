@@ -19,7 +19,7 @@ Path construction occurs during dependency creation, not module import.
 
 The profile store and Job Search state use the configured directory and the
 configured SQLite filename. As a result, a saved profile such as
-`shiv-arora-master-v1`, discovery runs, recommendations, and saved-job snapshots
+`example-profile-id`, discovery runs, recommendations, and saved-job snapshots
 remain available across branches, clones, and worktrees that use the same
 application data directory.
 

@@ -6,16 +6,16 @@ repository state or accidentally broadening a stage's scope. Pair it with
 
 ## Canonical paths
 
-Repository:
+Repository (replace with the active checkout):
 
 ```text
-C:\Users\Shiv\Documents\Downloads\Application-viego-resume-ui-stabilization
+<checkout-root>
 ```
 
-Python:
+Python (use the environment active for this checkout):
 
 ```text
-C:\Users\Shiv\AppData\Local\Programs\Python\Python311\python.exe
+<python-3.11-executable>
 ```
 
 When a task specifies this interpreter, do not substitute `python`, `py`,
@@ -27,7 +27,7 @@ Run from PowerShell:
 
 ```powershell
 codex `
-  --cd "C:\Users\Shiv\Documents\Downloads\Application-viego-resume-ui-stabilization" `
+  --cd "<checkout-root>" `
   --sandbox workspace-write `
   --ask-for-approval never
 ```
@@ -35,13 +35,13 @@ codex `
 If the interpreter directory is not readable inside the session, add it with:
 
 ```text
-/sandbox-add-read-dir C:\Users\Shiv\AppData\Local\Programs\Python\Python311
+/sandbox-add-read-dir <python-installation>
 ```
 
 ## Standard offline suite
 
 ```powershell
-& "C:\Users\Shiv\AppData\Local\Programs\Python\Python311\python.exe" -m pytest -q -m "not gemini_integration and not job_source_integration"
+python -m pytest -q -m "not gemini_integration and not job_source_integration"
 ```
 
 The marker expression intentionally excludes live Gemini and live job-source

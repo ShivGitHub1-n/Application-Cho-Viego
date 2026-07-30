@@ -1,12 +1,19 @@
 # Product Feature Ideas and Future Direction
 
+> **Future ideas only — superseded execution sequence.** The accepted current
+> product state is in [PROJECT_STATUS.md](PROJECT_STATUS.md), the current work
+> order is in [ROADMAP.md](ROADMAP.md), and the accepted resume pipeline is in
+> [RESUME_ENGINE_CLOSEOUT.md](RESUME_ENGINE_CLOSEOUT.md). This document is a
+> backlog/design reference, not an active implementation plan.
+
 **Suggested repository path:** `docs/PRODUCT_FEATURE_IDEAS.md`
 
 ## Purpose
 
 This document captures product ideas that should be preserved for later development without interrupting the current implementation sequence.
 
-The immediate engineering workflow remains focused on safe Gemini-backed role classification. The ideas below are a product backlog and design reference, not permission to expand the current coding scope.
+The ideas below are a product backlog and design reference, not permission to
+expand the current coding scope.
 
 ---
 
@@ -588,11 +595,11 @@ Possible positioning:
 
 ---
 
-# 10. Implementation Sequence
+# 10. Superseded implementation sequence
 
-## Current work
+## Historical sequence
 
-Continue the existing Gemini role-classification workflow:
+The former implementation sequence was:
 
 1. Typed role-classification contract
 2. Deterministic validation
@@ -601,7 +608,8 @@ Continue the existing Gemini role-classification workflow:
 5. Streamlit verification
 6. Job-discovery integration only after optimization is stable
 
-Do not begin the editor or roadmap implementation during this sequence.
+This sequence is superseded by [ROADMAP.md](ROADMAP.md). Do not treat the
+remaining sections as current commitments.
 
 ## Phase A: Resume workspace foundation
 
@@ -688,7 +696,7 @@ Do not begin the editor or roadmap implementation during this sequence.
 
 # 12. Open Product Decisions
 
-- Should the MVP use one locked resume template or a small approved template family?
+- Template V1 is the accepted current template; additional templates remain deferred.
 - When should imported master-resume layout extraction become available?
 - Should users be allowed to manually override one-page limits for nontraditional applications?
 - Which edits update only the tailored resume, and which can be promoted to the master profile?
@@ -701,9 +709,10 @@ Do not begin the editor or roadmap implementation during this sequence.
 
 ---
 
-# 13. Immediate Non-Goals
+# 13. Historical immediate non-goals
 
-The following are explicitly deferred while Gemini role classification is being completed:
+The following were deferred while Gemini role classification was being
+completed; current deferrals are maintained in [KNOWN_ISSUES.md](KNOWN_ISSUES.md):
 
 - Full visual resume editor
 - New Streamlit design system
@@ -713,6 +722,7 @@ The following are explicitly deferred while Gemini role classification is being 
 - Resume score dashboard
 - Job filter bar
 - Application tracker
+- Chrome extension for job-posting capture
 - Interview system
 - Multiple arbitrary templates
 - Free-form page-layout editing

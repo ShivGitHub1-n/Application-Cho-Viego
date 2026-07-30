@@ -4,7 +4,11 @@ Resume Tailor is an evidence-backed AI platform for tailoring resumes to specifi
 
 ## Status
 
-Vertical-slice stage. Static Template V1 stabilization is committed; deterministic resume composition and one-page filling are the current uncommitted stage under review. The repository also includes evidence-bound review, managed DOCX/PDF rendering, optional Gemini structured-output assistance, FastAPI endpoints, Streamlit MVP UI, and focused regression tests.
+Functional resume behavior is accepted. This branch is limited to closeout cleanup,
+documentation, configuration safety, and release-level verification. The
+repository includes evidence-bound review, managed DOCX/PDF rendering, optional
+Gemini structured-output assistance, FastAPI endpoints, the Streamlit MVP UI,
+and focused regression tests.
 
 ## Current project status
 
@@ -106,6 +110,12 @@ only a bounded fetch against the explicitly configured source and does not log
 raw payloads or secrets.
 
 ## Documentation
+
+The canonical resume pipeline and closeout contract is
+[docs/RESUME_ENGINE_CLOSEOUT.md](docs/RESUME_ENGINE_CLOSEOUT.md). See
+[docs/RESUME_DECISION_ENGINE.md](docs/RESUME_DECISION_ENGINE.md) for the
+decision policy, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries,
+and [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) for deferred work.
 
 - [Project status](docs/PROJECT_STATUS.md)
 - [Roadmap](docs/ROADMAP.md)

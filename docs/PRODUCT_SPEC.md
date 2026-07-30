@@ -1,5 +1,10 @@
 # Product Specification
 
+Current product status and execution order are maintained in
+[PROJECT_STATUS.md](PROJECT_STATUS.md) and [ROADMAP.md](ROADMAP.md). This
+specification defines the product boundary; it does not override those current
+status documents.
+
 ## Vision
 
 Resume Tailor helps job seekers create one-page, role-specific resumes that remain truthful to their actual experience. It decides what deserves space, explains those tradeoffs, and produces content ready for a deterministic renderer.
@@ -13,16 +18,23 @@ Resume Tailor helps job seekers create one-page, role-specific resumes that rema
 - Tailored wording may be materially different from the source wording when it remains grounded in the user's evidence.
 - Education, awards, certifications, dates, employers, titles, and locations are locked by default and remain unchanged unless the user edits them.
 - Job-specific changes may select or rewrite coursework, technical skills, entries, projects, bullets, and emphasis.
-- The system must verify that the generated resume is exactly one page before export.
+- The system must use exact Word pagination when available before export;
+  otherwise it must retain a typed unverified estimate and require manual Word
+  review rather than claiming exact pagination.
 - Exported formatting must ultimately conform to the established resume template; styling remains the renderer's responsibility.
 
-## Later-stage scope
+## Current MVP status and later-stage scope
 
-Authentication, multi-user deployment, and application tracking are later-stage capabilities. The first evidence-grounded cover-letter workflow is part of the MVP; Job Discovery MVP behavior is described below.
+The resume engine is accepted. The first evidence-grounded cover-letter
+workflow is the next active product stage and must target a professionally
+filled one-page output at 92–95% utilization, close to 95% when substantive
+content supports it. Authentication, multi-user deployment, application
+tracking, editor/template customization, broader frontend redesign, and Chrome
+extension capture are later-stage capabilities.
 
 Known cover-letter composition and export-quality issues are tracked in
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) and remain deferred unless they block
-normal cover-letter generation.
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md) and are addressed by the current
+cover-letter roadmap item, not by changing the accepted resume engine.
 
 ## Job discovery MVP
 

@@ -1,5 +1,9 @@
 # Job-discovery implementation plan
 
+> **Historical implementation plan.** This plan records the original design
+> and acceptance sequence; it is not the current roadmap. See
+> [../../PROJECT_STATUS.md](../../PROJECT_STATUS.md) and [../../ROADMAP.md](../../ROADMAP.md).
+
 ## Goal
 
 Deliver the deterministic ATS-first job-discovery and recommendation MVP on feature/job-discovery after a reproducible clean baseline. This plan is standalone: every new contract, field, status, marker, table, and test path is defined here or points to an exact existing import.
@@ -430,7 +434,7 @@ Create frontend/job_discovery_view.py and keep frontend/app.py as composition. T
 
 - [ ] Files: branch state only plus existing assets; tests read-only. Consume origin/main and feature/job-discovery; produce actual clean baseline count.
 - [ ] Failing command: git fetch origin main; git merge --no-commit origin/main; python -m pytest -q -m "not gemini_integration and not job_source_integration". Expected current failures/errors if assets or fixtures are stale.
-- [ ] Inspect whether teammate’s deterministic profile-completeness fixture fix is present. Do not edit manual-test/profile.json without authoritative reviewed source and teammate ownership. Restore manual-test/reference-resume.docx only from validated source. Do not exclude the DOCX assertion or weaken unrelated tests.
+- [ ] Inspect whether the synthetic profile-completeness and reference-DOCX fixtures are present. Do not exclude the DOCX assertion or weaken unrelated tests.
 - [ ] Minimal baseline repair is performed only by the owning change; if zero failures and zero errors cannot be reproduced, stop before Milestone A.
 - [ ] Passing command: the same exact pytest command; expected zero failures/errors with actual count recorded from latest main, not assumed 139. Also run git diff --check and git status --short.
 - [ ] Focused commit: chore: synchronize latest main and restore validated baseline assets.
@@ -693,7 +697,7 @@ Gate 0 intentionally adds no new test body: its failing command is the unmodifie
 
 ## Baseline evidence and stop rule
 
-The prior local result was 102 passed, 27 failed, 10 errors, 1 deselected; repository documentation records 139 passed, 1 deselected, 1 warning. The known missing asset is manual-test/reference-resume.docx, referenced by existing DOCX/rendering tests. The known stale manual-test/profile.json lacks technical_skills, required education fields (start_date, expected_graduation_date, location, awards, relevant_coursework), experience dates/locations, project technology_label, and the expected MPC Hacks award_or_placement. Gate 0 must first fetch and integrate origin/main, then check whether the teammate's deterministic profile-completeness fixture fix is present. Do not edit manual-test/profile.json without authoritative reviewed source plus teammate ownership. Restore reference-resume.docx only from its validated source. If the exact offline command has any failure or error after synchronization and approved baseline repair, stop implementation; never solve this by exclusions or weakened assertions.
+The prior local result was 102 passed, 27 failed, 10 errors, 1 deselected; repository documentation records 139 passed, 1 deselected, 1 warning. The closeout now uses tracked synthetic profile and reference-DOCX fixtures. If the exact offline command has any failure or error after synchronization and approved baseline repair, stop implementation; never solve this by exclusions or weakened assertions.
 
 ## API response completion
 

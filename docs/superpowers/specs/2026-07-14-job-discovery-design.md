@@ -1,5 +1,9 @@
 # Job Discovery and Recommendation MVP Design
 
+> **Historical specification.** Job Discovery MVP behavior has been
+> implemented. Current product status and sequencing are maintained in
+> [../../PROJECT_STATUS.md](../../PROJECT_STATUS.md) and [../../ROADMAP.md](../../ROADMAP.md).
+
 Date: 2026-07-14
 Status: Approved for implementation planning
 Target branch: `feature/job-discovery`

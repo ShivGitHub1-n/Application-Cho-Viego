@@ -1,59 +1,41 @@
-# Known Issues
+# Known issues and deferred work
 
-## Cover-letter composition and export quality
+The accepted resume pipeline is documented in
+[RESUME_ENGINE_CLOSEOUT.md](RESUME_ENGINE_CLOSEOUT.md). This file records only
+current limitations and deferred product work.
 
-The following issues were observed manually in the cover-letter composition
-and export workflow:
+## Resume engine limitations
 
-1. **Duplicate salutation**
-   - The renderer creates `Dear Hiring Manager,`.
-   - The generated introduction may begin with the same salutation.
-   - Final output must contain exactly one salutation.
-   - The renderer and generated paragraph content need one clear authority.
+- Gemini does not yet consistently produce stronger bullets than strong
+  reviewed source bullets. Cross-role resume-writer calibration is deferred.
+- Exact Microsoft Word pagination is unavailable in the current environment.
+  Deterministic page utilization is an estimate; manual Word review remains
+  authoritative.
+- Repository-wide Ruff and mypy debt remains and is not part of product
+  behavior or this closeout.
 
-2. **Duplicate closing**
-   - The generated final paragraph may already thank the reader and request
-     further discussion.
-   - A fixed closing then repeats the same sentiment.
-   - Final output must contain one coherent closing.
+## Cover-letter completion
 
-3. **Education and profile grounding**
-   - A draft claimed the candidate was pursuing mechanical engineering and
-     mechatronics.
-   - The supporting evidence reference appeared to come from experience
-     evidence rather than canonical education data.
-   - Education claims must be grounded in the canonical education record.
-   - Experience evidence must not authorize unrelated education claims.
+Cover-letter implementation is the next roadmap item. The workflow must produce
+a professionally filled one-page document, targeting 92–95% utilization and
+close to 95% when substantive content supports it. It must preserve evidence
+grounding, use one coherent salutation and closing, keep review annotations out
+of export, ground education in canonical education data, deduplicate contact
+links, and never add unsupported or repetitive filler.
 
-4. **Review annotations mixed into the visible draft**
-   - `Explicitly supported` and `Strongly implied` annotations are valuable
-     during review.
-   - They must remain visually separate from the actual letter.
-   - They must never appear in the exported cover letter.
+Manual Word inspection remains authoritative until exact pagination is available.
 
-5. **Duplicate contact-link labels**
-   - Export displayed `Portfolio | Portfolio`.
-   - Contact links must use distinct canonical labels such as LinkedIn,
-     GitHub, Portfolio, or Website.
-   - Duplicate URLs or labels must be deduplicated deterministically.
+## Deferred product surfaces
 
-6. **Cover-letter density**
-   - The exported letter currently leaves substantial unused page space.
-   - Do not add filler solely to occupy the page.
-   - Later composition work should determine whether another substantive,
-     grounded paragraph would improve the application.
-   - Conciseness is acceptable when the letter already makes a strong case.
+- Structured resume editor and template customization.
+- Broader Streamlit redesign and user-journey simplification.
+- Thin Chrome extension for job-posting capture.
+- Full browser-to-application-package acceptance testing.
+- Cross-role writer calibration.
 
-7. **Manual acceptance requirements**
-   - exactly one salutation
-   - exactly one closing
-   - correct company and role
-   - no unsupported education or profile claims
-   - review annotations absent from export
-   - contact labels correct and deduplicated
-   - one-page export verified
-   - substantive content manually reviewed
+## Operational limitations
 
-This entire section is deferred until after the current classification,
-fit, evidence-ranking, package-selection, and resume-rendering stabilization
-stages, unless a defect blocks normal cover-letter generation.
+- Extracted profiles, especially OCR/image-only or complex-layout PDFs, require
+  user review before tailoring.
+- Job Discovery remains an approved-source MVP with an empty production registry
+  by default; unsupported sources are not scraped.

@@ -2,10 +2,11 @@
 
 ## Canonical source
 
-Template V1 is the static MVP layout derived once from
-`manual-test/reference-resume.docx` (SHA-256
-`2B9DD1474B9E4A303A87B8A147F3511460988104EFDE7CFA053CAD64294369CD`).
-The canonical DOCX is a reviewed source and is never edited.
+Template V1 is the packaged, content-neutral static MVP layout. The tracked
+`tests/fixtures/synthetic_reference_resume.docx` is a synthetic source-analysis
+fixture with the accepted reference geometry and formatting characteristics.
+It is test-only; the packaged DOCX below remains the production formatting
+authority.
 
 The runtime authority is the sanitized, content-neutral packaged DOCX at
 `resume_tailor/templates/template_v1.docx` (SHA-256
