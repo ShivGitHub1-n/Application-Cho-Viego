@@ -1,20 +1,20 @@
 {
-  "id": "shiv-arora-master-v1",
-  "user_id": "shiv-arora",
+  "id": "synthetic-production-fixture-v1",
+  "user_id": "synthetic-fixture-user",
   "version": 1,
-  "display_name": "Shiv Arora",
+  "display_name": "Avery Chen",
   "contact": {
-    "email": "shiv2006arora@gmail.com",
-    "phone": "647-997-0896",
-    "location": "Toronto, Ontario, Canada",
+    "email": "avery.chen@example.test",
+    "phone": "555-0100",
+    "location": "Example City, Example Region",
     "links": [
-      "linkedin.com/in/shiv-arora-/",
-      "https://shiv-arora.netlify.app/"
+      "https://example.test/avery-chen",
+      "https://portfolio.example.test/avery-chen"
     ]
   },
   "education": [
     {
-      "school": "University of Toronto",
+      "school": "Example University",
       "program": "Bachelor of Applied Science in Mechanical Engineering",
       "minor_or_specialization": "Robotics & Mechatronics + PEY",
       "co_op_designation": null,
@@ -22,10 +22,10 @@
       "expected_graduation_date": "Apr. 2029",
       "graduation_date": null,
       "graduation_status": "expected",
-      "location": "Toronto, Ontario, Canada",
+      "location": "Example City, Example Region",
       "gpa": "3.72",
       "awards": [
-        "University of Toronto Engineering International Scholar",
+          "Example University Engineering Scholar",
         "CSWA",
         "Dean’s List"
       ],
@@ -38,13 +38,13 @@
   ],
   "experiences": [
     {
-      "id": "exp-telebotics",
+      "id": "exp-example-robotics",
       "title": "Principle Hardware Engineer",
       "kind": "experience",
-      "organization": "Telebotics",
+        "organization": "Example Robotics",
       "start_date": "Feb. 2025",
       "end_date": "Dec. 2025",
-      "location": "Toronto, Ontario, Canada",
+        "location": "Example City, Example Region",
       "subtitle": "Embedded Systems, Mechatronics",
       "technology_label": null,
       "award_or_placement": null,
@@ -55,13 +55,13 @@
       "bullet_points": []
     },
     {
-      "id": "exp-lassonde",
+      "id": "exp-northstar-institute",
       "title": "R&D Hardware Engineer",
       "kind": "experience",
-      "organization": "Lassonde School of Engineering - York University",
+        "organization": "Northstar Engineering Institute",
       "start_date": "Jun. 2025",
       "end_date": "Sep. 2025",
-      "location": "York, Ontario, Canada",
+        "location": "Example City, Example Region",
       "subtitle": "Mechanical Integration, Hardware Design",
       "technology_label": null,
       "award_or_placement": null,
@@ -72,13 +72,13 @@
       "bullet_points": []
     },
     {
-      "id": "exp-exl",
+      "id": "exp-example-analytics",
       "title": "Digital Engineering Intern",
       "kind": "experience",
-      "organization": "EXL Services",
+        "organization": "Example Analytics",
       "start_date": "Jun. 2026",
       "end_date": "Sep. 2026",
-      "location": "New York, New York, United States",
+        "location": "Example City, Example Region",
       "subtitle": "LLMs, GenAI",
       "technology_label": null,
       "award_or_placement": null,
@@ -89,13 +89,13 @@
       "bullet_points": []
     },
     {
-      "id": "exp-stush",
+      "id": "exp-northstar-engineering",
       "title": "Software Engineering Intern",
       "kind": "experience",
-      "organization": "Stush Foods",
+        "organization": "Northstar Engineering",
       "start_date": "Sep. 2025",
       "end_date": "Nov. 2025",
-      "location": "Toronto, Ontario, Canada",
+        "location": "Example City, Example Region",
       "subtitle": "Python, Pandas, Power BI",
       "technology_label": null,
       "award_or_placement": null,
@@ -134,7 +134,7 @@
       "location": null,
       "subtitle": null,
       "technology_label": null,
-      "award_or_placement": "3rd Place, MPC Hacks",
+        "award_or_placement": "3rd Place, Example Hackathon",
       "technologies": [
         "FastAPI",
         "Gemini",
@@ -445,7 +445,7 @@
   "evidence": [
     {
       "id": "evidence:dd95115c40bdf670",
-      "entity_id": "exp-telebotics",
+      "entity_id": "exp-example-robotics",
       "source_text": "Led the design and technical architecture of a retrofittable drive-by-wire actuation system for an autonomous golf cart, integrating electronic steering, throttle, and braking through 3 linear actuators and embedded control interfaces.",
       "source_reference": null,
       "capabilities": [],
@@ -455,7 +455,7 @@
     },
     {
       "id": "evidence:b2b2dadd79b01acc",
-      "entity_id": "exp-telebotics",
+      "entity_id": "exp-example-robotics",
       "source_text": "Evaluated hydraulic braking architectures, actuator selection, and mechanical linkage designs to develop a universal drive-by-wire retrofit solution balancing packaging constraints, serviceability, and reliable vehicle operation.",
       "source_reference": null,
       "capabilities": [],
@@ -465,7 +465,7 @@
     },
     {
       "id": "evidence:ac7eab4b0fe779cb",
-      "entity_id": "exp-telebotics",
+      "entity_id": "exp-example-robotics",
       "source_text": "Authored Interface Control Documents (ICDs) defining hardware-software interfaces, 30+ I/O signals, actuator command structures, GPIO mappings, and subsystem communication architecture supporting embedded development and integration.",
       "source_reference": null,
       "capabilities": [],
@@ -475,7 +475,7 @@
     },
     {
       "id": "evidence:42bafd375b096dbd",
-      "entity_id": "exp-telebotics",
+      "entity_id": "exp-example-robotics",
       "source_text": "Supported functional safety and autonomous vehicle control architecture by developing supervisory safety logic, emergency-stop control strategies, and system documentation for drive-by-wire operation and intellectual property development.",
       "source_reference": null,
       "capabilities": [],
@@ -485,7 +485,7 @@
     },
     {
       "id": "evidence:4f3d25c9e53ac538",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Integrated the hardware architecture of a level 1 autonomous teleoperation last-mile delivery solution for low-speed vehicles (LSVs) using ROS 2, enabling real-time remote control, safety override, and operator-to-vehicle round-trip latency <200 ms over 5G modem.",
       "source_reference": null,
       "capabilities": [],
@@ -495,7 +495,7 @@
     },
     {
       "id": "evidence:6c32de654a9b5e2c",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Integrated and implemented full GPIO interfacing between NVIDIA Jetson Orin microprocessor and embedded microcontroller for edge AI inference, low-level motor control and command emergency stop in <150 ms when an object is simulated.",
       "source_reference": null,
       "capabilities": [],
@@ -505,7 +505,7 @@
     },
     {
       "id": "evidence:33a334d3c9c5d98a",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Designed and deployed sensor architecture + wiring harnesses including RTK GPS, IMU, ultrasonic, LiDAR, and camera arrays, achieving 360° environmental perception with <2cm localization error.",
       "source_reference": null,
       "capabilities": [],
@@ -515,7 +515,7 @@
     },
     {
       "id": "evidence:38e1d2effe833080",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Designed and printed custom sensor mounting brackets and compute module enclosures using SolidWorks and Fusion 360.",
       "source_reference": null,
       "capabilities": [],
@@ -525,7 +525,7 @@
     },
     {
       "id": "evidence:d188fd931b5c5dc6",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Collaborated on integrating a real-time perception pipeline using YOLOv8 and OpenCV to detect traffic lights, pedestrians, and vehicles with >90% accuracy at 30 FPS for supporting live object detection, lane tracking, and command processing.",
       "source_reference": null,
       "capabilities": [],
@@ -535,7 +535,7 @@
     },
     {
       "id": "evidence:8d1fcf223becb4f1",
-      "entity_id": "exp-lassonde",
+      "entity_id": "exp-northstar-institute",
       "source_text": "Supported ROS 2-based teleoperation workflows, enabling real-time vehicle monitoring, command execution, and communication between onboard systems and remote operator interfaces.",
       "source_reference": null,
       "capabilities": [],
@@ -545,7 +545,7 @@
     },
     {
       "id": "evidence:240f568a600b77ea",
-      "entity_id": "exp-exl",
+      "entity_id": "exp-example-analytics",
       "source_text": "Developed and enhanced Govern.ai, an enterprise multi-agent AI governance platform that automates compliance auditing, adversarial testing, and risk assessment for generative AI applications.",
       "source_reference": null,
       "capabilities": [],
@@ -555,7 +555,7 @@
     },
     {
       "id": "evidence:664b8d952d654c2c",
-      "entity_id": "exp-exl",
+      "entity_id": "exp-example-analytics",
       "source_text": "Implemented and evaluated AWS Bedrock Guardrails, configuring denied topics, sensitive information filtering, content moderation, and policy controls to strengthen enterprise AI safety and security.",
       "source_reference": null,
       "capabilities": [],
@@ -565,7 +565,7 @@
     },
     {
       "id": "evidence:2b2021e87e0c46d4",
-      "entity_id": "exp-exl",
+      "entity_id": "exp-example-analytics",
       "source_text": "Leveraged RAG (Retrieval-Augmented Generation) and enterprise knowledge sources to improve regulatory reasoning, audit accuracy, and AI policy evaluation.",
       "source_reference": null,
       "capabilities": [],
@@ -575,7 +575,7 @@
     },
     {
       "id": "evidence:11981fd46bcd6741",
-      "entity_id": "exp-exl",
+      "entity_id": "exp-example-analytics",
       "source_text": "Designed and extended LangGraph-based multi-agent workflows, enabling coordinated execution across specialized AI agents for research, planning, testing, and evaluation.",
       "source_reference": null,
       "capabilities": [],
@@ -585,7 +585,7 @@
     },
     {
       "id": "evidence:55cafb1a21633254",
-      "entity_id": "exp-stush",
+      "entity_id": "exp-northstar-engineering",
       "source_text": "Developed a Python-based ETL platform that automatically extracted, validated, and normalized sales data from 3 major distributor systems into a unified report, processing thousands of transaction records across multiple reporting formats.",
       "source_reference": null,
       "capabilities": [],
@@ -595,7 +595,7 @@
     },
     {
       "id": "evidence:c0a09b243a234de5",
-      "entity_id": "exp-stush",
+      "entity_id": "exp-northstar-engineering",
       "source_text": "Engineered data transformation and validation pipelines using Pandas and NumPy to standardize SKU, promotion, and sales data, reducing manual reporting effort by approximately 40–50% and improving data consistency across business units.",
       "source_reference": null,
       "capabilities": [],
@@ -605,7 +605,7 @@
     },
     {
       "id": "evidence:1f088e6e54ac5d62",
-      "entity_id": "exp-stush",
+      "entity_id": "exp-northstar-engineering",
       "source_text": "Implemented automated schema detection and file-parsing workflows capable of ingesting distributor-specific Excel and CSV reporting formats into a canonical sales data model.",
       "source_reference": null,
       "capabilities": [],
@@ -615,7 +615,7 @@
     },
     {
       "id": "evidence:f557f818e8cf2742",
-      "entity_id": "exp-stush",
+      "entity_id": "exp-northstar-engineering",
       "source_text": "Automated monthly sales reporting and Power BI dashboard refresh workflows, enabling dynamic KPI tracking, promotional analysis, and historical trend reporting through a centralized analytics dataset.",
       "source_reference": null,
       "capabilities": [],

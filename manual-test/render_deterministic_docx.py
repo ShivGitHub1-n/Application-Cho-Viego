@@ -32,7 +32,7 @@ OUTPUT = ROOT / "manual-test" / "generated-reference-layout-resume.docx"
 
 def build_manual_resume() -> tuple[MasterProfile, TailoringPlan, StructuredResume]:
     profile_payload = json.loads(
-        (ROOT / "manual-test" / "profile.json").read_text(encoding="utf-8")
+        (ROOT / "tests" / "fixtures" / "huawei_profile.json").read_text(encoding="utf-8")
     )
     profile = MasterProfile.model_validate(profile_payload)
     description = (ROOT / "manual-test" / "job-description.txt.txt").read_text(
@@ -152,7 +152,7 @@ def geometry_report(renderer: ManagedResumeRenderer, output: Path | None) -> dic
         },
         "generated": None,
         "reference_spacing_diagnostics": paragraph_metrics(
-            ROOT / "manual-test" / "reference-resume.docx"
+            ROOT / "tests" / "fixtures" / "synthetic_reference_resume.docx"
         ),
         "metadata_anchor_groups": [
             {

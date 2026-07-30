@@ -18,7 +18,7 @@ from resume_tailor.domain.models import (
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.reference_docx import analyze_reference_docx
 
-REFERENCE = Path("manual-test/reference-resume.docx")
+REFERENCE = Path("tests/fixtures/synthetic_reference_resume.docx")
 
 
 def _load_manual_render_module() -> ModuleType:

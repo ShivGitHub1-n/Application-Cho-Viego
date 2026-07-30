@@ -7,7 +7,7 @@ from pathlib import Path
 from resume_tailor.domain.layout import LayoutProfile, ObservedValue, ParagraphLayout
 
 TEMPLATE_V1_ID = "application-viego-resume-v1"
-TEMPLATE_V1_REFERENCE_SHA256 = "2b9dd1474b9e4a303a87b8a147f3511460988104efde7cfa053cad64294369cd"
+TEMPLATE_V1_REFERENCE_SHA256 = "ae5a0fd1669efd8191339fbdf118421a38fc41ca12a98bbb941e83f439bd62a8"
 TEMPLATE_V1_LAYOUT_FILENAME = "template_v1_layout.json"
 TEMPLATE_V1_DOCX_FILENAME = "template_v1.docx"
 TEMPLATE_V1_DOCX_SHA256 = "2b4eeae9bed52ff27b86cb1e9f75516d0a9935359658849589b37ffef0a5974e"

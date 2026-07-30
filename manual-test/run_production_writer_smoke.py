@@ -29,7 +29,7 @@ COMPARISON_PATH = (
 
 def main() -> int:
     profile = MasterProfile.model_validate_json(
-        (MANUAL_DIR / "profile.json").read_text(encoding="utf-8")
+        (ROOT / "tests" / "fixtures" / "huawei_profile.json").read_text(encoding="utf-8")
     )
     posting = build_job_posting(
         "production-writer-smoke-embedded-systems-engineer",

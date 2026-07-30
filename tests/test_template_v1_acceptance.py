@@ -37,7 +37,7 @@ from resume_tailor.infrastructure.template_v1 import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "template_v1_complete_profile.json"
-REFERENCE = Path("manual-test/reference-resume.docx")
+REFERENCE = Path("tests/fixtures/synthetic_reference_resume.docx")
 
 
 def _profile() -> MasterProfile:
@@ -97,9 +97,9 @@ def test_complete_profile_editor_round_trip_preserves_template_fields() -> None:
     education = round_tripped.education[0]
     assert education.start_date == "Sept. 2024"
     assert education.expected_graduation_date == "Apr. 2029"
-    assert education.location == "Toronto, Ontario, Canada"
+    assert education.location == "Example City, Example Region"
     assert education.awards == [
-        "University of Toronto Engineering International Scholar",
+        "Example University Engineering Scholar",
         "CSWA",
         "Dean's List",
     ]
@@ -132,7 +132,7 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
     texts = [paragraph.text for paragraph in paragraphs]
     assert resume.model_dump(mode="json") == resume_before
     assert TEMPLATE_V1_REFERENCE_SHA256 == (
-        "2b9dd1474b9e4a303a87b8a147f3511460988104efde7cfa053cad64294369cd"
+        "ae5a0fd1669efd8191339fbdf118421a38fc41ca12a98bbb941e83f439bd62a8"
     )
     assert (
         section.page_width.twips,
@@ -152,7 +152,7 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
     institution = next(
         paragraph
         for paragraph in paragraphs
-        if paragraph.text.startswith("University of Toronto\t")
+        if paragraph.text.startswith("Example University\t")
     )
     program = next(
         paragraph
@@ -164,13 +164,13 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
         paragraph for paragraph in paragraphs if paragraph.text.startswith("Relevant Courses:")
     )
     assert "Sept. 2024 – Expected Apr. 2029" in institution.text
-    assert program.text.endswith("\tToronto, Ontario, Canada")
+    assert program.text.endswith("\tExample City, Example Region")
     assert "GPA: 3.70/4.00" in awards.text
     assert "Dean's List" in awards.text
     assert "Electrical Fundamentals" in coursework.text
     assert (
         texts.count(
-            "Awards: University of Toronto Engineering International Scholar, "
+            "Awards: Example University Engineering Scholar, "
             "CSWA, Dean's List, GPA: 3.70/4.00"
         )
         == 1
@@ -184,11 +184,11 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
         assert any(text.startswith(label) for text in texts)
     for expected in (
         "Software Engineering Intern | Python, Pandas, Power BI",
-        "Stush Foods\tToronto, Ontario, Canada",
+        "Northstar Engineering\tExample City, Example Region",
         "Robotics Systems Engineer | ROS2, OpenCV, YOLOv8",
-        "Telebotics\tYork, Ontario, Canada",
+        "Example Robotics\tExample City, Example Region",
         "Crest - AI-Powered Expense Intelligence Platform "
-        "(3rd Place, MPC Hacks) | FastAPI, Gemini, MongoDB",
+        "(3rd Place, Example Hackathon) | FastAPI, Gemini, MongoDB",
     ):
         assert any(text.startswith(expected) for text in texts)
     metadata_rows = [
@@ -200,9 +200,9 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
             if paragraph.text.startswith(
                 (
                     "Software Engineering Intern",
-                    "Stush Foods",
+                    "Northstar Engineering",
                     "Robotics Systems Engineer",
-                    "Telebotics",
+                    "Example Robotics",
                 )
             )
         ],
@@ -244,13 +244,13 @@ def test_static_template_v1_contract_preserves_rows_anchors_and_all_selected_ent
     assert wrapped_bullet.paragraph_format.left_indent.twips == 468
     assert wrapped_bullet.paragraph_format.first_line_indent.twips == -185
     representative_typography = {
-        "Shiv Arora": ("Georgia", 14.0),
+        "Avery Chen": ("Georgia", 14.0),
         "Education": ("Bookman Old Style", 11.0),
-        "University of Toronto": ("Times New Roman", 11.0),
+        "Example University": ("Times New Roman", 11.0),
         "Bachelor of Applied Science": ("Times New Roman", 10.0),
         "Programming & Scripting:": ("Times New Roman", 10.0),
         "Software Engineering Intern": ("Times New Roman", 11.0),
-        "Stush Foods": ("Times New Roman", 10.0),
+        "Northstar Engineering": ("Times New Roman", 10.0),
         "Crest - AI-Powered": ("Times New Roman", 10.0),
     }
     for prefix, expected in representative_typography.items():
@@ -331,9 +331,9 @@ def test_template_v1_spacing_is_explicit_for_every_rendered_semantic_paragraph(
         assert paragraph.paragraph_format.line_spacing_rule == WD_LINE_SPACING.EXACTLY
 
     rendered_before = {
-        "Shiv Arora": 100,
+        "Avery Chen": 100,
         "Education": 246,
-        "University of Toronto": 48,
+        "Example University": 48,
         "Bachelor of Applied Science": 34,
         "Awards:": 53,
         "Relevant Courses:": 52,
@@ -341,9 +341,9 @@ def test_template_v1_spacing_is_explicit_for_every_rendered_semantic_paragraph(
         "Programming & Scripting:": 82,
         "Technical Experience": 1,
         "Software Engineering Intern": 115,
-        "Stush Foods": 35,
+        "Northstar Engineering": 35,
         "Robotics Systems Engineer": 111,
-        "Telebotics": 34,
+        "Example Robotics": 34,
         "Projects": 61,
         "Crest - AI-Powered": 61,
     }
@@ -393,7 +393,7 @@ def test_template_v1_transition_spacing_replaces_without_adding_or_erasing(
     institution = next(
         paragraph
         for paragraph in missing_document.paragraphs
-        if paragraph.text.startswith("University of Toronto")
+        if paragraph.text.startswith("Example University")
     )
     assert education_heading.paragraph_format.space_after.twips == 32
     assert institution.paragraph_format.space_before.twips == 48
@@ -414,7 +414,7 @@ def test_template_v1_transition_spacing_replaces_without_adding_or_erasing(
     institution = next(
         paragraph
         for paragraph in replacement_document.paragraphs
-        if paragraph.text.startswith("University of Toronto")
+        if paragraph.text.startswith("Example University")
     )
     assert education_heading.paragraph_format.space_after.twips == 17
     assert institution.paragraph_format.space_before.twips == 29

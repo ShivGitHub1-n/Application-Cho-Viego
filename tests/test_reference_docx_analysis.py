@@ -15,7 +15,7 @@ from resume_tailor.infrastructure.reference_docx import (
 )
 
 
-REFERENCE = Path("manual-test/reference-resume.docx")
+REFERENCE = Path("tests/fixtures/synthetic_reference_resume.docx")
 
 
 @pytest.fixture(scope="module")

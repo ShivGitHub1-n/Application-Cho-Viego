@@ -71,7 +71,7 @@ OUTPUTS: dict[str, tuple[CaseFactory, str]] = {
 
 def _real_embedded_case() -> tuple[MasterProfile, JobPosting]:
     profile = MasterProfile.model_validate_json(
-        (ROOT / "manual-test" / "profile.json").read_text(encoding="utf-8")
+        (ROOT / "tests" / "fixtures" / "huawei_profile.json").read_text(encoding="utf-8")
     )
     posting = JobPosting(
         id="world-star-tech-embedded-systems-engineer",

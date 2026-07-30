@@ -1164,16 +1164,15 @@ def test_weak_rewrite_does_not_force_alternative_experience_package() -> None:
     assert final.hybrid_diagnostic.rewritten_bullet_count == 0
 
 
-def test_real_profile_shortlist_is_bounded_and_does_not_transmit_employer_identity() -> None:
+def test_synthetic_profile_shortlist_is_bounded_and_does_not_transmit_employer_identity() -> None:
     profile = MasterProfile.model_validate_json(
-        (ROOT / "manual-test" / "profile.json").read_text(encoding="utf-8")
+        (ROOT / "tests" / "fixtures" / "huawei_profile.json").read_text(encoding="utf-8")
     )
     posting = build_job_posting(
-        "controlled-real-profile-embedded-posting",
-        "Embedded Systems Engineer",
-        (ROOT / "manual-test" / "embedded-systems-engineer-posting.txt").read_text(
-            encoding="utf-8"
-        ),
+        "controlled-synthetic-profile-embedded-posting",
+        "Autonomous Systems Engineer",
+        "Develop ROS 2 teleoperation and YOLOv8/OpenCV perception for autonomous systems. "
+        "Support LangGraph-based AI governance and compliance workflows.",
     )
     fake = FakeResumeLanguageModel(
         rewrite_bullets=BulletRewriteResult(

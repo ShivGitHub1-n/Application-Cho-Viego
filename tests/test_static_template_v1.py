@@ -38,7 +38,7 @@ from resume_tailor.infrastructure.template_v1 import (
     template_v1_docx_path,
 )
 
-REFERENCE = Path("manual-test/reference-resume.docx")
+REFERENCE = Path("tests/fixtures/synthetic_reference_resume.docx")
 PLACEHOLDER_PATTERN = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 SECTION_LABELS = {"Education", "Technical Skills", "Technical Experience", "Projects"}
 
@@ -272,7 +272,7 @@ def test_runtime_opens_packaged_docx_instead_of_blank_document(
 def test_packaged_template_is_content_neutral_and_has_explicit_prototypes() -> None:
     template_path = template_v1_docx_path()
     assert TEMPLATE_V1_REFERENCE_SHA256 == (
-        "2b9dd1474b9e4a303a87b8a147f3511460988104efde7cfa053cad64294369cd"
+        "ae5a0fd1669efd8191339fbdf118421a38fc41ca12a98bbb941e83f439bd62a8"
     )
     assert TEMPLATE_V1_DOCX_SHA256 == (
         "2b4eeae9bed52ff27b86cb1e9f75516d0a9935359658849589b37ffef0a5974e"

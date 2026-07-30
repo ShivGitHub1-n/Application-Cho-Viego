@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from resume_tailor.application.cover_letter import CoverLetterService, CoverLetterValidationError
 from resume_tailor.application.llm_prompts import task_prompt
 from resume_tailor.application.workflow_state import get_active_posting
-from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose, CoverLetterRecipient
+from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose
 from resume_tailor.domain.llm_models import (
     CoverLetterDraftClaim,
     CoverLetterDraftOutput,
