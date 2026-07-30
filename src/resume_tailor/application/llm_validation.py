@@ -267,9 +267,7 @@ def compare_rewrite_grounding(
     result_level = _ownership_level(text)
     introduced_outcomes = _introduced_outcomes(text, source_texts)
     introduced_causal = _introduced_causal_outcomes(text, source_texts)
-    allowed_terms = _special_terms(source) | {
-        term.casefold() for term in structured_facts
-    }
+    allowed_terms = _special_terms(source) | {term.casefold() for term in structured_facts}
     unsupported_terms = sorted(_special_terms(text) - allowed_terms)
     scope_changes = _singular_plural_scope_changes(text, source)
     return RewriteGroundingComparison(
@@ -293,6 +291,53 @@ def compare_rewrite_grounding(
             else "no_singular_plural_scope_change_detected"
         ),
     )
+
+
+def validate_grounded_text(
+    text: str,
+    source_texts: list[str],
+    structured_facts: list[str] | None = None,
+    *,
+    allow_strong_inference: bool = False,
+) -> RewriteGroundingComparison:
+    """Validate arbitrary generated prose against reviewed source facts.
+
+    Resume rewriting continues to use its existing item-aware validators. This
+    public wrapper exposes the same numeric, terminology, ownership, outcome,
+    and scope primitives to adjacent evidence-grounded workflows.
+    """
+
+    if not source_texts:
+        raise GroundingValidationError(["generated text has no reviewed source evidence"])
+    facts = list(structured_facts or [])
+    failures: list[str] = []
+    _validate_protected_facts(
+        text,
+        facts,
+        source_texts,
+        failures,
+        require_preserved_facts=False,
+    )
+    _validate_factual_terms(
+        text,
+        source_texts,
+        facts,
+        failures,
+        allow_new_terminology=allow_strong_inference,
+    )
+    _validate_ownership(
+        text,
+        source_texts,
+        failures,
+        allow_strong_inference=allow_strong_inference,
+    )
+    _validate_outcomes(text, source_texts, failures)
+    scope_changes = _singular_plural_scope_changes(text, " ".join(source_texts))
+    if scope_changes:
+        failures.append(f"unsupported singular/plural scope expansion: {scope_changes}")
+    if failures:
+        raise GroundingValidationError(failures)
+    return compare_rewrite_grounding(text, source_texts, facts)
 
 
 def validate_composition(
@@ -398,9 +443,7 @@ def validate_rewrites(
         if any(group.entry_id != bullet.entry_id for group in groups_for_bullet):
             failures.append(f"cross-entry bullet for {bullet.source_evidence_ids}")
             continue
-        if len(groups_for_bullet) > 1 and not _same_entry_bundle_is_coherent(
-            groups_for_bullet
-        ):
+        if len(groups_for_bullet) > 1 and not _same_entry_bundle_is_coherent(groups_for_bullet):
             failures.append(
                 "same-entry evidence bundle does not describe one coherent engineering story: "
                 f"{bullet.source_evidence_ids}"
@@ -646,8 +689,7 @@ def _validate_protected_facts(
             f"{item.comparator}{item.number}{item.unit}" for item in introduced
         )
         failures.append(
-            "unsupported numeric facts or changed inequality meaning: "
-            f"{rendered_introduced}"
+            f"unsupported numeric facts or changed inequality meaning: {rendered_introduced}"
         )
 
 
@@ -768,9 +810,7 @@ def _introduced_outcomes(text: str, source_texts: list[str]) -> list[str]:
         "saved",
     }
     source = " ".join(source_texts).casefold()
-    return sorted(
-        term for term in outcome_terms if term in text.casefold() and term not in source
-    )
+    return sorted(term for term in outcome_terms if term in text.casefold() and term not in source)
 
 
 def _introduced_causal_outcomes(text: str, source_texts: list[str]) -> list[str]:

@@ -3,10 +3,12 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from resume_tailor.domain.cover_letter import (
+    CoverLetterLengthClass,
     CoverLetterParagraphPurpose,
+    CoverLetterSentenceAuthority,
     normalize_paragraph_purpose,
 )
 from resume_tailor.domain.hybrid_resume import (
@@ -360,10 +362,22 @@ class BulletShorteningResult(ModelResult):
 
 class CoverLetterEvidence(StrictModel):
     evidence_id: str
+    evidence_kind: str
     source_text: str
-    entity_id: str
+    entity_id: str | None = None
+    entry_title: str | None = None
     technologies: list[str] = Field(default_factory=list)
     outcomes: list[str] = Field(default_factory=list)
+    matched_requirements: list[str] = Field(default_factory=list)
+    selected_in_final_resume: bool = False
+
+
+class CoverLetterCompanyFact(StrictModel):
+    research_id: str
+    fact: str
+    supported_claim: str
+    source_title: str
+    source_type: str
 
 
 class CoverLetterDraftRequest(StrictModel):
@@ -371,42 +385,47 @@ class CoverLetterDraftRequest(StrictModel):
     company_name: str | None = None
     job_description: str
     strategy: str
-    selected_entry_ids: list[str] = Field(min_length=1)
+    selected_entry_ids: list[str] = Field(default_factory=list)
     selected_evidence: list[CoverLetterEvidence] = Field(min_length=1)
-    selected_skills: list[str] = Field(default_factory=list)
-    selected_coursework: list[str] = Field(default_factory=list)
-    recipient_name: str | None = None
-    recipient_title: str | None = None
-    recipient_address_lines: list[str] = Field(default_factory=list)
+    company_research: list[CoverLetterCompanyFact] = Field(default_factory=list)
+    final_resume_evidence_ids: list[str] = Field(default_factory=list)
     approximate_body_lines: int = Field(gt=0)
-    compact: bool = False
     writing_constraints: list[str] = Field(default_factory=list)
-
-
-class CoverLetterDraftClaim(StrictModel):
-    text: str = Field(min_length=1, max_length=900)
-    evidence_ids: list[str] = Field(min_length=1)
-    confidence: ClaimConfidence
-    optional: bool = False
-    reduction_priority: int = Field(default=50, ge=0, le=100)
+    repair_instruction: str | None = None
 
 
 class CoverLetterDraftParagraph(StrictModel):
     purpose: CoverLetterParagraphPurpose
     text: str = Field(min_length=1, max_length=2400)
-    claims: list[CoverLetterDraftClaim] = Field(default_factory=list)
-    optional: bool = False
-    reduction_priority: int = Field(default=50, ge=0, le=100)
+    candidate_evidence_ids: list[str] = Field(default_factory=list, max_length=3)
+    company_research_ids: list[str] = Field(default_factory=list, max_length=3)
+    narrative_thread_id: str | None = None
+    length_class: CoverLetterLengthClass = CoverLetterLengthClass.STANDARD
+    source_bound_sentences: list[CoverLetterSentenceAuthority] = Field(
+        default_factory=list
+    )
 
     @field_validator("purpose", mode="before")
     @classmethod
     def normalize_legacy_purpose(cls, value: object) -> CoverLetterParagraphPurpose:
         return normalize_paragraph_purpose(value)
 
+    @model_validator(mode="after")
+    def validate_source_bound_text(self) -> CoverLetterDraftParagraph:
+        if not self.source_bound_sentences:
+            return self
+        assembled = " ".join(
+            " ".join(sentence.text.split()) for sentence in self.source_bound_sentences
+        )
+        if assembled != " ".join(self.text.split()):
+            raise ValueError(
+                "Source-bound paragraph text must be assembled from its sentence objects"
+            )
+        return self
+
 
 class CoverLetterDraftOutput(StrictModel):
-    paragraphs: list[CoverLetterDraftParagraph] = Field(min_length=2)
-    rationale: str = Field(default="", max_length=800)
+    paragraphs: list[CoverLetterDraftParagraph] = Field(min_length=3, max_length=5)
 
 
 class CoverLetterDraftResult(ModelResult):

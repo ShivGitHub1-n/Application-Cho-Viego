@@ -50,11 +50,15 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
         ),
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (
-            "Draft a concise, natural, evidence-grounded cover letter from the supplied selected "
-            "evidence and existing tailoring strategy. Return paragraph claims linked to evidence IDs. "
+            "Draft a concise, human, evidence-grounded cover-letter body for this exact candidate, "
+            "company, and role. Build one narrative across why this company, why this candidate, and "
+            "why this role. Return only paragraph text, authorized candidate evidence IDs, authorized "
+            "company research IDs, paragraph purpose, optional narrative thread ID, and length class. "
+            "Do not return diagnostics, rationale, claim confidence, formatting, salutation, or sign-off. "
             "Each paragraph purpose must be exactly one machine-readable identifier: "
             + ", ".join(purpose.value for purpose in CoverLetterParagraphPurpose)
-            + ". Put role-specific or company-specific descriptions in paragraph text, never in purpose."
+            + ". Put role-specific or company-specific descriptions in paragraph text, never in purpose. "
+            "Use only supplied IDs; do not infer personal motivation or company facts."
         ),
     }[operation]
     payload = json.dumps(request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
