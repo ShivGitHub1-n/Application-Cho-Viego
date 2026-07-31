@@ -580,6 +580,18 @@ def _clear_cover_letter_state() -> None:
         st.session_state.pop(key, None)
 
 
+def _invalidate_job_discovery_profile_state() -> None:
+    for key in (
+        "job_discovery_profile_id",
+        "job_discovery_confirmed_preferences",
+        "job_discovery_draft_preferences",
+        "job_discovery_suggestion",
+        "job_discovery_run",
+        "job_discovery_recommendations",
+    ):
+        st.session_state.pop(key, None)
+
+
 def _go_to_page(page: str) -> None:
     navigate_to(_state(), page)
 
@@ -601,8 +613,11 @@ def _persist_profile(
         return False
     if changed:
         invalidate_profile_derived_workflow(_state())
+        _invalidate_job_discovery_profile_state()
     st.session_state["profile"] = profile
     st.session_state["profile_id"] = profile.id
+    st.session_state["profile_id_input"] = profile.id
+    st.session_state["job_discovery_profile_id"] = profile.id
     st.session_state["profile_load_status"] = "Reviewed profile saved."
     populate_profile_editor_state(
         _state(),
@@ -714,7 +729,7 @@ def _render_profile_page(
     selected_id = st.text_input(
         "Selected profile ID",
         key="profile_id_input",
-        placeholder="shiv-arora-master-v1",
+        placeholder="candidate-profile-v1",
     ).strip()
     st.caption(f"Active selection: `{selected_id or 'none'}`")
     with st.container(horizontal=True):
@@ -735,8 +750,10 @@ def _render_profile_page(
                 st.warning("No saved profile exists for that profile ID.")
             else:
                 invalidate_profile_derived_workflow(_state())
+                _invalidate_job_discovery_profile_state()
                 st.session_state["profile"] = loaded
                 st.session_state["profile_id"] = loaded.id
+                st.session_state["job_discovery_profile_id"] = loaded.id
                 st.session_state["profile_load_status"] = "Loaded from application storage."
                 populate_profile_editor_state(
                     _state(),
@@ -2087,16 +2104,43 @@ def _render_job_search_page(
     settings: Settings,
     repository: SQLiteMasterProfileRepository,
 ) -> None:
-    profile = st.session_state.get("profile")
-    if profile is None:
-        st.title("Job Search")
-        st.info("Load a reviewed profile before configuring Job Search.")
-        return
     if not settings.job_discovery_enabled or settings.job_discovery_source_registry_path is None:
         st.warning(
             "No approved job sources are configured. You can still review saved "
             "jobs and preferences; configure an approved registry before refresh."
         )
+    session_profile = cast(MasterProfile | None, st.session_state.get("profile"))
+    selected_profile_id = str(st.session_state.get("profile_id", "")).strip()
+    selected_user_id = session_profile.user_id if session_profile is not None else None
+    profile: MasterProfile | None = None
+    if selected_profile_id:
+        try:
+            profile = repository.get(selected_profile_id)
+        except (ProfileStoreError, CorruptStoredProfileError):
+            st.error("The selected profile could not be loaded safely.")
+    if profile is None:
+        if session_profile is not None or selected_profile_id:
+            invalidate_profile_derived_workflow(_state())
+            _invalidate_job_discovery_profile_state()
+            st.session_state.pop("profile", None)
+            st.session_state["profile_id"] = ""
+            st.session_state["profile_id_input"] = ""
+            st.session_state["profile_load_status"] = (
+                "The previously selected profile is no longer available."
+            )
+    elif (
+        session_profile is None
+        or profile_change_fingerprint(session_profile)
+        != profile_change_fingerprint(profile)
+    ):
+        invalidate_profile_derived_workflow(_state())
+        _invalidate_job_discovery_profile_state()
+        st.session_state["profile"] = profile
+        st.session_state["profile_id"] = profile.id
+        st.session_state["profile_id_input"] = profile.id
+        st.session_state["job_discovery_profile_id"] = profile.id
+        st.session_state["profile_load_status"] = "Loaded from application storage."
+        selected_user_id = profile.user_id
     if "_job_discovery_services" not in st.session_state:
         st.session_state["_job_discovery_services"] = create_job_discovery_services(settings)
     services = st.session_state["_job_discovery_services"]
@@ -2107,8 +2151,9 @@ def _render_job_search_page(
     render_job_discovery_view(
         ApplicationJobDiscoveryDeliveryApi(
             services,
-            [profile],
+            [profile] if profile is not None else [],
             SQLiteDiscoveredJobRepository(database),
+            user_id=selected_user_id,
         )
     )
 
@@ -2205,6 +2250,7 @@ if not st.session_state.get("_profile_bootstrap_complete"):
             st.session_state["profile"] = persisted
             st.session_state["profile_id"] = persisted.id
             st.session_state["profile_id_input"] = persisted.id
+            st.session_state["job_discovery_profile_id"] = persisted.id
             st.session_state["profile_load_status"] = "Loaded from persistent storage."
             populate_profile_editor_state(
                 _state(),

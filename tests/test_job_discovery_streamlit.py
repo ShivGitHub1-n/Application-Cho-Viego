@@ -115,7 +115,13 @@ class FakeApi:
         self.current_preferences: JobSearchPreferences | None = None
 
     def list_reviewed_profiles(self):
-        return [SimpleNamespace(id="p1", display_name="Reviewed Candidate")]
+        return [
+            SimpleNamespace(
+                id="p1",
+                user_id="candidate-user",
+                display_name="Reviewed Candidate",
+            )
+        ]
 
     def suggest_preferences(self, profile_id):
         self.calls.append(("suggest", profile_id))
@@ -165,7 +171,7 @@ class FakeApi:
 def _confirmed_preferences(api: FakeApi, *, profile_id: str = "p1", titles=None):
     suggestion = api.suggestion.model_copy(update={"profile_id": profile_id})
     return JobSearchPreferences(
-        user_id="local-user",
+        user_id="candidate-user",
         profile_id=profile_id,
         version=2,
         role_family_priority=suggestion.role_family_priority,
@@ -240,8 +246,8 @@ def test_regenerated_suggestion_does_not_overwrite_current_confirmed_preferences
 def test_profile_switch_loads_profile_specific_confirmed_preferences():
     fake_api = FakeApi()
     fake_api.list_reviewed_profiles = lambda: [
-        SimpleNamespace(id="p1", display_name="First"),
-        SimpleNamespace(id="p2", display_name="Second"),
+        SimpleNamespace(id="p1", user_id="candidate-user", display_name="First"),
+        SimpleNamespace(id="p2", user_id="candidate-user", display_name="Second"),
     ]
     fake_api.current_preferences = _confirmed_preferences(
         fake_api, profile_id="p2", titles=["Second Profile Role"]
@@ -252,6 +258,64 @@ def test_profile_switch_loads_profile_specific_confirmed_preferences():
     render_job_discovery_view(fake_api, streamlit_module=fake_st)
 
     assert fake_st.input_values["Target titles"] == "Second Profile Role"
+
+
+def test_stale_profile_renders_actionable_empty_state_without_suggestion_call():
+    fake_api = FakeApi()
+    fake_api.list_reviewed_profiles = lambda: []
+    fake_api.saved_jobs = [
+        SimpleNamespace(
+            id="saved-1",
+            availability=SavedJobAvailability.UNKNOWN,
+            posting_snapshot=SimpleNamespace(
+                title="Saved role",
+                description="Saved posting remains reviewable.",
+                official_url="",
+            ),
+        )
+    ]
+    fake_st = FakeStreamlit({"Suggest preferences"})
+    fake_st.session_state["job_discovery_profile_id"] = "removed-profile"
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    rendered_text = " ".join(fake_st.text)
+    assert "Load, create, or import a profile" in rendered_text
+    assert "Saved posting remains reviewable." in rendered_text
+    assert "job_discovery_profile_id" not in fake_st.session_state
+    assert not any(name == "suggest" for name, _ in fake_api.calls)
+    assert ("list_saved", None) in fake_api.calls
+
+
+def test_replacement_profile_invalidates_old_profile_specific_state():
+    fake_api = FakeApi()
+    fake_api.list_reviewed_profiles = lambda: [
+        SimpleNamespace(
+            id="replacement-profile",
+            user_id="candidate-user",
+            display_name="Replacement",
+        )
+    ]
+    fake_st = FakeStreamlit()
+    fake_st.selected_profile = "replacement-profile"
+    fake_st.session_state.update(
+        {
+            "job_discovery_profile_id": "removed-profile",
+            "job_discovery_suggestion": fake_api.suggestion,
+            "job_discovery_draft_preferences": fake_api.suggestion,
+            "job_discovery_confirmed_preferences": _confirmed_preferences(fake_api),
+            "job_discovery_run": object(),
+            "job_discovery_recommendations": [object()],
+        }
+    )
+
+    render_job_discovery_view(fake_api, streamlit_module=fake_st)
+
+    assert fake_st.session_state["job_discovery_profile_id"] == "replacement-profile"
+    assert "job_discovery_suggestion" not in fake_st.session_state
+    assert "job_discovery_confirmed_preferences" not in fake_st.session_state
+    assert "job_discovery_run" not in fake_st.session_state
+    assert "job_discovery_recommendations" not in fake_st.session_state
 
 
 def test_job_discovery_view_is_composed_from_app():

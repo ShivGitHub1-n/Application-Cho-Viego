@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
@@ -37,6 +38,11 @@ def _configure_app_dependencies(monkeypatch, tmp_path: Path) -> None:
     )
     monkeypatch.setattr(dependencies, "create_profile_repository", lambda: repository)
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
+    monkeypatch.setattr(
+        dependencies,
+        "create_job_discovery_services",
+        lambda _settings: SimpleNamespace(save=None, check_saved_availability=None),
+    )
 
 
 def test_navigation_preserves_unrelated_session_state() -> None:
@@ -101,22 +107,22 @@ def test_every_major_workflow_is_reachable_and_state_survives(
         assert not app.exception
 
 
-def test_job_search_sources_are_not_initialized_during_startup_or_other_pages(
+def test_job_search_services_initialize_only_on_job_search_page(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     _configure_app_dependencies(monkeypatch, tmp_path)
     calls = 0
 
-    def unexpected_job_discovery_initialization():
+    def tracked_job_discovery_initialization(_settings):
         nonlocal calls
         calls += 1
-        raise AssertionError("Job Search initialized outside its selected workflow.")
+        return SimpleNamespace(save=None, check_saved_availability=None)
 
     monkeypatch.setattr(
         dependencies,
         "create_job_discovery_services",
-        unexpected_job_discovery_initialization,
+        tracked_job_discovery_initialization,
     )
     app = AppTest.from_file(str(_app_path())).run()
 
@@ -131,7 +137,7 @@ def test_job_search_sources_are_not_initialized_during_startup_or_other_pages(
         app.radio(key="navigation_selection").set_value(page).run()
         assert not app.exception
 
-    assert calls == 0
+    assert calls == 1
 
 
 def test_default_startup_needs_no_gemini_credentials(

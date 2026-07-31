@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_
 from resume_tailor.frontend.cover_letter_view import _artifact_after_build
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
+from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
@@ -537,6 +539,109 @@ def test_streamlit_uses_persisted_profile_with_pasted_job_description(
     assert app.session_state["profile"].id == "local-profile"
     assert app.session_state["posting"].description == "Build firmware.\n\n- Test systems"
     assert app.session_state["profile_load_status"] == "Loaded from persistent storage."
+
+
+def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    database = tmp_path / "resume_tailor.sqlite3"
+    repository = SQLiteMasterProfileRepository(database)
+    create_services = dependencies.create_job_discovery_services
+    discovery_settings = Settings(
+        app_data_directory=tmp_path,
+        job_discovery_enabled=False,
+        job_discovery_source_registry_path=None,
+    )
+    monkeypatch.setenv("APPLICATION_VIEGO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("JOB_DISCOVERY_ENABLED", "false")
+    monkeypatch.setattr(
+        dependencies,
+        "create_profile_repository",
+        lambda: SQLiteMasterProfileRepository(database),
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "create_tailor_service",
+        lambda: TailorResumeService(
+            DeterministicResumeOptimizer(),
+            EvidenceBoundResumeWriter(),
+        ),
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "create_job_discovery_services",
+        lambda _settings: create_services(
+            discovery_settings,
+            legacy_repository_root=tmp_path / "no-legacy-repository",
+        ),
+    )
+    profile = {
+        "id": "workflow-profile",
+        "user_id": "candidate-user",
+        "display_name": "Workflow Candidate",
+        "experiences": [
+            {
+                "id": "workflow-experience",
+                "title": "Firmware Engineer",
+                "kind": "experience",
+            }
+        ],
+        "evidence": [
+            {
+                "id": "workflow-evidence",
+                "entity_id": "workflow-experience",
+                "source_text": "Developed embedded firmware and validated interfaces.",
+            }
+        ],
+    }
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+    app = AppTest.from_file(str(app_path)).run()
+
+    app.radio(key="navigation_selection").set_value("Profile").run()
+    app.text_input(key="profile_id_input").input(profile["id"]).run()
+    app.text_area(key="profile_editor_raw_json").input(json.dumps(profile))
+    next(
+        button for button in app.button if button.label == "Validate and save raw JSON"
+    ).click().run()
+    app.radio(key="navigation_selection").set_value("Job Search").run()
+
+    assert repository.get(profile["id"]) is not None
+    assert app.session_state["profile_id"] == profile["id"]
+    assert app.session_state["job_discovery_profile_id"] == profile["id"]
+    assert any(
+        "No approved job sources are configured" in warning.value
+        for warning in app.warning
+    )
+
+    next(button for button in app.button if button.label == "Suggest preferences").click().run()
+
+    assert app.session_state["job_discovery_suggestion"].profile_id == profile["id"]
+    assert any(item.label == "Target titles" for item in app.text_area)
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "DELETE FROM master_profiles WHERE profile_id = ?",
+            (profile["id"],),
+        )
+        connection.commit()
+
+    app.radio(key="navigation_selection").set_value("Profile").run()
+    app.radio(key="navigation_selection").set_value("Job Search").run()
+
+    assert not app.exception
+    assert "profile" not in app.session_state
+    assert app.session_state["profile_id"] == ""
+    assert "job_discovery_profile_id" not in app.session_state
+    assert not any(button.label == "Suggest preferences" for button in app.button)
+    rendered = " ".join(
+        [element.value for element in app.warning]
+        + [element.value for element in app.info]
+        + [element.value for element in app.subheader]
+    )
+    assert "Load, create, or import a profile" in rendered
+    assert "Saved jobs" in rendered
+    assert "No approved job sources are configured" in rendered
 
 
 def test_streamlit_shows_collapsed_typed_composition_diagnostic(

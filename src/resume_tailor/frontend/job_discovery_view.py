@@ -46,10 +46,28 @@ class JobDiscoveryDeliveryApi(Protocol):
 class ApplicationJobDiscoveryDeliveryApi:
     """Adapt the application service bundle to the thin Streamlit boundary."""
 
-    def __init__(self, services: Any, profiles: Sequence[Any], jobs: Any) -> None:
+    def __init__(
+        self,
+        services: Any,
+        profiles: Sequence[Any],
+        jobs: Any,
+        *,
+        user_id: str | None = None,
+    ) -> None:
         self._services = services
         self._profiles = tuple(profiles)
         self._jobs = jobs
+        self._profiles_by_id = {
+            _profile_id(profile): profile for profile in self._profiles
+        }
+        self._user_id = user_id or next(
+            (
+                str(profile_user_id)
+                for profile in self._profiles
+                if (profile_user_id := _value(profile, "user_id", None))
+            ),
+            None,
+        )
 
     def list_reviewed_profiles(self) -> Sequence[Any]:
         return self._profiles
@@ -58,7 +76,9 @@ class ApplicationJobDiscoveryDeliveryApi:
         return cast(
             JobSearchPreferenceSuggestion,
             self._services.suggest_preferences.suggest(
-                "local-user", profile_id, generated_at=datetime.now(UTC)
+                self._profile_user_id(profile_id),
+                profile_id,
+                generated_at=datetime.now(UTC),
             ),
         )
 
@@ -68,7 +88,10 @@ class ApplicationJobDiscoveryDeliveryApi:
         try:
             return cast(
                 JobSearchPreferences,
-                self._services.current_preferences.get("local-user", profile_id),
+                self._services.current_preferences.get(
+                    self._profile_user_id(profile_id),
+                    profile_id,
+                ),
             )
         except PreferencesNotFoundError:
             return None
@@ -84,9 +107,13 @@ class ApplicationJobDiscoveryDeliveryApi:
     def refresh(self, profile_id: str) -> Any:
         if self._services.current_preferences is None:
             raise RuntimeError("Job-search preferences are unavailable.")
-        preferences = self._services.current_preferences.get("local-user", profile_id)
+        user_id = self._profile_user_id(profile_id)
+        preferences = self._services.current_preferences.get(user_id, profile_id)
         run = self._services.refresh.refresh(
-            "local-user", profile_id, preferences, started_at=datetime.now(UTC)
+            user_id,
+            profile_id,
+            preferences,
+            started_at=datetime.now(UTC),
         )
         details = (
             self._services.runs.get(run.user_id, run.id)
@@ -104,19 +131,37 @@ class ApplicationJobDiscoveryDeliveryApi:
     def save_job(self, job_id: str) -> Any:
         if self._services.save is None:
             raise RuntimeError("Saved-job persistence is unavailable.")
-        return self._services.save.save("local-user", job_id, saved_at=datetime.now(UTC))
+        return self._services.save.save(
+            self._require_user_id(),
+            job_id,
+            saved_at=datetime.now(UTC),
+        )
 
     def list_saved_jobs(self) -> Sequence[Any]:
-        if self._services.save is None:
+        if self._services.save is None or self._user_id is None:
             return []
-        return cast(Sequence[Any], self._services.save.list("local-user"))
+        return cast(Sequence[Any], self._services.save.list(self._user_id))
 
     def check_saved_job_availability(self, saved_id: str) -> Any:
         if self._services.check_saved_availability is None:
             raise RuntimeError("Saved-job availability is unavailable.")
         return self._services.check_saved_availability.check(
-            "local-user", saved_id, checked_at=datetime.now(UTC)
+            self._require_user_id(),
+            saved_id,
+            checked_at=datetime.now(UTC),
         )
+
+    def _profile_user_id(self, profile_id: str) -> str:
+        profile = self._profiles_by_id.get(profile_id)
+        user_id = _value(profile, "user_id", None)
+        if user_id is None:
+            raise ValueError(f"Reviewed profile {profile_id!r} is not available.")
+        return str(user_id)
+
+    def _require_user_id(self) -> str:
+        if self._user_id is None:
+            raise RuntimeError("A profile owner is required for saved-job operations.")
+        return self._user_id
 
 
 def render_job_discovery_view(
@@ -134,13 +179,21 @@ def render_job_discovery_view(
 
     profiles = list(api.list_reviewed_profiles())
     if not profiles:
-        streamlit_module.warning("Select a reviewed profile before discovering jobs.")
+        _clear_profile_specific_state(streamlit_module)
+        streamlit_module.warning(
+            "No reviewed profile is available. Load, create, or import a profile "
+            "from the Profile page to configure Job Discovery."
+        )
+        _render_saved_jobs(api, streamlit_module)
         return
     profile_by_id = {_profile_id(profile): profile for profile in profiles}
     profile_ids = list(profile_by_id)
     preferred_profile_id = streamlit_module.session_state.get(
         "job_discovery_profile_id", profile_ids[0]
     )
+    if preferred_profile_id not in profile_ids:
+        _clear_profile_specific_state(streamlit_module)
+        preferred_profile_id = profile_ids[0]
     selected_index = (
         profile_ids.index(preferred_profile_id) if preferred_profile_id in profile_ids else 0
     )
@@ -150,6 +203,7 @@ def render_job_discovery_view(
         index=selected_index,
     )
     streamlit_module.session_state["job_discovery_profile_id"] = selected_profile_id
+    selected_user_id = str(_value(profile_by_id[selected_profile_id], "user_id"))
 
     confirmed = api.get_current_preferences(selected_profile_id)
     confirmed_profile_id = _state_profile_id(
@@ -184,7 +238,12 @@ def render_job_discovery_view(
     if editor_source is None:
         editor_source = confirmed
     if isinstance(editor_source, (JobSearchPreferences, JobSearchPreferenceSuggestion)):
-        _render_preference_editor(api, editor_source, streamlit_module)
+        _render_preference_editor(
+            api,
+            editor_source,
+            streamlit_module,
+            user_id=selected_user_id,
+        )
 
     _render_run(api, selected_profile_id, streamlit_module)
     _render_saved_jobs(api, streamlit_module)
@@ -194,6 +253,8 @@ def _render_preference_editor(
     api: JobDiscoveryDeliveryApi,
     source: JobSearchPreferences | JobSearchPreferenceSuggestion,
     streamlit_module: Any,
+    *,
+    user_id: str,
 ) -> None:
     streamlit_module.subheader("Review and confirm search preferences")
     role_family_values = [family.value for family in RoleFamily]
@@ -290,7 +351,7 @@ def _render_preference_editor(
     )
 
     preferences = JobSearchPreferences(
-        user_id="local-user",
+        user_id=user_id,
         profile_id=source.profile_id,
         version=1,
         role_family_priority=[RoleFamily(value) for value in selected_role_families],
@@ -441,6 +502,18 @@ def _state_profile_id(streamlit_module: Any, key: str) -> str | None:
     value = streamlit_module.session_state.get(key)
     profile_id = _value(value, "profile_id", None)
     return str(profile_id) if profile_id is not None else None
+
+
+def _clear_profile_specific_state(streamlit_module: Any) -> None:
+    for key in (
+        "job_discovery_profile_id",
+        "job_discovery_confirmed_preferences",
+        "job_discovery_draft_preferences",
+        "job_discovery_suggestion",
+        "job_discovery_run",
+        "job_discovery_recommendations",
+    ):
+        streamlit_module.session_state.pop(key, None)
 
 
 def _value(value: Any, name: str, default: Any = None) -> Any:
