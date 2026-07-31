@@ -129,6 +129,27 @@ _LOW_INFORMATION_TOKENS = frozenset(
         "worked",
     }
 )
+_BROAD_ROLE_SIGNALS = frozenset(
+    {
+        "ai",
+        "analysis",
+        "cross functional",
+        "development",
+        "design",
+        "engineering",
+        "evaluate",
+        "evaluation",
+        "project",
+        "prototype",
+        "prototyping",
+        "research",
+        "software",
+        "system",
+        "systems",
+        "test",
+        "testing",
+    }
+)
 _ENTERPRISE_PRODUCTION_SIGNALS = frozenset(
     {
         "compliance",
@@ -190,6 +211,7 @@ class _BulletCandidate:
     coverage_labels: tuple[str, ...]
     normalized_features: tuple[str, ...]
     meaningful_overlap: tuple[str, ...]
+    specific_signal_keys: tuple[str, ...]
     generic_only_rejected: bool
     admitted: bool
     admission_reason: str
@@ -273,6 +295,8 @@ class _EvaluatedState:
     quality: float
     coverage_count: int
     direct_requirement_count: int
+    specific_signal_count: int
+    repeated_specific_signal_count: int
     direct_bullet_count: int
     low_context_nondirect_count: int
     domain_drift_project_count: int
@@ -461,6 +485,10 @@ class DeterministicResumeComposer:
                 for candidate in selected_candidates
                 for requirement_id in candidate.direct_requirement_ids
             )
+            specific_signal_entries: dict[str, set[str]] = {}
+            for candidate in selected_candidates:
+                for signal in candidate.specific_signal_keys:
+                    specific_signal_entries.setdefault(signal, set()).add(candidate.entry_id)
             domain_drift_project_count = 0
             for project_id in {
                 candidate.entry_id
@@ -516,6 +544,11 @@ class DeterministicResumeComposer:
                             evidence_id
                         ].direct_requirement_ids
                     }
+                ),
+                specific_signal_count=len(specific_signal_entries),
+                repeated_specific_signal_count=sum(
+                    max(0, len(entry_ids) - 1)
+                    for entry_ids in specific_signal_entries.values()
                 ),
                 direct_bullet_count=sum(
                     bullet_by_id[evidence_id].relationship
@@ -1442,6 +1475,7 @@ class DeterministicResumeComposer:
                     coverage_keys=source.coverage_keys,
                     coverage_labels=source.coverage_labels,
                     meaningful_overlap=source.meaningful_overlap,
+                    specific_signal_keys=source.specific_signal_keys,
                     generic_only_rejected=source.generic_only_rejected,
                     admitted=source.admitted,
                     admission_reason=source.admission_reason,
@@ -1742,6 +1776,14 @@ class DeterministicResumeComposer:
         )
         if advisory:
             score = round(score + 6.0, 2)
+        specific_signal_keys = _specific_posting_signal_matches(
+            [candidate_text, *supporting_structured_values],
+            context,
+            meaningful_overlap,
+            short_token_contributions,
+        )
+        specificity_adjustment = min(24.0, max(0, len(specific_signal_keys) - 1) * 4.0)
+        score = round(score + specificity_adjustment, 2)
         preserved_terms: tuple[str, ...] = ()
         removed_terms: tuple[str, ...] = ()
         writing_adjustment = 0.0
@@ -1775,6 +1817,7 @@ class DeterministicResumeComposer:
             coverage_labels=tuple(coverage_labels),
             normalized_features=tuple(normalized_features),
             meaningful_overlap=tuple(meaningful_overlap),
+            specific_signal_keys=tuple(specific_signal_keys),
             generic_only_rejected=generic_only,
             admitted=admitted,
             admission_reason=admission_reason,
@@ -1862,7 +1905,11 @@ class DeterministicResumeComposer:
             ] = []
             for skill in category.skills:
                 normalized = _normalize(skill.value)
-                if not normalized or normalized in seen_normalized_skills:
+                if (
+                    not normalized
+                    or normalized in seen_normalized_skills
+                    or not _has_balanced_delimiters(skill.value)
+                ):
                     continue
                 features = extract_reviewed_text_features(skill.value)
                 match = match_reviewed_features(features, context.features)
@@ -2177,6 +2224,11 @@ class DeterministicResumeComposer:
             for item in state.bullet_ids
             for requirement_id in bullet_by_id[item].direct_requirement_ids
         }
+        selected_specific_signals = {
+            signal
+            for item in state.bullet_ids
+            for signal in bullet_by_id[item].specific_signal_keys
+        }
         options: list[_Expansion] = []
         handled_experience_entries: set[str] = set()
         for candidate in bullets:
@@ -2212,6 +2264,21 @@ class DeterministicResumeComposer:
                             break
                     if rejected:
                         continue
+                    package_specific_signals = {
+                        signal
+                        for package_candidate in package_candidates
+                        for signal in package_candidate.specific_signal_keys
+                    }
+                    package_direct_requirements = {
+                        requirement_id
+                        for package_candidate in package_candidates
+                        for requirement_id in package_candidate.direct_requirement_ids
+                    }
+                    if state.bullet_ids and not (
+                        package_specific_signals - selected_specific_signals
+                        or package_direct_requirements - selected_direct_requirements
+                    ):
+                        package_penalty += 16.0
                     proposal = _State(
                         state.bullet_ids | frozenset(package.bullet_ids),
                         state.skill_category_ids,
@@ -2278,6 +2345,8 @@ class DeterministicResumeComposer:
             )
             if set(candidate.direct_requirement_ids) - selected_direct_requirements:
                 containment_penalty = 0.0
+            if set(candidate.specific_signal_keys) - selected_specific_signals:
+                containment_penalty = 0.0
             penalty += containment_penalty
             redundancy_by_source[candidate.evidence_id] = max(
                 redundancy_by_source.get(candidate.evidence_id, 0),
@@ -2293,6 +2362,13 @@ class DeterministicResumeComposer:
                 else CompositionCandidateKind.PROJECT_BULLET
             )
             opening_penalty = 6.0 if opens_entry else 0.0
+            if (
+                opens_entry
+                and state.bullet_ids
+                and not (set(candidate.specific_signal_keys) - selected_specific_signals)
+                and not (set(candidate.direct_requirement_ids) - selected_direct_requirements)
+            ):
+                opening_penalty += 12.0
             marginal = candidate.score - penalty - opening_penalty
             if marginal < self._minimum_marginal_score:
                 continue
@@ -2357,8 +2433,16 @@ class DeterministicResumeComposer:
                 for category_id in state.skill_category_ids
                 for coverage in skill_by_id[category_id].coverage_keys
             }
+            selected_skill_signals = {
+                signal
+                for category_id in state.skill_category_ids
+                for signal in skill_by_id[category_id].meaningful_overlap
+            }
             repeated = len(set(skill_candidate.coverage_keys) & selected_coverage)
             distinct_coverage = set(skill_candidate.coverage_keys) - selected_coverage
+            distinct_skill_signals = (
+                set(skill_candidate.meaningful_overlap) - selected_skill_signals
+            )
             if len(state.skill_category_ids) >= 3 and (
                 skill_candidate.relationship
                 not in {
@@ -2366,7 +2450,7 @@ class DeterministicResumeComposer:
                     EvidenceRelationship.ADJACENT,
                     EvidenceRelationship.COMPLEMENTARY,
                 }
-                or (not distinct_coverage and not skill_candidate.supported_skill_ids)
+                or (not distinct_coverage and not distinct_skill_signals)
             ):
                 # Three meaningful rows are the normal soft target. A fourth
                 # row must add a direct, distinct posting signal instead of
@@ -2777,6 +2861,14 @@ class DeterministicResumeComposer:
         repeated_coverage = sum(
             max(0, len(entry_ids) - 1) for entry_ids in coverage_entries.values()
         )
+        specific_signal_entries: dict[str, set[str]] = {}
+        for bullet in bullets:
+            for signal in bullet.specific_signal_keys:
+                specific_signal_entries.setdefault(signal, set()).add(bullet.entry_id)
+        repeated_specific_signals = sum(
+            max(0, len(entry_ids) - 1)
+            for entry_ids in specific_signal_entries.values()
+        )
         opened_entries = {bullet.entry_id for bullet in bullets}
         direct_count = sum(bullet.relationship is EvidenceRelationship.DIRECT for bullet in bullets)
         adjacent_count = sum(
@@ -2861,6 +2953,8 @@ class DeterministicResumeComposer:
             + (5.0 if len(state.skill_category_ids) >= 4 else 0.0)
             + relationship_adjustment
             + direct_requirement_adjustment
+            + (len(specific_signal_entries) * 4.0)
+            - (repeated_specific_signals * 6.0)
             + project_depth_adjustment
             - (sparse_project_count * 12.0)
             - (sparse_central_project_count * 10.0)
@@ -2890,6 +2984,8 @@ class DeterministicResumeComposer:
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
                 -item.quality,
+                -item.specific_signal_count,
+                item.repeated_specific_signal_count,
                 -item.coverage_count,
                 item.three_line_bullet_count,
                 item.state.key,
@@ -2913,6 +3009,8 @@ class DeterministicResumeComposer:
                 self._density_distance(item.evaluation.utilization_ratio),
                 -item.coverage_count,
                 -item.quality,
+                -item.specific_signal_count,
+                item.repeated_specific_signal_count,
                 item.three_line_bullet_count,
                 item.state.key,
             ),
@@ -5230,6 +5328,61 @@ def _years(value: str | None) -> list[int]:
 
 def _normalize(value: str) -> str:
     return normalize_reviewed_text(value)
+
+
+def _specific_posting_signal_matches(
+    reviewed_values: list[str],
+    context: _PostingContext,
+    meaningful_overlap: list[str],
+    short_token_contributions: list[ShortTokenContribution],
+) -> list[str]:
+    """Return explicit, posting-matched signals without counting broad role language."""
+
+    reviewed_text = _normalize(" ".join(reviewed_values))
+    requirement_phrases = {
+        _normalize(phrase)
+        for requirement in context.requirements.requirements
+        if requirement.authority is not RequirementAuthority.INCIDENTAL
+        for phrase in requirement.specific_phrases
+        if _normalize(phrase)
+    }
+    candidates = {
+        *(_normalize(value) for value in meaningful_overlap),
+        *(
+            _normalize(value)
+            for value in reviewed_values[1:]
+            if _contains_phrase(context.normalized_text, _normalize(value))
+        ),
+        *(
+            _normalize(item.token)
+            for item in short_token_contributions
+            if item.corroborated
+        ),
+    }
+    matched: list[str] = []
+    for candidate in candidates:
+        if not candidate or candidate in _BROAD_ROLE_SIGNALS:
+            continue
+        explicitly_required = any(
+            _contains_phrase(candidate, phrase) or _contains_phrase(phrase, candidate)
+            for phrase in requirement_phrases
+        )
+        if not explicitly_required or not _contains_phrase(reviewed_text, candidate):
+            continue
+        matched.append(candidate)
+    return _maximal_phrases(matched)
+
+
+def _has_balanced_delimiters(value: str) -> bool:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    for character in value:
+        if character in "([{":
+            stack.append(character)
+        elif character in pairs:
+            if not stack or stack.pop() != pairs[character]:
+                return False
+    return not stack
 
 
 def _primary_structured_matches(
