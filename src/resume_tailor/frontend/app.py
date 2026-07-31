@@ -1,17 +1,21 @@
 import json
+from collections.abc import MutableMapping
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 
 import streamlit as st
 from pydantic import ValidationError
 
+from resume_tailor.application.job_discovery.experience import JobsExperienceService
 from resume_tailor.application.job_intake import (
     InvalidJobDescriptionError,
     build_job_posting,
     normalize_job_description,
 )
 from resume_tailor.application.profile_editor import (
+    EntryKind,
     add_bullet,
     add_education,
     add_entry,
@@ -27,13 +31,16 @@ from resume_tailor.application.profile_editor import (
     unknown_profile_fields,
 )
 from resume_tailor.application.workflow_state import invalidate_derived_workflow
-from resume_tailor.domain.cover_letter import CoverLetterRecipient
+from resume_tailor.domain.cover_letter import CoverLetter, CoverLetterRecipient
 from resume_tailor.domain.llm_models import LanguageModelError
-from resume_tailor.domain.models import MasterProfile, StructuredResume, TemplateConstraints
-from resume_tailor.frontend.job_discovery_view import (
-    ApplicationJobDiscoveryDeliveryApi,
-    render_job_discovery_view,
+from resume_tailor.domain.models import (
+    MasterProfile,
+    StructuredResume,
+    TailoringPlan,
+    TemplateConstraints,
 )
+from resume_tailor.frontend.app_shell import render_application_shell
+from resume_tailor.frontend.jobs_page import render_jobs_page
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.dependencies import (
     create_job_discovery_services,
@@ -52,15 +59,48 @@ from resume_tailor.infrastructure.resume_extraction import (
 )
 
 st.set_page_config(page_title="Resume Tailor", page_icon="📄", layout="wide")
-st.title("Resume Tailor")
-st.caption("One evidence-backed recommendation for engineering opportunities.")
-
 service = create_tailor_service()
 profile_repository = create_profile_repository()
 
 
+def create_jobs_experience() -> JobsExperienceService:
+    settings = Settings()
+    services = create_job_discovery_services(settings)
+    database = settings.app_data_directory / settings.profile_store_filename
+    handoff = services.prepare_handoff
+    if handoff is None:
+        raise RuntimeError("Tailoring handoff is unavailable.")
+    return JobsExperienceService(
+        profiles=profile_repository,
+        services=services,
+        jobs=SQLiteDiscoveredJobRepository(database),
+        handoff=handoff,
+    )
+
+
+active_profile = st.session_state.get("profile")
+if active_profile is None:
+    try:
+        active_profile = profile_repository.get("local-profile")
+    except (ProfileStoreError, CorruptStoredProfileError):
+        active_profile = None
+active_application_page = render_application_shell(
+    st,
+    active_profile_label=getattr(active_profile, "display_name", None),
+    active_profile_id=getattr(active_profile, "id", None)
+    or st.session_state.get("jobs_profile_id")
+    or st.session_state.get("profile_id"),
+)
+if active_application_page == "Jobs":
+    render_jobs_page(create_jobs_experience())
+    st.stop()
+
+st.title("Resume Tailor")
+st.caption("One evidence-backed recommendation for engineering opportunities.")
+
+
 def clear_tailoring_state() -> None:
-    invalidate_derived_workflow(st.session_state)
+    invalidate_derived_workflow(cast(MutableMapping[str, object], st.session_state))
 
 
 def clear_cover_letter_state() -> None:
@@ -160,7 +200,11 @@ def generated_content_review(resume: StructuredResume) -> dict[str, list[str]]:
         "projects": projects,
     }
 
-profile_id = st.text_input("Profile ID", value=st.session_state.get("profile_id", "local-profile"))
+profile_id = st.text_input(
+    "Profile ID",
+    value=st.session_state.get("profile_id", "local-profile"),
+    key="profile_id_input",
+)
 uploaded_resume = st.file_uploader("Upload resume for profile draft (.docx or text-based .pdf)", type=["docx", "pdf"])
 if st.button("Extract profile draft from resume"):
     try:
@@ -208,7 +252,9 @@ with save_col:
 with load_col:
     load_profile = st.button("Load saved profile")
 posting_text = st.text_area("Paste job description", height=180, key="job_description_input")
-posting_title = st.text_input("Job title", value="Embedded Firmware Engineer")
+posting_title = st.text_input(
+    "Job title", value="Embedded Firmware Engineer", key="job_title_input"
+)
 
 if st.session_state.get("workflow_posting_fingerprint") and posting_text.strip():
     try:
@@ -233,10 +279,10 @@ if save_profile:
         unknown = unknown_profile_fields(raw_profile_payload)
         if unknown:
             raise ValueError("Unsupported top-level fields cannot be safely round-tripped: " + ", ".join(unknown))
-        profile = MasterProfile.model_validate(raw_profile_payload)
-        if profile.id != profile_id.strip():
+        saved_profile = MasterProfile.model_validate(raw_profile_payload)
+        if saved_profile.id != profile_id.strip():
             raise ValueError("Profile ID field must match the profile JSON id")
-        if persist_profile_from_editor(profile):
+        if persist_profile_from_editor(saved_profile):
             st.success("Master profile saved.")
     except (json.JSONDecodeError, ValueError, ProfileStoreError) as error:
         st.error(f"Profile was not saved: {error}")
@@ -265,37 +311,43 @@ if posting_text.strip():
 
 if st.button("Recommend resume strategy", type="primary"):
     try:
-        profile = (
+        requested_profile = (
             MasterProfile.model_validate(json.loads(profile_json))
             if profile_json.strip()
             else st.session_state.get("profile")
         )
-        if profile is None:
+        if requested_profile is None:
             raise ValueError("Enter or load a reviewed master profile first")
         posting = build_job_posting("local-posting", posting_title, posting_text)
         previous_profile = st.session_state.get("profile")
-        if previous_profile is not None and profile_fingerprint(previous_profile) != profile_fingerprint(profile):
+        if (
+            previous_profile is not None
+            and profile_fingerprint(previous_profile)
+            != profile_fingerprint(requested_profile)
+        ):
             clear_tailoring_state()
         previous_posting = st.session_state.get("posting")
         if previous_posting is not None and previous_posting.model_dump_json() != posting.model_dump_json():
             clear_tailoring_state()
-        plan = service.create_plan(profile, posting, TemplateConstraints())
-        st.session_state["profile"] = profile
-        st.session_state["profile_id"] = profile.id
+        created_plan = service.create_plan(requested_profile, posting, TemplateConstraints())
+        st.session_state["profile"] = requested_profile
+        st.session_state["profile_id"] = requested_profile.id
         st.session_state["posting"] = posting
-        if previous_profile is None or profile_fingerprint(previous_profile) != profile_fingerprint(profile):
+        if previous_profile is None or profile_fingerprint(previous_profile) != profile_fingerprint(
+            requested_profile
+        ):
             st.session_state["profile_load_status"] = "Newly entered; not saved."
-        st.session_state["workflow_profile_fingerprint"] = profile_fingerprint(profile)
+        st.session_state["workflow_profile_fingerprint"] = profile_fingerprint(requested_profile)
         st.session_state["workflow_posting_fingerprint"] = posting.model_dump_json()
-        st.session_state["plan"] = plan
+        st.session_state["plan"] = created_plan
         st.session_state.pop("resume", None)
         clear_cover_letter_state()
         st.session_state["generated_content_reviewed"] = False
     except (json.JSONDecodeError, InvalidJobDescriptionError, ValueError) as error:
         st.error(f"Profile or job description is invalid: {error}")
 
-plan = st.session_state.get("plan")
-profile = st.session_state.get("profile")
+plan = cast(TailoringPlan | None, st.session_state.get("plan"))
+profile = cast(MasterProfile | None, st.session_state.get("profile"))
 if plan and profile:
     if plan.strategy is None:
         st.warning(plan.report.warnings[0])
@@ -361,9 +413,19 @@ if plan and profile:
                     approved_for_export = approved_ids | pending_approved_ids
                     export_resume = service.build_document(plan, profile, approved_for_export)
                     with TemporaryDirectory() as directory:
-                        result = ManagedResumeRenderer().render(export_resume, Path(directory))
-                        st.download_button("Download DOCX", result.docx_path.read_bytes(), "tailored-resume.docx")
-                        st.download_button("Download PDF", result.pdf_path.read_bytes(), "tailored-resume.pdf")
+                        rendered_resume = ManagedResumeRenderer().render(
+                            export_resume, Path(directory)
+                        )
+                        st.download_button(
+                            "Download DOCX",
+                            rendered_resume.docx_path.read_bytes(),
+                            "tailored-resume.docx",
+                        )
+                        st.download_button(
+                            "Download PDF",
+                            rendered_resume.pdf_path.read_bytes(),
+                            "tailored-resume.pdf",
+                        )
                 except PageOverflowError as error:
                     st.error(str(error))
 
@@ -413,7 +475,7 @@ else:
         except (ValueError, LanguageModelError) as error:
             st.error(f"Cover-letter drafting failed: {error}")
 
-    letter = st.session_state.get("cover_letter")
+    letter = cast(CoverLetter | None, st.session_state.get("cover_letter"))
     if letter:
         st.markdown("**Draft review**")
         st.write(f"{letter.date_text}")
@@ -447,14 +509,22 @@ else:
                 letter, pending_approved, reviewed=reviewed
             )
             st.success("Cover-letter review recorded.")
-        letter = st.session_state.get("cover_letter")
-        can_export = bool(letter and letter.complete_review_confirmed and not letter.pending_claims)
+        updated_letter = cast(CoverLetter | None, st.session_state.get("cover_letter"))
+        can_export = bool(
+            updated_letter
+            and updated_letter.complete_review_confirmed
+            and not updated_letter.pending_claims
+        )
         st.caption("Exact one-page verification is required before export.")
         if st.button("Export reviewed cover letter", key="export_cover_letter", disabled=not can_export):
             try:
+                if updated_letter is None:
+                    raise ValueError("Cover-letter review state is unavailable.")
                 with TemporaryDirectory() as directory:
-                    exported = service.export_cover_letter(letter, Path(directory))
+                    exported = service.export_cover_letter(updated_letter, Path(directory))
                     st.session_state["cover_letter"] = exported
+                    if exported.export_path is None:
+                        raise ValueError("Cover-letter export did not produce a file.")
                     st.download_button(
                         "Download cover-letter DOCX",
                         Path(exported.export_path).read_bytes(),
@@ -547,7 +617,7 @@ def render_profile_editor(profile: MasterProfile) -> None:
             st.session_state["profile_editor_state"] = add_education(state)
             st.rerun()
 
-    def render_entries(kind: str, heading: str) -> None:
+    def render_entries(kind: EntryKind, heading: str) -> None:
         with st.expander(heading, expanded=True):
             for index, entry in enumerate(state.get(kind, [])):
                 entry_id = entry.get("id", f"{kind}-{index}")
@@ -581,7 +651,9 @@ def render_profile_editor(profile: MasterProfile) -> None:
                             st.session_state["profile_editor_state"] = remove_bullet(state, kind, entry_id, bullet_id)
                             st.rerun()
                     if st.button("Add bullet", key=_editor_widget_key(token, kind, entry_id, "bullet-add")):
-                        st.session_state["profile_editor_state"] = add_bullet(state, kind, entry_id)
+                        st.session_state["profile_editor_state"] = add_bullet(
+                            state, kind, entry_id
+                        )
                         st.rerun()
                     buttons = st.columns(4)
                     with buttons[0]:
@@ -597,7 +669,7 @@ def render_profile_editor(profile: MasterProfile) -> None:
                             st.session_state["profile_editor_state"] = remove_entry(state, kind, entry_id)
                             st.rerun()
             if st.button(f"Add {heading[:-1].lower()}", key=_editor_widget_key(token, kind, "add")):
-                st.session_state["profile_editor_state"] = add_entry(state, kind)  # type: ignore[arg-type]
+                st.session_state["profile_editor_state"] = add_entry(state, kind)
                 st.rerun()
 
     render_entries("experiences", "Experiences")
@@ -675,17 +747,5 @@ if active_editor_profile is not None:
     render_profile_editor(active_editor_profile)
 
 
-if active_editor_profile is not None:
-    _job_discovery_settings = Settings()
-    _job_discovery_services = create_job_discovery_services(_job_discovery_settings)
-    _job_discovery_database = (
-        _job_discovery_settings.app_data_directory
-        / _job_discovery_settings.profile_store_filename
-    )
-    render_job_discovery_view(
-        ApplicationJobDiscoveryDeliveryApi(
-            _job_discovery_services,
-            [active_editor_profile],
-            SQLiteDiscoveredJobRepository(_job_discovery_database),
-        )
-    )
+# `render_job_discovery_view` remains an import-compatible legacy adapter for
+# existing integrations; the production route is the dedicated Jobs workspace.

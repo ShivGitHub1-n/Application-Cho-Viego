@@ -8,6 +8,7 @@ import httpx
 from resume_tailor.api.dependencies import JobDiscoveryServiceBundle
 from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.job_discovery.confirmation import ConfirmJobSearchPreferencesService
+from resume_tailor.application.job_discovery.handoff import PrepareTailoringHandoffService
 from resume_tailor.application.job_discovery.preferences import SuggestJobSearchPreferencesService
 from resume_tailor.application.job_discovery.queries import (
     GetCurrentJobSearchPreferencesService,
@@ -252,6 +253,10 @@ def create_job_discovery_services(
             saved_job_repository,
             cast(Any, configured_source_repository),
             {ConnectorType.GREENHOUSE: greenhouse, ConnectorType.LEVER: lever},
+        ),
+        prepare_handoff=PrepareTailoringHandoffService(
+            job_repository,
+            saved_job_repository,
         ),
         source_health=SourceHealthQueryService(configured_sources, runtime_states),
         source_refresh=source_refresh,

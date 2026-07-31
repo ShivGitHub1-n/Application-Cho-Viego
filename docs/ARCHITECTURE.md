@@ -90,6 +90,24 @@ fixtures. Live source smoke testing is opt-in, uses the
 `job_source_integration` pytest marker, requires explicit approved source
 configuration, and is never part of ordinary offline test execution.
 
+### Batch 4 Jobs workspace
+
+The dedicated Jobs route is composed from `JobsExperienceService`, a typed
+application-facing façade over the existing profile, preference, feed,
+refresh, saved-job, availability, and handoff services. It returns semantic
+view models without numeric diagnostics or persistence/provider objects. The
+frontend owns section selection, selected-job state, draft preference widgets,
+excluded disclosure state, and applying a prepared tailoring handoff to
+Streamlit session state.
+
+Tailored and Explore state is independent. The façade scopes persisted feed
+reads to the selected profile and preserves repository order; the frontend
+does not re-rank. Saved display uses the immutable posting snapshot. Jobs CSS
+is scoped to Jobs markup and uses Streamlit theme variables for light and dark
+themes. Tailor handoff invalidates only derived workflow state and switches the
+existing application route; it does not invoke Gemini, rendering, or DOCX
+generation.
+
 ## Evolution
 
 Use local JSON or SQLite for MVP. Add a database adapter, object storage adapter, and authentication dependency without moving domain or application code. FastAPI is the stable product API; Streamlit is a replaceable client.
@@ -164,3 +182,83 @@ source starts after expiry. Static and rendered indexes consume the same
 audited declarative extraction profile; browser action limits count actual
 attempts and stop unchanged bounded load-more DOM. CLI force bypasses cadence
 only.
+
+## Batch 4 Jobs experience boundary
+
+The dedicated Jobs page is a delivery feature over the existing job-discovery
+contracts. The application-facing façade in
+`application/job_discovery/experience.py` assembles typed page data and use
+cases. `profile_queries.py` owns reviewed-profile lookup, and `handoff.py`
+prepares existing tailoring input without generating anything. The frontend
+modules have deliberately narrow responsibilities:
+
+| Module | Responsibility |
+| --- | --- |
+| `frontend/jobs_page.py` | Jobs section orchestration and profile-scoped UI state |
+| `frontend/job_feed_view.py` | Tailored/Explore cards, fit meter, eligibility, detail, and actions |
+| `frontend/job_preferences_view.py` | Preference suggestion, editing, confirmation, and conflict display |
+| `frontend/saved_jobs_view.py` | Immutable saved snapshots, availability, and saved handoffs |
+| `frontend/jobs_styles.py` | Jobs-scoped visual tokens and stable DOM selectors |
+| `frontend/app_shell.py` | Shared application navigation and profile shell |
+
+The façade owns repository/service access and DTO assembly. The frontend owns
+layout, native Streamlit widget interaction, selected-job state, draft widget
+state, and the deferred navigation intent used by the shared router. Tailored
+and Explore selection state is independent and keyed by feed context, profile,
+sector where relevant, visibility, and stable job identity. Saved snapshots are
+displayed as immutable posting snapshots; availability metadata may change
+without rewriting the snapshot.
+
+`tests/streamlit_apps/jobs_test_app.py` injects deterministic façade data into
+the same production Jobs frontend for populated interaction and visual checks.
+The real `frontend/app.py` uses persisted profiles, preferences, feeds, and
+saved jobs and may correctly show an empty feed until a refresh has persisted
+recommendations. Both paths are required acceptance surfaces; neither replaces
+the other.
+
+The frontend preserves backend-owned Tailored and Explore ordering and does not
+re-evaluate eligibility, fit, or sort order. The normal UI renders semantic
+grades, evidence, gaps, unresolved facts, verification, freshness, eligibility,
+and provisional state without numeric fit scores. Tailor resume is an
+application-boundary handoff only: it pre-fills the existing workflow and does
+not call Gemini, generate a plan, render, export, or create a cover letter.
+
+## Streamlit implementation lessons
+
+Widget-owned session-state keys cannot be mutated after the corresponding
+widget is instantiated. The Jobs router consumes `jobs_pending_page` before
+creating the `app_active_page` widget; this fixed the `StreamlitAPIException`
+caused by changing `app_active_page` after `st.pills` creation. Selection keys
+must be context-safe, and Tailored and Explore must not share a selected-job
+key.
+
+The full-card action remains a native Streamlit button. Its keyed
+`stElementContainer`, intermediate `stButton` wrapper, and native button are
+all sized to the card; a selector targets the actual visible
+`stVerticalBlock` card rather than merely a marker child. Selector existence in
+source is not proof of a rendered match. Selected, hover, and focus precedence
+is explicit, with selected-hover preserving the selected surface, border, and
+glow. Stable keyed containers and documented data-test IDs are preferred over
+generated class hashes. Interaction remains native and accessible; JavaScript,
+React, Tailwind, Node, npm, and custom components are not part of this boundary.
+
+## Figma and visual implementation rules
+
+Figma is the source of truth for Jobs hierarchy, spacing, component
+proportions, colors, selected state, navigation treatment, fit bars,
+eligibility indicators, and responsive composition. It is not permission to
+copy generated React, install Tailwind, replace Streamlit with fake HTML or
+JavaScript, or build a static canvas. The six current references are:
+
+- [Primary dark desktop](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-3)
+- [Dark components](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-117)
+- [Dark mobile](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-174)
+- [Light desktop](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=8-2)
+- [Light components](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=9-2)
+- [Light mobile](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=10-2)
+
+Early implementation attempts described Figma vaguely while also forbidding
+explicit Figma color tokens, which produced repeated visual rework. The
+improved practice is to inspect the frames directly, extract concrete values,
+centralize Jobs-scoped tokens, preserve dark/light behavior, compare the real
+browser result, and never claim fidelity from code or CSS-string tests alone.

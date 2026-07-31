@@ -1,6 +1,8 @@
 # Jobs UI and Manual Testing Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Use superpowers:verification-before-completion before reporting completion.
+> Historical implementation note: this plan was originally written with an
+> agent-oriented execution recommendation. Current repository operating rules
+> require inline work without subagents or delegated execution.
 
 **Goal:** Build a dedicated Jobs experience with four sections, split-panel selection, simplified preferences, explicit excluded-result expansion, application-boundary actions, and repeatable browser checkpoints.
 
@@ -225,3 +227,23 @@ Recommended branch: `feature/jobs-ui`, created from newest `main` after Plan 3 m
 
 The known health HTTP 503 remains a separate environment condition and must not be changed by this plan.
 
+## Batch 4 implementation status
+
+The dedicated Jobs façade, profile query, tailoring handoff, Streamlit page
+modules, router stop boundary, offline harness, and manual checklist are now
+implemented as uncommitted Batch 4 changes. The production page uses native
+Streamlit widgets and scoped theme variables. Automated verification covers
+semantic UI behavior and AppTest paths. The user has now completed the
+light/dark, responsive, official-link, selection, and routing browser checks in
+the populated harness and real application; independent review remains the
+next gate.
+
+Offline harness command:
+
+```powershell
+cd "$HOME\OneDrive\Desktop\Application-Cho-Viego"
+$env:PYTHONPATH = (Resolve-Path ".\src").Path
+$env:Path = "$env:ProgramFiles\LibreOffice\program;$env:Path"
+& ".\.venv\Scripts\python.exe" -m streamlit run `
+  ".\tests\streamlit_apps\jobs_test_app.py"
+```
