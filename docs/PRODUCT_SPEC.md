@@ -25,16 +25,17 @@ Resume Tailor helps job seekers create one-page, role-specific resumes that rema
 
 ## Current MVP status and later-stage scope
 
-The resume engine is accepted. The first evidence-grounded cover-letter
-workflow is the next active product stage and must target a professionally
+The resume engine is accepted. The integrated evidence-grounded cover-letter
+workflow remains under product review and must target a professionally
 filled one-page output at 92–95% utilization, close to 95% when substantive
 content supports it. Authentication, multi-user deployment, application
 tracking, editor/template customization, broader frontend redesign, and Chrome
 extension capture are later-stage capabilities.
 
 Known cover-letter composition and export-quality issues are tracked in
-[KNOWN_ISSUES.md](KNOWN_ISSUES.md) and are addressed by the current
-cover-letter roadmap item, not by changing the accepted resume engine.
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md). The implemented evidence, research,
+artifact, page-fit, and review contracts are documented in
+[`COVER_LETTER_WORKFLOW.md`](COVER_LETTER_WORKFLOW.md).
 
 ## Job discovery MVP
 

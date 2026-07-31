@@ -4,7 +4,7 @@ The accepted resume pipeline is documented in
 [RESUME_ENGINE_CLOSEOUT.md](RESUME_ENGINE_CLOSEOUT.md). This file records only
 current limitations and deferred product work.
 
-## Resume engine limitations
+## Resume and cover-letter limitations
 
 - Gemini does not yet consistently produce stronger bullets than strong
   reviewed source bullets. Cross-role resume-writer calibration is deferred.
@@ -16,7 +16,7 @@ current limitations and deferred product work.
 
 ## Cover-letter completion
 
-Cover-letter implementation is the next roadmap item. The workflow must produce
+The integrated workflow is not yet production-ready. It must consistently produce
 a professionally filled one-page document, targeting 92–95% utilization and
 close to 95% when substantive content supports it. It must preserve evidence
 grounding, use one coherent salutation and closing, keep review annotations out
@@ -39,3 +39,17 @@ Manual Word inspection remains authoritative until exact pagination is available
   user review before tailoring.
 - Job Discovery remains an approved-source MVP with an empty production registry
   by default; unsupported sources are not scraped.
+- Exact page count remains environment-dependent. When Microsoft Word
+  pagination is unavailable, the artifact is explicitly
+  `pagination_unverified` and cannot be approved without manual Word
+  inspection.
+- Sparse reviewed profiles may remain severely underfilled. The workflow
+  reports failure rather than adding filler or inventing motivation.
+- Official company research requires explicit approved source URLs and a
+  company domain. Without them, posting-only fallback is visible.
+- The full wording editor is intentionally outside this task; material wording
+  changes require generation/rebuild through validated variants.
+- Discovery-to-tailoring typed handoff is incomplete.
+- Technical-skills serialization remains defective.
+- CI is absent.
+- The new personal master profile has not been imported.

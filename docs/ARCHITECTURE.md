@@ -61,7 +61,12 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   non-contiguous groups with exact per-skill source-index provenance. Template
   V1 row width is estimated before adding a value; canonical profile data is
   unchanged.
-- `CompanyResearcher` returns sourced company facts, never candidate claims.
+- `BoundedCompanyResearchService` implements the company-research boundary for
+  cover letters. It returns dated, attributable facts from the validated
+  posting, explicit user facts, and at most three approved sources; it never
+  returns candidate claims. The HTTP infrastructure adapter enforces HTTPS,
+  first-party domain, public-address, redirect, content-type, and response-size
+  restrictions.
 
 ## Data flow
 
@@ -139,12 +144,42 @@ retains the final structured resume, diagnostics, stage timings, call counts,
 pagination status, and exact final DOCX bytes. Unrelated reruns reuse this
 object; any material identity change invalidates it.
 
+Streamlit attaches the active normalized posting, its content fingerprint, and
+the accepted plan atomically. Resume and cover-letter delivery read that same
+posting object. For backward compatibility, a rerun that retained an accepted
+plan but lost the duplicate delivery key recovers `TailoringPlan.posting` rather
+than rebuilding a posting from blank cover-letter fields.
+
+The cover-letter application service also binds posting-authority fields on
+every research request to that accepted posting before research, composition,
+validation, artifact-currentness checks, or cache identity are evaluated.
+Optional company fields may add user-approved or official-source inputs, but
+cannot clear or replace the normalized title, description, URL, or posting
+fingerprint.
+
 Composition continues to compare the same bounded exact finalist portfolio,
 but the infrastructure adapter renders the finalist batch and opens Word once
 for all page counts. Final artifact rendering is deterministic and does not
 paginate again. Streamlit download reads the stored bytes with a frontend-only
 download action, so it performs no retrieval, planning, provider, validation,
 composition, rendering, or pagination work.
+
+The composition diagnostic retains safe stable IDs and already-computed scores
+for each bounded page-fit finalist, including the selected finalist. A
+sanitized production decision trace joins those diagnostics to profile,
+posting, plan, artifact, configuration, and provider-call fingerprints without
+including contact fields, reviewed evidence text, prompts, or credentials.
+
+Cover letters follow the same immutable-artifact rule without duplicating the
+resume engine. The application reuses reviewed-profile retrieval, requirement
+ranking, the accepted final-resume narrative, provider configuration, local
+grounding primitives, timing models, and approval patterns. Cover-letter-only
+services own bounded company research, narrative evidence selection, paragraph
+validation, quality gates, and 92–95% page-density selection. The provider
+returns a minimal paragraph/ID contract; provenance, diagnostics, research
+attribution, cache state, artifact identity, DOCX formatting, and page fitting
+are reconstructed locally. See
+[COVER_LETTER_WORKFLOW.md](COVER_LETTER_WORKFLOW.md).
 
 The versioned writing policy is centralized in
 `application/resume_writing_policy.py`. It establishes evidence, tone,

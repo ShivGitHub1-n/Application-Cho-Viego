@@ -113,7 +113,9 @@ penalty. The optimizer charges each opened entry for title, metadata, spacing,
 and bullets; while underfilled it gives a bounded preference to useful reviewed
 skill rows, additional strong bullets in selected entries, and deeper use of
 selected blocks before a weak new entry. A substantially stronger new entry can
-still win.
+still win. When a selected project has another high-context direct or adjacent
+bullet, the expansion order gives that second substantive bullet a bounded
+coherence preference before opening a shallow complementary block.
 
 Planning separates contextual relevance from intrinsic evidence strength.
 Marginal portfolio contribution rewards new direct requirement coverage before
@@ -133,7 +135,10 @@ or selected-evidence-supported skills, three rows are the normal soft target,
 not a maximum. A fourth row may win when it adds distinct complementary
 coverage. Fewer remain valid when the categories are absent, irrelevant,
 redundant, or would displace substantially stronger evidence. Sparse one-skill
-rows require a typed exception. Category labels and skill text remain reviewed
+rows require a typed exception. Once that exception proves unusual importance,
+distinct coverage, and the absence of a compatible reviewed peer, the final
+search does not apply the ordinary sparse-row penalty a second time. Category
+labels and skill text remain reviewed
 source data. A legacy profile containing only flat reviewed declared skills may
 be regrouped into bounded, non-contiguous display-only semantic groups with
 per-skill source-index provenance. Shared typed requirements are primary and
@@ -141,6 +146,8 @@ source order is a deterministic secondary preference. Template V1 row-width
 estimation includes the label, separator, punctuation, and values, so compatible
 reviewed skills fill an existing row before a sparse row is created. Labels
 derive from reviewed requirement or evidence context rather than ranking tiers.
+The estimated search seeds a fourth row when the fourth ranked category carries
+that typed exception, so early preferred-density finalists cannot hide it.
 The display transform cannot invent values, persist a
 generated category, or mutate the canonical profile.
 
@@ -196,6 +203,13 @@ relationships, selected-entry coverage, bullet marginal contribution,
 short-token corroboration, direct-evidence tradeoffs, skill-row provenance,
 omitted direct skills, and portfolio gaps. Explanations are concise typed
 summaries, not hidden model chain-of-thought.
+
+It also records the bounded page-fit finalists and marks the finalist used by
+the generated artifact. The application can expose a sanitized decision trace
+containing stable candidate IDs, score components, configuration bounds,
+profile/posting fingerprints, and provider-call counts. That trace consumes
+the production diagnostic; it never repeats scoring logic and never includes
+candidate contact details or reviewed evidence source text.
 
 Incidental posting sections such as company descriptions, location, culture,
 facilities, benefits, and `What We Offer` are excluded from evidence admission,

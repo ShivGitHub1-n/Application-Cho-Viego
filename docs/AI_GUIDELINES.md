@@ -11,7 +11,8 @@ Each operation receives only the minimum relevant payload. Opportunity analysis 
 - Invent achievements, employers, dates, metrics, credentials, technologies, or ownership.
 - Claim access to a source it did not receive.
 - Control formatting, page layout, or template styles.
-- Treat company research as candidate evidence.
+- Keep company research separate from candidate evidence. Company facts need
+  their own approved source IDs; they never authorize candidate claims.
 - Return hidden reasoning as a product artifact.
 - Fill gaps in a profile with speculative questions or unsupported claims in the MVP.
 - Use company-specific examples or test fixtures as production rules.

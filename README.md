@@ -4,16 +4,18 @@ Resume Tailor is an evidence-backed AI platform for tailoring resumes to specifi
 
 ## Status
 
-Functional resume behavior is accepted. This branch is limited to closeout cleanup,
-documentation, configuration safety, and release-level verification. The
-repository includes evidence-bound review, managed DOCX/PDF rendering, optional
-Gemini structured-output assistance, FastAPI endpoints, the Streamlit MVP UI,
-and focused regression tests.
+Canonical convergence stage. The accepted resume pipeline, autonomous
+first-party job discovery, responsive Streamlit UI, and bounded
+evidence-grounded cover-letter workflow are integrated. Cover-letter prose and
+cross-role ranking remain under product review. The repository also includes
+managed DOCX/PDF rendering, optional Gemini structured-output assistance,
+FastAPI endpoints, and focused regression tests.
 
 ## Current project status
 
 - [Project status and accepted-versus-experimental boundaries](docs/PROJECT_STATUS.md)
 - [Ordered roadmap and acceptance gates](docs/ROADMAP.md)
+- [Evidence-grounded cover-letter workflow](docs/COVER_LETTER_WORKFLOW.md)
 - [Codex operating guide](docs/CODEX_OPERATING_GUIDE.md)
 
 ## Quick start
