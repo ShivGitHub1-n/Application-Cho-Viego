@@ -19,6 +19,8 @@ from resume_tailor.application.job_discovery.saved import (
     CheckSavedJobAvailabilityService,
     SaveJobService,
 )
+from resume_tailor.application.job_discovery.source_health import SourceHealthQueryService
+from resume_tailor.application.job_discovery.source_refresh import SourceRefreshOrchestrator
 
 
 @dataclass
@@ -31,6 +33,8 @@ class JobDiscoveryServiceBundle:
     feed_queries: GetJobFeedService | None = None
     save: SaveJobService | None = None
     check_saved_availability: CheckSavedJobAvailabilityService | None = None
+    source_health: SourceHealthQueryService | None = None
+    source_refresh: SourceRefreshOrchestrator | None = None
     close_resources: Callable[[], None] | None = None
 
     def close(self) -> None:

@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
+    SourceDefinition,
     SourceJobRecord,
     SourceProvenance,
     SourceRecordWarning,
-    SupportedJobSource,
 )
 from resume_tailor.domain.job_discovery.queries import (
     ProviderFilterDisposition,
@@ -46,7 +46,7 @@ class ProviderCursor(BaseModel):
 
 
 class JobSourcePage(BaseModel):
-    source: SupportedJobSource
+    source: SourceDefinition
     cursor: ProviderCursor = Field(default_factory=ProviderCursor)
     next_cursor: ProviderCursor = Field(default_factory=ProviderCursor)
     records: list[SourceJobRecord] = Field(default_factory=list)
@@ -89,7 +89,7 @@ class SourceOutcome(BaseModel):
 
 
 class RetrievedSourceRecord(BaseModel):
-    source: SupportedJobSource
+    source: SourceDefinition
     record: SourceJobRecord
     provenance: SourceProvenance
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from resume_tailor.domain.job_discovery.models import (
     FeedKind,
@@ -36,6 +36,8 @@ class ProviderFilterDisposition(StrEnum):
 
 class ProviderJobQuery(BaseModel):
     """The complete allow-list of fields that may cross a provider boundary."""
+
+    model_config = ConfigDict(extra="forbid")
 
     feed_kind: FeedKind
     sectors: list[str] = Field(default_factory=list)

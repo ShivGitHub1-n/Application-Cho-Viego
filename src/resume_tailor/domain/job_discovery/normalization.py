@@ -10,9 +10,9 @@ from resume_tailor.domain.job_discovery.ids import job_id
 from resume_tailor.domain.job_discovery.location import parse_location
 from resume_tailor.domain.job_discovery.models import (
     DiscoveredJob,
+    SourceDefinition,
     SourceJobRecord,
     SourceProvenance,
-    SupportedJobSource,
 )
 from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
 from resume_tailor.domain.job_discovery.role_signals import classify_role_signals
@@ -56,7 +56,7 @@ def normalize_job_term(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def _canonical_url(value: str, source: SupportedJobSource) -> str:
+def _canonical_url(value: str, source: SourceDefinition) -> str:
     parsed = urlsplit(_normalized_space(value))
     host = (parsed.hostname or "").casefold()
     scheme = parsed.scheme.casefold()
@@ -84,7 +84,7 @@ class JobNormalizer:
     def normalize(
         self,
         record: SourceJobRecord | DiscoveredJob,
-        source: SupportedJobSource,
+        source: SourceDefinition,
         *,
         fetched_at: datetime,
     ) -> DiscoveredJob:
@@ -125,6 +125,11 @@ class JobNormalizer:
             company_name=company_name,
             description=description,
             official_url=url,
+            application_url=(
+                _canonical_url(str(record.application_url), source)
+                if record.application_url is not None
+                else None
+            ),
             location=location,
             work_arrangement=record.work_arrangement,
             role_family=role_classification.primary_family,
@@ -166,7 +171,7 @@ def _requisition_id(record: SourceJobRecord) -> str | None:
 
 def normalize_job_record(
     record: SourceJobRecord | DiscoveredJob,
-    source: SupportedJobSource,
+    source: SourceDefinition,
     *,
     fetched_at: datetime,
 ) -> DiscoveredJob:

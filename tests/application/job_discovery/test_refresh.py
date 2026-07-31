@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
 from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import AnyHttpUrl
 
 from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
 from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
+from resume_tailor.application.job_discovery.source_refresh import SourceRefreshOrchestrator
+from resume_tailor.domain.job_discovery.ids import job_id
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
     DiscoveryRunStatus,
@@ -18,13 +22,32 @@ from resume_tailor.domain.job_discovery.models import (
     SupportedJobSource,
     WorkArrangement,
 )
+from resume_tailor.domain.job_discovery.providers import (
+    RetrievalOutcome,
+    RetrievedSourceRecord,
+    SourceOutcome,
+    SourceOutcomeStatus,
+    SourceProvenance,
+)
+from resume_tailor.domain.job_discovery.queries import ExploreJobQuery
 from resume_tailor.domain.models import MasterProfile, RoleFamily
+from resume_tailor.infrastructure.job_discovery_sqlite import (
+    SQLiteAtomicJobDiscoveryPersistence,
+    SQLiteDiscoveredJobRepository,
+    SQLiteDiscoveryRunRepository,
+    SQLiteJobRecommendationRepository,
+    SQLiteSourceIdentityAliasRepository,
+)
 from resume_tailor.infrastructure.job_sources.errors import (
     JobSourceAuthenticationError,
     JobSourceEnvelopeError,
     JobSourceNotFoundError,
     JobSourceRateLimitedError,
     JobSourceTransportError,
+)
+from resume_tailor.infrastructure.job_sources.registry import (
+    compile_runtime_sources,
+    load_company_source_registry,
 )
 
 WHEN = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
@@ -405,3 +428,156 @@ def test_refresh_does_not_mutate_preferences_or_profile() -> None:
 
     assert preferences == before_preferences
     assert profile == before_profile
+
+
+def test_multi_source_retrieval_persists_one_run_through_existing_pipeline(tmp_path) -> None:
+    registry = load_company_source_registry(
+        "config/approved-job-sources.json", reference_date=datetime(2026, 7, 26).date()
+    )
+    first_party = next(
+        source for source in compile_runtime_sources(registry) if source.source_id == "rocket-lab"
+    )
+    provider = _source("provider")
+    provider_record = _record("provider-1").model_copy(
+        update={
+            "application_url": AnyHttpUrl(
+                "https://boards.greenhouse.io/acme/jobs/provider-1"
+            )
+        }
+    )
+    first_party_record = SourceJobRecord(
+        external_job_id="first-party-1",
+        title="Software Engineer",
+        company_name=first_party.company_name,
+        description="Required Python. Build software systems.",
+        official_url="https://www.rocketlabusa.com/careers/positions/first-party-1",
+        location_raw="Toronto, ON, Canada",
+        work_arrangement=WorkArrangement.REMOTE,
+        posted_at=WHEN,
+    )
+
+    def retrieved(source, record):
+        return RetrievedSourceRecord(
+            source=source,
+            record=record,
+            provenance=SourceProvenance(
+                source_id=source.source_id,
+                connector_type=source.connector_type,
+                external_job_id=record.external_job_id,
+                official_url=str(record.official_url),
+                fetched_at=WHEN,
+            ),
+        )
+
+    retrieval = RetrievalOutcome(
+        records=[retrieved(provider, provider_record), retrieved(first_party, first_party_record)],
+        source_outcomes=[
+            SourceOutcome(
+                source_id=provider.source_id,
+                connector_type=provider.connector_type,
+                status=SourceOutcomeStatus.SUCCESS,
+                records_retrieved=1,
+                records_accepted=1,
+            ),
+            SourceOutcome(
+                source_id=first_party.source_id,
+                connector_type=first_party.connector_type,
+                status=SourceOutcomeStatus.SUCCESS,
+                records_retrieved=1,
+                records_accepted=1,
+            ),
+        ],
+        retrieved_count=2,
+        accepted_count=2,
+    )
+    database = tmp_path / "multi-source.sqlite3"
+    jobs = SQLiteDiscoveredJobRepository(database)
+    recommendations = SQLiteJobRecommendationRepository(database)
+    runs = SQLiteDiscoveryRunRepository(database)
+    aliases = SQLiteSourceIdentityAliasRepository(database)
+    service = RefreshJobDiscoveryService(
+        profiles=FakeProfileRepository(),
+        preferences=FakePreferencesRepository(),
+        sources=FakeSourceRepository([provider, first_party]),
+        connectors={ConnectorType.GREENHOUSE: FakeConnector()},
+        discovered_jobs=jobs,
+        recommendations=recommendations,
+        runs=runs,
+        atomic_persistence=SQLiteAtomicJobDiscoveryPersistence(database),
+        aliases=aliases,
+    )
+    query = ExploreJobQuery(
+        sectors=["Software Engineering"], title_keywords=["Software Engineer"]
+    )
+
+    class RuntimeStates:
+        def __init__(self) -> None:
+            self.values = {}
+
+        def get(self, source_id):
+            return self.values.get(source_id)
+
+        def upsert(self, state) -> None:
+            self.values[state.source_id] = state
+
+    retrieval_by_source = {
+        source_id: retrieval.model_copy(
+            update={
+                "records": [
+                    item for item in retrieval.records if item.source.source_id == source_id
+                ],
+                "source_outcomes": [
+                    item for item in retrieval.source_outcomes if item.source_id == source_id
+                ],
+                "retrieved_count": 1,
+                "accepted_count": 1,
+            }
+        )
+        for source_id in (provider.source_id, first_party.source_id)
+    }
+    retrieval_calls: list[str] = []
+
+    def retrieval_factory(selected):
+        source = selected[0]
+
+        class OfflineRetrieval:
+            def retrieve(self, _query, *, fetched_at):
+                retrieval_calls.append(source.source_id)
+                return retrieval_by_source[source.source_id]
+
+        return OfflineRetrieval()
+
+    orchestrator = SourceRefreshOrchestrator(
+        sources=[provider, first_party],
+        retrieval_factory=retrieval_factory,
+        runtime_states=RuntimeStates(),
+        now=lambda: WHEN,
+        max_sources=2,
+        persist_retrieval=lambda persisted_query, persisted_retrieval, started_at: (
+            service.persist_retrieval_for_profile(
+                "u1",
+                "p1",
+                query=persisted_query,
+                retrieval=persisted_retrieval,
+                started_at=started_at,
+            )
+        ),
+    )
+    first_summary = orchestrator.refresh(query, force=True, force_all=True)
+    second_summary = orchestrator.refresh(query, force=True, force_all=True)
+
+    assert retrieval_calls == ["provider", "rocket-lab", "provider", "rocket-lab"]
+    assert first_summary.total_accepted == 2
+    assert second_summary.total_accepted == 2
+    first_party_job_id = job_id(
+        "first_party", "rocket-lab", first_party_record.external_job_id
+    )
+    provider_job_id = job_id("greenhouse", "provider", provider_record.external_job_id)
+    assert jobs.get(first_party_job_id) is not None
+    assert jobs.get(provider_job_id) is not None
+    assert len(recommendations.list_for_feed("u1", "explore", include_excluded=True)) == 2
+    assert len(aliases.list_for_source("rocket-lab")) == 1
+    assert aliases.list_for_source("rocket-lab")[0].identity_kind == "canonical_detail"
+    assert jobs.get(first_party_job_id).source_provenance[0].source_id == "rocket-lab"
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0] == 1

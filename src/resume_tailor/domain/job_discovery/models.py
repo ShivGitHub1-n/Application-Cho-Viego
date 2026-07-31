@@ -4,8 +4,16 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from resume_tailor.domain.job_discovery.company_sources import (
+    AuditedSourcePlan,
+    ExtractionProfileSpec,
+    FirstPartyAuditEvidence,
+    GeographicCoverage,
+    RobotsPolicy,
+    SourceMechanism,
+)
 from resume_tailor.domain.models import RoleFamily
 
 
@@ -19,6 +27,7 @@ class WorkArrangement(StrEnum):
 class ConnectorType(StrEnum):
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
+    FIRST_PARTY = "first_party"
 
 
 class FeedKind(StrEnum):
@@ -278,6 +287,8 @@ class JobRequirementSignals(BaseModel):
 
 
 class SupportedJobSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     source_id: str
     connector_type: ConnectorType
     company_name: str
@@ -285,6 +296,44 @@ class SupportedJobSource(BaseModel):
     enabled: bool
     official_base_url: AnyHttpUrl
     lever_api_region: LeverApiRegion | None = None
+    audit_version: str | None = None
+    registry_plan_hash: str | None = None
+    extraction_profile_hash: str | None = None
+    priority_tier: int = Field(default=99, ge=1)
+    toronto_gta_relevance: bool = False
+    crawl_cadence_minutes: int = Field(default=1440, ge=1)
+
+
+class FirstPartySource(BaseModel):
+    """Immutable compiled runtime definition for an approved employer source."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str
+    company_id: str
+    company_name: str
+    canonical_domain: str
+    connector_type: Literal[ConnectorType.FIRST_PARTY] = ConnectorType.FIRST_PARTY
+    mechanism: Literal[SourceMechanism.FIRST_PARTY] = SourceMechanism.FIRST_PARTY
+    enabled: bool = True
+    official_base_url: AnyHttpUrl
+    allowed_hosts: tuple[str, ...]
+    redirect_hosts: tuple[str, ...] = ()
+    priority_tier: int = 99
+    geographic_coverage: GeographicCoverage = Field(default_factory=GeographicCoverage)
+    robots_policy: RobotsPolicy = RobotsPolicy.UNKNOWN
+    browser_rendering_allowed: bool = False
+    crawl_cadence_minutes: int = Field(default=1440, ge=1)
+    provider_configuration: None = None
+    source_plan: AuditedSourcePlan
+    first_party_audit: FirstPartyAuditEvidence | None = None
+    extraction_profile: ExtractionProfileSpec | None = None
+    audit_version: str
+    registry_plan_hash: str
+    extraction_profile_hash: str
+
+
+SourceDefinition = SupportedJobSource | FirstPartySource
 
 
 class SourceJobRecord(BaseModel):
@@ -293,6 +342,7 @@ class SourceJobRecord(BaseModel):
     company_name: str
     description: str
     official_url: AnyHttpUrl
+    application_url: AnyHttpUrl | None = None
     location_raw: str | None = None
     work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
     posted_at: datetime | None = None
@@ -342,12 +392,13 @@ class VerificationResult(BaseModel):
 
 class DiscoveredJob(BaseModel):
     id: str
-    source: SupportedJobSource
+    source: SourceDefinition
     external_job_id: str
     title: str
     company_name: str
     description: str
     official_url: str
+    application_url: str | None = None
     location: NormalizedLocation
     work_arrangement: WorkArrangement
     role_family: RoleFamily | None = None
@@ -462,9 +513,7 @@ class SavedJob(BaseModel):
 
     @field_validator("saved_at", "checked_at")
     @classmethod
-    def _saved_timestamps_must_be_timezone_aware(
-        cls, value: datetime | None
-    ) -> datetime | None:
+    def _saved_timestamps_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
         if value is not None:
             _require_timezone_aware(value, "saved job timestamp")
         return value
@@ -499,9 +548,7 @@ class DiscoveryRun(BaseModel):
 
     @field_validator("started_at", "completed_at")
     @classmethod
-    def _run_timestamps_must_be_timezone_aware(
-        cls, value: datetime | None
-    ) -> datetime | None:
+    def _run_timestamps_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
         if value is not None:
             _require_timezone_aware(value, "discovery run timestamp")
         return value

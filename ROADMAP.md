@@ -72,3 +72,20 @@
 ## Architecture evolution
 
 Start with JSON/SQLite repositories. Introduce PostgreSQL through repository implementations, object storage through a document-store port, and authentication through a current-user dependency without changing domain services.
+
+## Batch 3.5 status
+
+Implemented immutable provider/first-party compilation, Rocket Lab static
+retrieval, bounded sitemap/XML and JSON-LD boundaries, constrained HTML
+extraction, stable employer-detail identity, unified retrieval, schema-v3
+runtime lifecycle state, fingerprints, aliases, locks, deterministic due
+selection, CLI-only operations, and read-only source-health routes. The shared
+browser fallback seam, Playwright adapter, and unavailable-runtime diagnostic
+are implemented. Production first-party composition enforces robots policy,
+refreshes through the existing evaluator/feed persistence boundary, stamps
+compiled lifecycle identity and cadence state, applies a global run deadline,
+enforces audited extraction profiles, and counts actual browser action attempts.
+The real local browser gate was externally verified with Playwright `1.55.0`
+and managed Chromium `140.0.7339.16` (build v1187): three integration tests
+passed. Implementation is complete and pending final independent review; it is
+not committed or merged.

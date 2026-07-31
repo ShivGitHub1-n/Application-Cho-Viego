@@ -4,6 +4,113 @@ Audit date: 2026-07-24. This audit covers public, official mechanisms suitable
 for retrieval of published jobs without candidate data. No provider receives a
 resume, profile, evidence, scoring data, or authenticated user session.
 
+## Toronto and Greater Toronto Area coverage
+
+The unified registry now records typed geography metadata separately from role
+fit and scoring. `toronto_gta_presence` is set only when an official office or
+official job-location reference identifies Toronto or an adjacent GTA locality;
+remote Canada eligibility alone is insufficient.
+
+Geographic authority uses typed `GeographicEvidenceReference` records. Only
+`official_office`, `official_hiring_presence`, and `official_job_location`
+evidence with Canada and an approved GTA locality can establish Toronto/GTA
+presence. Remote eligibility, Ontario-only context, and explanatory prose
+cannot establish it.
+
+Audit fixture references are POSIX-relative names beneath
+`tests/fixtures/job_sources/company_audits`. The registry loader resolves them
+against that fixed root, rejects traversal, absolute and drive-relative paths,
+requires `.json` regular files, enforces a bounded size, and parses them as
+data without executing content. Deterministic source priority is ordered by
+priority tier, GTA relevance, then source ID; it is not used for scoring, feed
+ordering, or scheduling.
+
+### Enabled Toronto/GTA sources
+
+- **Waabi** — official [careers page](https://waabi.ai/careers) links to the
+  global Lever board `waabi`. The audited board lists Toronto engineering,
+  embedded, autonomy, ML, perception, verification, and systems roles.
+- **Tenstorrent** — official [software careers page](https://tenstorrent.com/careers/software)
+  lists its North York office at 150 Ferrand Drive and links published roles to
+  the Greenhouse board `tenstorrent`. The board includes Toronto AI hardware,
+  compiler, embedded, silicon, and verification roles.
+
+These two sources use the existing Lever and Greenhouse connectors. Geography
+does not add evaluator points or alter fit policy; it remains source metadata
+for future prioritization and existing location eligibility boundaries.
+
+### Deferred Toronto/GTA queue
+
+- **Cohere** — `DEFERRED_SOURCE_MECHANISM`: official careers identifies a
+  Toronto office but delegates open roles to Ashby, which is not an approved
+  connector in this checkpoint.
+- **MDA Space** — `DEFERRED_SOURCE_MECHANISM`: official careers identifies a
+  Brampton engineering presence but delegates Canada opportunities to UKG /
+  UltiPro, which is not an approved connector.
+- **Magna International** — GTA relevance retained through Aurora headquarters;
+  retrieval authority remains unaudited.
+- **Untether AI** — Toronto AI-hardware candidate retained for an identity and
+  source-mechanism audit; no approved authority is configured.
+- **General Motors** — source mechanism and GTA engineering presence remain
+  unaudited.
+- **Bombardier** — Toronto/GTA engineering presence was not established in the
+  bounded audit.
+- **Amazon, Meta, Google, Microsoft, NVIDIA, AMD, IBM, Intel, Siemens, GE
+  Vernova, Rockwell Automation, Caterpillar, Apple, Salesforce, and Oracle** —
+  retained as disabled global candidates; no new Toronto/GTA flag is asserted
+  here without a source-specific official office and retrieval audit.
+
+The existing global candidates remain disabled until their own approved source
+authority and geographic evidence are completed. No Toronto-specific pipeline
+or crawler is introduced.
+
+## Rocket Lab first-party employer source
+
+- Audit date: 2026-07-25; the source-plan audit version remains `2026-07-24.1`
+  until the next registry version bump.
+- Canonical employer careers entry: `https://rocketlabcorp.com/careers/`; the
+  legacy `https://www.rocketlabusa.com/careers/` entry redirects to the
+  `rocketlabcorp.com` employer host.
+- Exact first-party listing/index URL: `https://rocketlabcorp.com/careers/positions/`.
+- Navigation host: `rocketlabcorp.com`.
+- Redirect host: `www.rocketlabusa.com` -> `rocketlabcorp.com`.
+- Allowed listing path: `/careers/positions/`.
+- Allowed detail path: `/careers/positions/<employer-slug>/`.
+- Robots decision: `allow`, subject to revalidation before any future refresh.
+- Listing discovery: `static_index`.
+- Detail fetch: `static_http`.
+- Detail extraction contract: `json_ld_then_html` is recorded for the later
+  retrieval checkpoint; no extraction implementation is added here.
+- Stable identity authority: the employer detail URL slug suffix, retained with
+  the same-host canonical detail URL.
+- Canonical detail URL authority: the same-host canonical detail URL on the
+  employer detail page.
+- Listing authority: `rocketlabcorp.com` listing/index pages.
+- Detail-content authority: `rocketlabcorp.com` employer detail pages; the
+  bounded audit observed title, location, type, and posting content on that
+  host without relying on a third-party data API.
+- Application URL authority: the employer detail page links the terminal Apply
+  target to `https://job-boards.greenhouse.io/rocketlab/jobs/<job-id>`.
+  `job-boards.greenhouse.io` is explicitly approved only as an application
+  target, with the `/rocketlab/jobs/<job-id>` path shape. It is not a
+  navigation, redirect, crawl, or provider retrieval authority.
+- Stable identity relationship: the first-party detail URL contains the
+  employer slug, while the terminal Greenhouse URL contains the numeric
+  application job ID. The two are linked by the employer detail page and are
+  recorded separately rather than merged by title similarity.
+- Completeness boundary: the index exposes bounded `Load more`; the audit
+  fixture records termination after the bounded action and repeated-card
+  deduplication.
+- Data authority: employer host. Greenhouse is observed only for the terminal
+  application target; no Greenhouse, Lever, Workday, or unaudited API authority
+  supplies the listing/detail content in the bounded evidence.
+- Competing provider authority: none. No provider connector is configured for
+  Rocket Lab.
+- Redacted fixtures: `tests/fixtures/job_sources/company_audits/rocket_lab_index.json`
+  and `rocket_lab_detail.json`; complete job descriptions are not stored.
+- Decision: approved as a first-party employer-host source for Checkpoint A
+  audit purposes only. Retrieval and extraction remain Checkpoint B work.
+
 ## Greenhouse
 
 - Official mechanism and owner: Greenhouse Job Board API, owned and documented by Greenhouse: https://developers.greenhouse.io/job-board.html
@@ -23,6 +130,29 @@ resume, profile, evidence, scoring data, or authenticated user session.
 - Decision: approved
 - Exact reason for the decision: The official public Job Board API supplies stable IDs, descriptions, location authority, official URLs, timestamp fields, and an offline-testable access boundary. Its missing list pagination/filter controls are explicitly declared and handled locally.
 - Date accessed: 2026-07-24
+
+### Active company board identities
+
+These are the exact provider authorities approved for the active cohort. The
+employer careers entry is the audit evidence linking each company to the
+provider board; the provider board remains the sole retrieval authority.
+
+| Company | Connector | Exact board token | Lever region | Audit state |
+| --- | --- | --- | --- | --- |
+| Anthropic | Greenhouse | `anthropic` | — | approved |
+| Anduril | Greenhouse | `andurilindustries` | — | approved |
+| Palantir | Lever | `palantir` | `global` | approved |
+| Zoox | Lever | `zoox` | `global` | approved |
+| SpaceX | Greenhouse | `spacex` | — | approved |
+| Relativity Space | Greenhouse | `relativity` | — | approved |
+| Figure | Greenhouse | `figureai` | — | approved |
+| Waabi | Lever | `waabi` | `global` | approved |
+| Tenstorrent | Greenhouse | `tenstorrent` | — | approved |
+
+Each row is represented by a typed `provider_configuration` in
+`config/approved-job-sources.json`; no board token is inferred from a source
+ID, company name, or URL. Rocket Lab is intentionally absent from this table
+because it has no provider authority and is audited separately above.
 
 ## Lever
 
@@ -93,3 +223,26 @@ in this batch. LinkedIn, Indeed, generic ATS HTML, search engines, browser
 scraping, reverse-engineered endpoints, and authenticated user-session scraping
 are not candidates and are not implemented.
 
+## Batch 3.5 first-party runtime limitations
+
+Rocket Lab is compiled as `FIRST_PARTY`, not Greenhouse. Static retrieval uses
+the audited employer index and `/careers/positions/...` detail paths. JSON-LD
+is bounded and deterministic; HTML fallback is declarative and excludes
+scripts, styles, hidden content, arbitrary anchors, and full-document text.
+Greenhouse application URLs are terminal provenance and are never retrieved.
+
+Browser fallback is allowed only after static `browser_required` for an
+explicitly audited first-party plan. It uses an isolated context, no cookies,
+authentication, profiles, extensions, downloads, uploads, or application
+navigation, plus bounded requests/actions/render time and host/path/resource
+allowlisting. Static HTTP validates destination IPs; browser execution retains
+a DNS TOCTOU residual risk because the browser owns socket resolution. The
+mitigation is interception and rejection of unapproved navigation, redirects,
+frames, XHR/fetch, scripts, popups, and application hosts. This is not claimed
+to be equivalent to static SSRF controls. Playwright `1.55.0` is a direct
+ dependency; Chromium installation is explicit and separate from Python package
+installation. The local real-browser gate was externally verified with managed
+Chromium 140.0.7339.16 (build v1187); three controlled-local tests passed,
+including JavaScript-rendered listing/detail extraction. Browser fallback
+remains first-party-only, static-first, bounded, and subject to the same robots
+and source-plan policy. Greenhouse and Lever never use it.

@@ -85,3 +85,43 @@ Batch 4.
 - [Known issues and frozen layout scope](KNOWN_ISSUES.md)
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Contributing](docs/CONTRIBUTING.md)
+
+Batch 3.5 adds the approved static-first Rocket Lab first-party path with
+bounded employer index/detail retrieval, JSON-LD plus constrained HTML
+extraction, and terminal-only Greenhouse application provenance. Runtime
+observations use schema version 3; the registry remains the sole source-plan
+authority. Source operations are CLI-only and safe read-only visibility is
+available at `GET /job-discovery/sources` and
+`GET /job-discovery/sources/{source_id}/health`.
+
+```powershell
+python -m resume_tailor.cli.job_sources --format json refresh --dry-run
+python -m resume_tailor.cli.job_sources --format json health
+```
+
+Browser fallback is an explicit optional capability. It is never installed,
+downloaded, or launched during import, startup, CLI parsing, or ordinary
+tests. Playwright is a direct dependency, while browser binaries remain a
+separate machine setup step:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m playwright install chromium
+```
+
+The adapter prefers Playwright-managed Chromium and otherwise locates only a
+trusted system Chrome/Edge executable; registry configuration cannot provide
+an executable path or launch arguments. Browser requests remain allowlisted
+and bounded, with isolated contexts, no credentials or persistence, and a
+documented browser DNS TOCTOU residual risk. The verified local browser path
+uses Playwright 1.55.0 with managed Chromium 140.0.7339.16 (build v1187); the
+controlled local integration test passed three tests, including JavaScript-
+rendered listing and detail extraction. Browser binaries remain a separate
+explicit setup step and startup never installs or launches a browser.
+
+Source refresh uses the existing normalization, frozen evaluation, feed, alias,
+and transactional SQLite persistence pipeline. Robots policy is composed once
+per first-party source and enforced before static content fetches or browser
+launch. Lifecycle state records compiled audit, registry-plan, and extraction-
+profile hashes plus next eligibility. A global run deadline prevents new source
+starts after expiry. Browser action limits count actual attempts, and `--force`
+only bypasses cadence; it never bypasses source or security policy.
