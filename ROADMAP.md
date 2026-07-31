@@ -57,6 +57,40 @@
 - Greenhouse and Lever remain the only approved connectors. Expansion beyond
   them is deferred by the provider audit. The dedicated Jobs UI is Batch 4.
 
+### Batch 4 — dedicated Jobs experience
+
+- Implemented a dedicated navigable Streamlit Jobs page with Tailored for you,
+  Explore sectors, Saved, and Preferences sections.
+- Added a typed application façade for reviewed profiles, profile-scoped feed
+  reads, refreshes, semantic recommendation views, saved snapshots,
+  availability checks, and tailoring handoffs.
+- Normal Jobs UI shows Excellent/Good/Weak/Don't Match semantics through an
+  accessible fit meter; numeric diagnostics remain absent. Eligibility and
+  provisional state are independent, and excluded results require explicit
+  expansion.
+- Added scoped theme-aware Jobs styling, responsive split-panel/stacked feed
+  behavior, a deterministic offline AppTest/browser harness, and a manual
+  browser checklist. The user has completed final manual browser validation in
+  the populated harness and real application. The implementation remains
+  uncommitted and awaits one independent review-only pass.
+
+## Batch 4 handoff and next sequence
+
+The immediate sequence is: independent review-only pass over the complete dirty
+diff; remediation of confirmed findings only; focused tests and manual smoke
+checks if code changes; final APPROVED result; then the user stages, commits,
+pushes `feature/jobs-ui`, opens the Batch 4 PR, and resolves CI/review findings
+before merge. Do not invent a named Batch 5 before a post-merge product-status
+audit.
+
+After Batch 4 merges, the likely next product direction is master-resume DOCX
+ingestion, structural extraction of experiences/projects/bullets/skills and
+formatting, a larger master bullet library, better experience/project bullet
+selection, cover-letter two-page behavior, and real end-to-end Resume Tailor
+and Cover Letter validation. This is provisional direction pending the status
+audit; expanding Jobs immediately would be scope creep unless that audit finds
+a critical Jobs defect.
+
 ## Phase 7 — Application Management
 
 - Add application records, version history, tracking, analytics, and interview preparation.

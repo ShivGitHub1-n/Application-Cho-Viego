@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from resume_tailor.application.job_discovery.confirmation import (
     ConfirmJobSearchPreferencesService,
 )
+from resume_tailor.application.job_discovery.handoff import (
+    PrepareTailoringHandoffService,
+)
 from resume_tailor.application.job_discovery.preferences import (
     SuggestJobSearchPreferencesService,
 )
@@ -33,6 +36,7 @@ class JobDiscoveryServiceBundle:
     feed_queries: GetJobFeedService | None = None
     save: SaveJobService | None = None
     check_saved_availability: CheckSavedJobAvailabilityService | None = None
+    prepare_handoff: PrepareTailoringHandoffService | None = None
     source_health: SourceHealthQueryService | None = None
     source_refresh: SourceRefreshOrchestrator | None = None
     close_resources: Callable[[], None] | None = None

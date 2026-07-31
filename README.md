@@ -125,3 +125,58 @@ launch. Lifecycle state records compiled audit, registry-plan, and extraction-
 profile hashes plus next eligibility. A global run deadline prevents new source
 starts after expiry. Browser action limits count actual attempts, and `--force`
 only bypasses cadence; it never bypasses source or security policy.
+
+Batch 4 adds a dedicated Streamlit Jobs workspace with Tailored for you,
+Explore sectors, Saved, and Preferences sections. Tailored preserves backend
+fit ordering; Explore preserves newest-posted ordering with fit as a
+tie-breaker. The UI shows semantic fit grades through an accessible meter,
+while eligibility and provisional state remain independent. Don't Match
+results stay behind explicit `Show excluded jobs (N)` expansion. Saved jobs use
+immutable posting snapshots, and `Tailor resume` only prepares the existing
+resume workflow inputs.
+
+Launch the deterministic offline Jobs harness with:
+
+```powershell
+cd "$HOME\OneDrive\Desktop\Application-Cho-Viego"
+$env:PYTHONPATH = (Resolve-Path ".\src").Path
+$env:Path = "$env:ProgramFiles\LibreOffice\program;$env:Path"
+& ".\.venv\Scripts\python.exe" -m streamlit run `
+  ".\tests\streamlit_apps\jobs_test_app.py"
+```
+
+Use its scenario selector in both Streamlit light and dark themes. Final
+visual/browser verification of responsive layout, contrast, and official links
+remains a manual checkpoint.
+
+The harness supplies deterministic offline example jobs through the production
+Jobs frontend. The real Streamlit application uses persisted profiles,
+preferences, feeds, and saved snapshots, so its Jobs feed can remain empty
+until recommendations have been successfully refreshed and persisted.
+
+## Batch 4 status and operating notes
+
+Batch 4 is an uncommitted, manually accepted dedicated Jobs experience. It has
+four sections: Tailored for you, Explore sectors, Saved, and Preferences. It
+supports reviewed-profile selection, recommendation refresh, explicit excluded
+jobs, immutable saved snapshots with availability checks, and a safe Tailor
+resume handoff into the existing workflow. The offline harness is the
+deterministic populated acceptance environment; the real application exercises
+persisted profiles, preferences, feeds, saved jobs, and production routing.
+
+The normal Jobs UI uses Excellent, Good, Weak, and Don’t Match (domain value
+`dont_match`). Provisional is an independent state, not a grade. Eligibility
+is independent too: Eligible, Unknown, or Ineligible. Numeric fit scores are
+diagnostics-only and are not rendered in the normal UI. Don’t Match
+recommendations remain hidden until the excluded-results control is expanded.
+The frontend preserves backend ordering: Tailored is ordered by grade,
+substantive fit, eligible before unknown, freshness, and stable ID; Explore is
+ordered by known newest `posted_at`, unknown dates, fit tie-break, and stable ID.
+The frontend must not recalculate or re-sort either feed.
+
+Tailor resume only pre-fills the existing workflow. It does not call Gemini,
+generate a plan, render a resume, export DOCX/PDF, or generate a cover letter.
+
+See the [Batch 4 retrospective](docs/engineering/BATCH_4_JOBS_UI_RETROSPECTIVE.md)
+for the complete workflow, manual acceptance status, independent-review result,
+known environment conditions, and commit/PR next steps.

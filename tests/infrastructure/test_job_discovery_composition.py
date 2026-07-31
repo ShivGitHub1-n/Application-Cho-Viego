@@ -27,3 +27,13 @@ def test_production_first_party_composition_injects_one_robots_authority(
         assert browser_fallback._robots_checker is robots_checker
     finally:
         bundle.close()
+
+
+def test_production_composition_exposes_tailoring_handoff_service(tmp_path: Path) -> None:
+    bundle = dependencies.create_job_discovery_services(
+        Settings(app_data_directory=tmp_path)
+    )
+    try:
+        assert bundle.prepare_handoff is not None
+    finally:
+        bundle.close()

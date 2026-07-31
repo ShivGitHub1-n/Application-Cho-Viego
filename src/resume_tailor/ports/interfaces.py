@@ -1,6 +1,22 @@
 from pathlib import Path
 from typing import Protocol
 
+from resume_tailor.domain.llm_models import (
+    BulletRewriteRequest,
+    BulletRewriteResult,
+    BulletShorteningRequest,
+    BulletShorteningResult,
+    CompositionRecommendationRequest,
+    CompositionRecommendationResult,
+    CoverLetterDraftRequest,
+    CoverLetterDraftResult,
+    OpportunityAnalysisRequest,
+    OpportunityAnalysisResult,
+    ProfileExtractionRequest,
+    ProfileExtractionResult,
+    SkillCompositionRequest,
+    SkillCompositionResult,
+)
 from resume_tailor.domain.models import (
     JobPosting,
     MasterProfile,
@@ -9,26 +25,12 @@ from resume_tailor.domain.models import (
     TailoringPlan,
     TemplateConstraints,
 )
-from resume_tailor.domain.llm_models import (
-    BulletRewriteRequest,
-    BulletRewriteResult,
-    BulletShorteningRequest,
-    BulletShorteningResult,
-    CoverLetterDraftRequest,
-    CoverLetterDraftResult,
-    CompositionRecommendationRequest,
-    CompositionRecommendationResult,
-    OpportunityAnalysisRequest,
-    OpportunityAnalysisResult,
-    ProfileExtractionRequest,
-    ProfileExtractionResult,
-    SkillCompositionRequest,
-    SkillCompositionResult,
-)
 
 
 class MasterProfileRepository(Protocol):
     def get(self, profile_id: str) -> MasterProfile | None: ...
+
+    def list_all(self) -> list[MasterProfile]: ...
 
     def save(self, profile: MasterProfile) -> None: ...
 
