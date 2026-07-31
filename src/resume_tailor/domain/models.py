@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from hashlib import sha256
-import re
 from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -200,15 +200,16 @@ class MasterProfile(BaseModel):
         ),
     )
     skill_normalization_decisions: list[SkillNormalizationDecision] = Field(default_factory=list)
+    authorized_work_locations: list[str] = Field(default_factory=list)
+    requires_sponsorship: bool = False
+    professional_license_status: str = "unknown"
+    clearance_status: str = "unknown"
 
     @field_validator("technical_skills", mode="before")
     @classmethod
     def accept_category_mapping(cls, value: object) -> object:
         if isinstance(value, dict):
-            return [
-                {"category": label, "values": skills}
-                for label, skills in value.items()
-            ]
+            return [{"category": label, "values": skills} for label, skills in value.items()]
         return value
 
     @model_validator(mode="after")
@@ -246,7 +247,10 @@ class MasterProfile(BaseModel):
                             retained_category_id=retained_category_by_value.get(
                                 duplicate_key, category_id
                             ),
-                            reason="Exact case-insensitive duplicate retained at its first reviewed occurrence.",
+                            reason=(
+                                "Exact case-insensitive duplicate retained at its first "
+                                "reviewed occurrence."
+                            ),
                         )
                     )
                     continue
@@ -280,16 +284,12 @@ class MasterProfile(BaseModel):
     @model_validator(mode="after")
     def normalize_coursework_authority(self) -> MasterProfile:
         canonical = [
-            course
-            for education in self.education
-            for course in education.relevant_coursework
+            course for education in self.education for course in education.relevant_coursework
         ]
         canonical = list(dict.fromkeys(canonical))
         if canonical:
             if self.coursework and self.coursework != canonical:
-                raise ValueError(
-                    "Top-level coursework must match education relevant_coursework"
-                )
+                raise ValueError("Top-level coursework must match education relevant_coursework")
             self.coursework = canonical
         elif self.coursework and len(self.education) == 1:
             self.education[0].relevant_coursework = list(self.coursework)
@@ -299,9 +299,7 @@ class MasterProfile(BaseModel):
     def derive_legacy_declared_skills(self) -> MasterProfile:
         if self.technical_skills:
             self.declared_skills = [
-                skill.value
-                for category in self.technical_skills
-                for skill in category.skills
+                skill.value for category in self.technical_skills for skill in category.skills
             ]
         return self
 
@@ -492,9 +490,7 @@ class StructuredResume(BaseModel):
     def derive_legacy_selected_skills(self) -> StructuredResume:
         if self.technical_skills:
             self.selected_skills = [
-                skill.value
-                for category in self.technical_skills
-                for skill in category.skills
+                skill.value for category in self.technical_skills for skill in category.skills
             ]
         return self
 

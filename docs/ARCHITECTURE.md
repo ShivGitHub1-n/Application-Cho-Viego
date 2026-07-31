@@ -64,12 +64,15 @@ warnings or explicit source errors; a transport failure is not treated as
 confirmed unavailability.
 
 The deterministic pipeline normalizes provider records, deduplicates them,
-applies eligibility rules, and calculates profile-fit scores and labels before
-persisting results. Location handling uses only the approved city, region,
-country, and work-arrangement fields; it does not geocode or calculate radius
-or distance. SQLite stores preferences, discovered jobs, runs,
-recommendations, and saved-job records through repository ports, using the
-same application database as the existing profile store.
+builds one canonical requirement set, evaluates structural eligibility and
+title-first role relevance, allocates profile evidence through a single-use
+ledger, and assigns typed fit grades before reaching the current persistence
+boundary. Explanations retain exact posting and profile authority. Location
+handling uses only the approved city, region, country, and work-arrangement
+fields; it does not geocode or calculate radius or distance. SQLite stores
+preferences, discovered jobs, runs, recommendations, and saved-job records
+through repository ports, using the same application database as the existing
+profile store. Permanent recommendation/feed migration remains a later plan.
 
 FastAPI exposes typed discovery contracts and delegates to application
 services. Streamlit is a thin delivery layer that presents editable confirmed

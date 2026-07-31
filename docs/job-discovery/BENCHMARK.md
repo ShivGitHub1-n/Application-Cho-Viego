@@ -1,4 +1,4 @@
-# Jobs Discovery Benchmark — Batch 1 Complete
+# Jobs Discovery Benchmark — Batch 2 scoring gate
 
 This benchmark is synthetic/deidentified development data for evaluating profile fit. Fit labels are ground truth for this benchmark, not hiring probability, interview probability, offer probability, or a prediction about an employer's decision.
 
@@ -36,7 +36,21 @@ Demonstrated evidence is reviewed work or responsibility held. Transferable evid
 3. Tune the production scorer only with calibration. Validation remains an evaluation gate and must not be used as a tuning source.
 4. Keep calibration and validation approval immutable. Benchmark Batch 1 is complete.
 
-The current production comparison is diagnostic only. It reports confusion matrices, adjacent agreement, eligibility disagreement, visibility and hard-conflict leakage, pairwise ranking, precision@5, and role/level/evidence/completeness slices without changing validation labels. No locked metric is produced.
+Batch 2 evaluates the production `JobEvaluator` through the existing benchmark
+adapter. The frozen policy version is `jobs-fit-v2.1-calibrated`. The primary
+pairwise gate is pair micro accuracy; scenario macro accuracy is also reported.
+Calibration achieved 95% exact grade, 100% adjacent grade, 100% eligibility,
+89.33% pair micro (67/75), 89.44% pair macro, zero hard-ineligible ordinary
+feed leakage, zero critical-gap Excellent leakage, and 100% traceability.
+Validation achieved 95% exact grade, 100% adjacent grade, 100% eligibility,
+90% pair micro (18/20), 90% pair macro, 100% precision@5 in both groups, zero
+hard-ineligible ordinary-feed leakage, zero critical-gap Excellent leakage,
+and 100% traceability. Locked results remain sealed until the authorized gate.
+
+Scoring is not hiring probability. The evaluator uses one canonical
+requirement set and one evidence contribution ledger; interests and preferred
+companies contribute zero substantive fit. Provider, query, feed, UI, and
+permanent persistence migration remain outside this batch and belong to Plan 3.
 
 ## Review artifacts
 
@@ -55,4 +69,8 @@ Validation review artifacts:
 - `generated/job-discovery/validation-group-02-review.html`, `.csv`, `.baseline.json`
 - `generated/job-discovery/validation-review-index.html`
 
-Locked cases may be opened once, only after scoring-policy freeze and explicit project-owner authorization. Scoring-policy redesign, provider/feed work, UI work, and locked-case evaluation are outside the completed Benchmark Batch 1 dataset phase.
+Locked cases may be opened once, only after scoring-policy freeze, passing
+calibration and validation gates, focused regressions, checksum verification,
+and explicit project-owner authorization. Only aggregate locked metrics and
+aggregate failure classes may be recorded; case-level locked content is never
+returned or persisted.

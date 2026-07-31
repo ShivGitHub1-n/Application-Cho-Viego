@@ -7,6 +7,7 @@ from resume_tailor.application.job_discovery.preferences import ProfileNotFoundE
 from resume_tailor.domain.job_discovery.capabilities import ProfileCapabilityIndexBuilder
 from resume_tailor.domain.job_discovery.deduplication import JobDeduplicator
 from resume_tailor.domain.job_discovery.eligibility import EligibilityEvaluator
+from resume_tailor.domain.job_discovery.evaluation import JobEvaluation, JobEvaluator
 from resume_tailor.domain.job_discovery.ids import recommendation_id, run_id
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
@@ -25,10 +26,12 @@ from resume_tailor.domain.job_discovery.models import (
     SupportedJobSource,
 )
 from resume_tailor.domain.job_discovery.normalization import JobNormalizer
+from resume_tailor.domain.job_discovery.ranking import evaluation_sort_key
 from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
 from resume_tailor.domain.job_discovery.scoring import (
     DeterministicExplanationBuilder,
     ScoringPolicy,
+    breakdown_from_evaluation,
 )
 from resume_tailor.domain.models import MasterProfile
 from resume_tailor.ports.interfaces import MasterProfileRepository
@@ -70,6 +73,7 @@ class RefreshJobDiscoveryService:
         eligibility_evaluator: EligibilityEvaluator | None = None,
         scoring_policy: ScoringPolicy | None = None,
         explanation_builder: DeterministicExplanationBuilder | None = None,
+        job_evaluator: JobEvaluator | None = None,
     ) -> None:
         self._profiles = profiles
         self._preferences = preferences
@@ -85,6 +89,11 @@ class RefreshJobDiscoveryService:
         self._eligibility_evaluator = eligibility_evaluator or EligibilityEvaluator()
         self._scoring_policy = scoring_policy or ScoringPolicy()
         self._explanation_builder = explanation_builder or DeterministicExplanationBuilder()
+        self._job_evaluator = job_evaluator or JobEvaluator(
+            eligibility_evaluator=self._eligibility_evaluator,
+            requirement_extractor=self._requirement_extractor,
+        )
+        self._last_evaluations: list[JobEvaluation] = []
 
     def refresh(
         self,
@@ -213,23 +222,17 @@ class RefreshJobDiscoveryService:
         deduplicated = self._deduplicator.resolve(normalized)
         profile_index = self._capability_index_builder.build(profile)
 
-        assessed: list[tuple[DiscoveredJob, EligibilityAssessment, JobScoreBreakdown]] = []
+        assessed: list[tuple[DiscoveredJob, JobEvaluation]] = []
         for job in deduplicated.jobs:
-            assessment = self._eligibility_evaluator.assess(
-                job,
-                preferences,
-                as_of=started_at,
-                profile=profile,
-            )
-            if assessment.status is EligibilityStatus.INELIGIBLE:
-                continue
-            score = self._scoring_policy.score(
+            evaluation = self._job_evaluator.evaluate(
                 job,
                 preferences,
                 profile_index,
                 as_of=started_at,
+                profile=profile,
             )
-            assessed.append((job, assessment, score))
+            assessed.append((job, evaluation))
+        self._last_evaluations = [evaluation for _job, evaluation in assessed]
 
         for job in deduplicated.jobs:
             self._discovered_jobs.upsert(job)
@@ -258,7 +261,10 @@ class RefreshJobDiscoveryService:
             retrieved_count=len(raw_records),
             normalized_count=len(normalized),
             duplicate_count=deduplicated.duplicate_count,
-            eligibility_filtered_count=len(deduplicated.jobs) - len(assessed),
+            eligibility_filtered_count=sum(
+                evaluation.eligibility.status is EligibilityStatus.INELIGIBLE
+                for _job, evaluation in assessed
+            ),
             scored_count=len(assessed),
             returned_count=len(recommendations),
             warning_count=len(warnings),
@@ -339,7 +345,7 @@ class RefreshJobDiscoveryService:
         profile: MasterProfile,
         preferences: JobSearchPreferences,
         profile_index: ProfileCapabilityIndex,
-        assessed: list[tuple[DiscoveredJob, EligibilityAssessment, JobScoreBreakdown]],
+        assessed: list[tuple[DiscoveredJob, JobEvaluation]],
         *,
         created_at: datetime,
     ) -> list[JobRecommendation]:
@@ -347,14 +353,25 @@ class RefreshJobDiscoveryService:
         if isinstance(explanation_builder, DeterministicExplanationBuilder):
             explanation_builder = DeterministicExplanationBuilder(preferences)
         ranked = sorted(
-            assessed,
-            key=lambda item: self._recommendation_sort_key(item[0], item[1], item[2], preferences),
+            (
+                (job, evaluation)
+                for job, evaluation in assessed
+                if evaluation.eligibility.status is not EligibilityStatus.INELIGIBLE
+            ),
+            key=lambda item: evaluation_sort_key(
+                fit_grade=item[1].fit_grade,
+                diagnostic_total=item[1].diagnostics.total,
+                eligibility=item[1].eligibility.status,
+                posted_at=item[0].posted_at,
+                stable_id=item[0].id,
+            ),
         )[:MAX_INITIAL_RECOMMENDATIONS]
         recommendations: list[JobRecommendation] = []
-        for rank, (job, eligibility, score) in enumerate(ranked, start=1):
-            reasons, gaps = explanation_builder.reasons_and_gaps(
-                job, job.requirements, profile_index
-            )
+        for rank, (job, evaluation) in enumerate(ranked, start=1):
+            eligibility = evaluation.eligibility
+            score = breakdown_from_evaluation(evaluation)
+            reasons = [reason.statement for reason in evaluation.positive_reasons]
+            gaps = [gap.statement for gap in evaluation.material_gaps[:3]]
             group = (
                 RecommendationGroup.PRIMARY
                 if job.role_family in preferences.role_family_priority
@@ -382,6 +399,7 @@ class RefreshJobDiscoveryService:
                     gaps=gaps,
                     rank=rank,
                     created_at=created_at,
+                    evaluation_policy_version=evaluation.evaluation_policy_version,
                 )
             )
         return recommendations

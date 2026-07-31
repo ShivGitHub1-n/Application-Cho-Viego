@@ -117,9 +117,7 @@ def _catalog() -> tuple[RequirementCatalogEntry, ...]:
         entry.canonical: entry for entry in _TECHNOLOGY_ENTRIES
     }
     technology_terms = {
-        normalize_capability_term(alias)
-        for entry in _TECHNOLOGY_ENTRIES
-        for alias in entry.aliases
+        normalize_capability_term(alias) for entry in _TECHNOLOGY_ENTRIES for alias in entry.aliases
     }
     for signal in ROLE_SIGNAL_CATALOG:
         canonical = normalize_capability_term(signal.canonical_term)
@@ -169,9 +167,7 @@ def _sentence_at(text: str, start: int, end: int) -> str:
 
 def _importance(context: str) -> RequirementImportance:
     lowered = context.casefold()
-    required_positions = [
-        lowered.find(phrase) for phrase in _REQUIRED_PHRASES if phrase in lowered
-    ]
+    required_positions = [lowered.find(phrase) for phrase in _REQUIRED_PHRASES if phrase in lowered]
     preferred_positions = [
         lowered.find(phrase) for phrase in _PREFERRED_PHRASES if phrase in lowered
     ]
@@ -224,6 +220,7 @@ def _arrangement(text: str, supplied: WorkArrangement) -> WorkArrangement:
 
 
 def _job_level(title: str, text: str) -> JobLevel:
+    lowered_title = title.casefold()
     lowered = f"{title} {text}".casefold()
     for phrase, level in (
         ("intern", JobLevel.INTERN),
@@ -234,11 +231,32 @@ def _job_level(title: str, text: str) -> JobLevel:
         ("entry-level", JobLevel.ENTRY),
         ("junior", JobLevel.JUNIOR),
         ("senior", JobLevel.SENIOR),
+        ("staff", JobLevel.STAFF),
+        ("principal", JobLevel.PRINCIPAL),
+        ("director", JobLevel.DIRECTOR),
         ("lead", JobLevel.LEAD),
         ("mid-level", JobLevel.MID),
         ("mid level", JobLevel.MID),
     ):
-        if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered):
+        if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered_title):
+            return level
+    for phrase, level in (
+        ("new graduate", JobLevel.ENTRY),
+        ("entry level", JobLevel.ENTRY),
+        ("entry-level", JobLevel.ENTRY),
+        ("junior", JobLevel.JUNIOR),
+        ("senior", JobLevel.SENIOR),
+        ("staff", JobLevel.STAFF),
+        ("principal", JobLevel.PRINCIPAL),
+        ("director", JobLevel.DIRECTOR),
+        ("lead", JobLevel.LEAD),
+        ("mid-level", JobLevel.MID),
+        ("mid level", JobLevel.MID),
+    ):
+        if re.search(
+            rf"\b(?:role|position|opening|job)\s+(?:is|at|for)?\s*[^.\n]*\b{re.escape(phrase)}\b",
+            lowered,
+        ):
             return level
     return JobLevel.UNKNOWN
 
@@ -339,6 +357,14 @@ class RequirementExtractor:
                 )
             ]
         )
+        degree_equivalent_experience = bool(
+            degree_requirements
+            and re.search(
+                r"\b(?:equivalent|equivalency)\s+(?:work\s+)?experience\b",
+                source,
+                re.IGNORECASE,
+            )
+        )
         graduation_requirements = _unique(
             [
                 re.sub(r"\s+", " ", match.group(0).casefold()).strip()
@@ -366,7 +392,8 @@ class RequirementExtractor:
                 if re.search(
                     (
                         r"\b(?:authorized to work|work authorization|visa sponsorship|"
-                        r"sponsor(?:ship)?|security clearance|citizen(?:ship)?)\b"
+                        r"sponsor(?:ship)?|security clearance|citizen(?:ship)|license|"
+                        r"designation)\b"
                     ),
                     sentence,
                     re.IGNORECASE,
@@ -398,6 +425,7 @@ class RequirementExtractor:
             responsibilities=responsibilities,
             experience_years=experience_years,
             degree_requirements=degree_requirements,
+            degree_equivalent_experience=degree_equivalent_experience,
             graduation_requirements=graduation_requirements,
             certification_requirements=certification_requirements,
             work_arrangement=_arrangement(source, work_arrangement),

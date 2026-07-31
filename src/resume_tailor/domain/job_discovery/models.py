@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
 
 from resume_tailor.domain.models import RoleFamily
 
@@ -45,6 +45,35 @@ class MatchLabel(StrEnum):
     GOOD = "good"
     STRETCH = "stretch"
     PROVISIONAL = "provisional"
+    DONT_MATCH = "dont_match"
+
+
+class FitGrade(StrEnum):
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    WEAK = "weak"
+    DONT_MATCH = "dont_match"
+
+
+class RequirementCriticality(StrEnum):
+    CRITICAL = "critical"
+    IMPORTANT = "important"
+    SUPPORTING = "supporting"
+
+
+class EvidenceQuality(StrEnum):
+    DEMONSTRATED = "demonstrated"
+    TRANSFERABLE = "transferable"
+    REVIEWED_SKILL = "reviewed_skill"
+    COURSEWORK_CONTEXT = "coursework_context"
+    ABSENT = "absent"
+
+
+class RequirementMatchStatus(StrEnum):
+    MATCHED = "matched"
+    INSUFFICIENT = "insufficient"
+    UNRESOLVED = "unresolved"
+    ABSENT = "absent"
 
 
 class EligibilityStatus(StrEnum):
@@ -94,6 +123,9 @@ class JobLevel(StrEnum):
     MID = "mid"
     SENIOR = "senior"
     LEAD = "lead"
+    STAFF = "staff"
+    PRINCIPAL = "principal"
+    DIRECTOR = "director"
     UNKNOWN = "unknown"
 
 
@@ -178,6 +210,7 @@ class ProfileCapabilityEvidence(BaseModel):
     source_id: str
     source_text: str
     demonstrated: bool
+    evidence_quality: EvidenceQuality | None = None
 
 
 class ProfileCapabilityIndex(BaseModel):
@@ -209,6 +242,10 @@ class JobRequirement(BaseModel):
     source_text: str
     source_start: int
     source_end: int
+    requirement_id: str | None = None
+    criticality: RequirementCriticality | None = None
+    aliases: list[str] = Field(default_factory=list)
+    evidence_references: list[str] = Field(default_factory=list)
 
 
 class JobRequirementSignals(BaseModel):
@@ -218,6 +255,7 @@ class JobRequirementSignals(BaseModel):
     responsibilities: list[str] = Field(default_factory=list)
     experience_years: int | None = None
     degree_requirements: list[str] = Field(default_factory=list)
+    degree_equivalent_experience: bool = False
     graduation_requirements: list[str] = Field(default_factory=list)
     certification_requirements: list[str] = Field(default_factory=list)
     work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
@@ -315,6 +353,10 @@ class EligibilityAssessment(BaseModel):
     location_match: bool | None = None
     verification_confidence: VerificationConfidence
     posting_age_days: int | None = None
+    posting_references: list[str] = Field(default_factory=list)
+    profile_references: list[str] = Field(default_factory=list)
+    conflict_references: list[str] = Field(default_factory=list)
+    unresolved_facts: list[str] = Field(default_factory=list)
 
 
 class JobScoreBreakdown(BaseModel):
@@ -328,6 +370,20 @@ class JobScoreBreakdown(BaseModel):
     total: float
     label: MatchLabel
     provisional: bool
+    fit_grade: FitGrade | None = None
+    evaluation_policy_version: str | None = None
+    historical_label: MatchLabel | None = None
+    historical_policy: bool = False
+
+    @model_validator(mode="after")
+    def mark_legacy_records(self) -> JobScoreBreakdown:
+        if self.evaluation_policy_version is None:
+            self.evaluation_policy_version = "jobs-score-legacy-v1"
+            self.historical_label = self.label
+            self.historical_policy = True
+            if self.label is MatchLabel.PROVISIONAL:
+                self.fit_grade = None
+        return self
 
 
 class DuplicateGroup(BaseModel):
@@ -357,6 +413,7 @@ class JobRecommendation(BaseModel):
     gaps: list[str] = Field(default_factory=list)
     rank: int
     created_at: datetime
+    evaluation_policy_version: str | None = None
 
     @field_validator("created_at")
     @classmethod

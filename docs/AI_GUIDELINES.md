@@ -37,6 +37,13 @@ material gaps must be grounded in reviewed profile evidence and typed source
 records. Model-assisted finalist explanations are deferred and must not be
 implied by deterministic discovery output.
 
+Jobs scoring uses the deterministic `JobEvaluator`; Gemini, company interest,
+preferred companies, and retrieval preferences cannot create qualification
+points or raise a substantive fit grade. Positive reasons and material gaps
+must carry exact typed posting and profile authority. Unknown eligibility is
+kept distinct from a confirmed conflict, and provisional status is independent
+of the substantive grade.
+
 ## Inference guidelines
 
 There are three claim levels: `explicitly_supported`, `strongly_implied`, and `unsupported`. Unsupported claims are never returned. Safe inference translates existing evidence into common recruiter terminology when the relationship is strong and non-material. Mark it `strong_inference_pending_review` in the decision report and require approval before export. Strongly implied rewritten bullets and demonstrated skills are surfaced in the review stage. When ambiguity changes a factual claim, omit it and identify the uncovered role requirement. User edits create new claim candidates that must be revalidated.
