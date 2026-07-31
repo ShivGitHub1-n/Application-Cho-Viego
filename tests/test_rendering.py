@@ -221,6 +221,12 @@ def test_word_pagination_guards_unavailable_window_handle_before_intptr_cast(
 
     def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         scripts.append(command[-1])
+        environment = _kwargs["env"]
+        assert isinstance(environment, dict)
+        Path(environment["RESUME_WORD_MEASUREMENT_RESULT_PATH"]).write_text(
+            "1",
+            encoding="ascii",
+        )
         return subprocess.CompletedProcess(command, 0, "1\n", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -326,6 +332,10 @@ def test_word_batch_uses_one_com_session_for_all_finalists(
             encoding="utf-8"
         )
         assert len(path_lines.splitlines()) == 2
+        Path(environment["RESUME_WORD_MEASUREMENT_RESULT_PATH"]).write_text(
+            "1,2",
+            encoding="ascii",
+        )
         return subprocess.CompletedProcess(command, 0, "1,2\n", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -338,3 +348,119 @@ def test_word_batch_uses_one_com_session_for_all_finalists(
 
     assert calls == 1
     assert [measurement.page_count for measurement in measurements] == [1, 2]
+
+
+def test_word_complete_twelve_item_batch_survives_teardown_failure_and_cleans_owned_pid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    counts = [1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+    paths = [tmp_path / f"finalist-{index:02d}.docx" for index in range(len(counts))]
+    for path in paths:
+        path.write_bytes(b"controlled-docx")
+    commands: list[str] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command[-1])
+        if len(commands) == 1:
+            environment = kwargs["env"]
+            assert isinstance(environment, dict)
+            Path(environment["RESUME_WORD_MEASUREMENT_RESULT_PATH"]).write_text(
+                ",".join(map(str, counts)),
+                encoding="ascii",
+            )
+            Path(environment["RESUME_WORD_OWNED_PROCESS_PATH"]).write_text(
+                "4321|638885280000000000",
+                encoding="ascii",
+            )
+            return subprocess.CompletedProcess(
+                command,
+                22,
+                "1,2,1,1,1,1,1,1,1,1,2,1\n",
+                "Microsoft Word measurement completed; teardown reported: word-quit",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "resume_tailor.infrastructure.rendering.shutil.which",
+        lambda _name: "powershell.exe",
+    )
+
+    measurements = MicrosoftWordDocxPageCountProvider().measure_many(paths)
+
+    assert [measurement.page_count for measurement in measurements] == counts
+    assert all(measurement.exact for measurement in measurements)
+    assert all("teardown warning handled" in measurement.provider for measurement in measurements)
+    assert len(commands) == 2
+    assert "Stop-Process -Id $ownedProcessId" in commands[1]
+    assert "$owned.ProcessName -eq 'WINWORD'" in commands[1]
+    assert "$owned.StartTime.ToUniversalTime().Ticks -eq $ownedStartTicks" in commands[1]
+    assert "Get-Process WINWORD" not in commands[1]
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ("1", "wrong number of values"),
+        ("1,not-a-count", "malformed"),
+        ("1,0", "non-positive"),
+    ],
+)
+def test_word_partial_malformed_or_zero_batch_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload: str,
+    message: str,
+) -> None:
+    paths = [tmp_path / "one.docx", tmp_path / "two.docx"]
+    for path in paths:
+        path.write_bytes(b"controlled-docx")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        Path(environment["RESUME_WORD_MEASUREMENT_RESULT_PATH"]).write_text(
+            payload,
+            encoding="ascii",
+        )
+        return subprocess.CompletedProcess(command, 0, payload, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "resume_tailor.infrastructure.rendering.shutil.which",
+        lambda _name: "powershell.exe",
+    )
+
+    with pytest.raises(PageCountVerificationError, match=message):
+        MicrosoftWordDocxPageCountProvider().measure_many(paths)
+
+
+def test_word_stdout_without_success_result_remains_a_measurement_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paths = [tmp_path / "one.docx", tmp_path / "two.docx"]
+    for path in paths:
+        path.write_bytes(b"controlled-docx")
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            1,
+            "1,1\n",
+            "ComputeStatistics failed before the result was committed.",
+        ),
+    )
+    monkeypatch.setattr(
+        "resume_tailor.infrastructure.rendering.shutil.which",
+        lambda _name: "powershell.exe",
+    )
+
+    with pytest.raises(
+        PageCountVerificationError,
+        match="measurement failed before producing a complete page-count result",
+    ):
+        MicrosoftWordDocxPageCountProvider().measure_many(paths)

@@ -165,9 +165,12 @@ class MicrosoftWordDocxPageCountProvider:
         script = r"""
 $Paths = @(Get-Content -LiteralPath $env:RESUME_DOCX_PATHS_FILE)
 $OwnedProcessPath = $env:RESUME_WORD_OWNED_PROCESS_PATH
+$MeasurementResultPath = $env:RESUME_WORD_MEASUREMENT_RESULT_PATH
 $word = $null
 $document = $null
 $counts = @()
+$teardownFailures = @()
+$wordQuitSucceeded = $false
 try {
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
@@ -199,17 +202,47 @@ public static class ResumeWordNative {
         }
         finally {
             if ($null -ne $document) {
-                $document.Close($false)
+                try { $document.Close($false) }
+                catch { $teardownFailures += 'document-close' }
                 $document = $null
             }
         }
     }
-    $counts -join ','
+    if ($counts.Count -ne $Paths.Count) {
+        throw 'Microsoft Word returned an incomplete measurement batch.'
+    }
+    ($counts -join ',') |
+        Set-Content -LiteralPath $MeasurementResultPath -Encoding ASCII -NoNewline
 }
 finally {
-    if ($null -ne $document) { $document.Close($false) }
-    if ($null -ne $word) { $word.Quit() }
-    Remove-Item -LiteralPath $OwnedProcessPath -Force -ErrorAction SilentlyContinue
+    if ($null -ne $document) {
+        try { $document.Close($false) }
+        catch { $teardownFailures += 'final-document-close' }
+    }
+    if ($null -ne $word) {
+        try {
+            $word.Quit()
+            $wordQuitSucceeded = $true
+        }
+        catch { $teardownFailures += 'word-quit' }
+    }
+    if ($wordQuitSucceeded) {
+        try {
+            Remove-Item -LiteralPath $OwnedProcessPath -Force -ErrorAction Stop
+        }
+        catch {
+            if (Test-Path -LiteralPath $OwnedProcessPath) {
+                $teardownFailures += 'ownership-marker-cleanup'
+            }
+        }
+    }
+}
+if ($teardownFailures.Count -gt 0) {
+    [Console]::Error.WriteLine(
+        'Microsoft Word measurement completed; teardown reported: ' +
+        ($teardownFailures -join ',')
+    )
+    exit 22
 }
 """
         environment = os.environ.copy()
@@ -220,8 +253,12 @@ finally {
                 encoding="utf-8",
             )
             owned_process_path = Path(directory) / "owned-word-process.txt"
+            measurement_result_path = Path(directory) / "measurement-result.csv"
             environment["RESUME_DOCX_PATHS_FILE"] = str(paths_file)
             environment["RESUME_WORD_OWNED_PROCESS_PATH"] = str(owned_process_path)
+            environment["RESUME_WORD_MEASUREMENT_RESULT_PATH"] = str(
+                measurement_result_path
+            )
             try:
                 result = subprocess.run(
                     [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
@@ -242,37 +279,69 @@ finally {
                 raise PageCountVerificationError(
                     f"Microsoft Word page-count verification could not run: {error}"
                 ) from error
+            if owned_process_path.is_file():
+                _cleanup_owned_word_process(owned_process_path, powershell)
+            if measurement_result_path.is_file():
+                page_counts = _parse_word_page_count_result(
+                    measurement_result_path,
+                    expected_count=len(validated_paths),
+                )
+            elif result.returncode != 0:
+                detail = _sanitized_provider_detail(
+                    result.stderr.strip() or result.stdout.strip(),
+                    validated_paths[0],
+                )
+                raise PageCountVerificationError(
+                    "Microsoft Word measurement failed before producing a complete "
+                    f"page-count result: {detail} "
+                    f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})"
+                )
+            else:
+                raise PageCountVerificationError(
+                    "Microsoft Word exited without producing a complete page-count result "
+                    f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})."
+                )
+        provider = "Microsoft Word ComputeStatistics"
         if result.returncode != 0:
-            detail = _sanitized_provider_detail(
-                result.stderr.strip() or result.stdout.strip(),
-                validated_paths[0],
-            )
-            raise PageCountVerificationError(
-                "Microsoft Word could not render the DOCX for page-count verification: "
-                f"{detail} "
-                f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})"
-            )
-        try:
-            raw_counts = result.stdout.strip().splitlines()[-1].split(",")
-            page_counts = [int(value) for value in raw_counts]
-        except (IndexError, ValueError) as error:
-            raise PageCountVerificationError(
-                "Microsoft Word returned no usable page-count batch "
-                f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})."
-            ) from error
-        if len(page_counts) != len(validated_paths):
-            raise PageCountVerificationError(
-                "Microsoft Word returned an incomplete page-count batch."
-            )
+            provider += " (measurement complete; teardown warning handled)"
         return [
             PageCountMeasurement(
                 page_count=page_count,
-                provider="Microsoft Word ComputeStatistics",
+                provider=provider,
                 confidence="exact",
                 exact=True,
             )
             for page_count in page_counts
         ]
+
+
+def _parse_word_page_count_result(
+    result_path: Path,
+    *,
+    expected_count: int,
+) -> list[int]:
+    try:
+        payload = result_path.read_text(encoding="ascii").strip()
+        raw_counts = payload.split(",")
+        if not payload or any(not value.strip() for value in raw_counts):
+            raise ValueError("empty page-count value")
+        page_counts = [int(value) for value in raw_counts]
+    except (OSError, UnicodeError, ValueError) as error:
+        raise PageCountVerificationError(
+            "Microsoft Word produced a malformed page-count result; exact pagination "
+            "failed closed."
+        ) from error
+    if len(page_counts) != expected_count:
+        raise PageCountVerificationError(
+            "Microsoft Word produced a page-count result with the wrong number of values; "
+            "exact pagination failed closed."
+        )
+    if any(page_count < 1 for page_count in page_counts):
+        raise PageCountVerificationError(
+            "Microsoft Word produced a non-positive page count; exact pagination failed "
+            "closed."
+        )
+    return page_counts
 
 
 class ExactDocxPageCountProvider:
