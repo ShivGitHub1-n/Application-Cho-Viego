@@ -109,6 +109,17 @@ unconfigured empty result as successful discovery. The smoke test performs
 only a bounded fetch against the explicitly configured source and does not log
 raw payloads or secrets.
 
+Batch 3 adds separate Tailored and Explore feed contracts. Tailored uses the
+reviewed profile and confirmed preferences locally; Explore uses approved
+sectors and sanitized retrieval controls. Provider requests are explicit
+allow-lists and never include profile/resume text, evidence, scores, or
+explanations. Retrieval is paged and bounded, records partial source success,
+retains provenance and excluded evaluations, and persists one feed refresh
+atomically. Legacy recommendations remain readable as earlier-policy results;
+saved posting snapshots remain immutable. The development-gate-approved
+policy is not locked-release-certified, and the dedicated Jobs UI is owned by
+Batch 4.
+
 ## Documentation
 
 The canonical resume pipeline and closeout contract is
@@ -132,3 +143,43 @@ and [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) for deferred work.
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Validated role classification](docs/ROLE_CLASSIFICATION.md)
 - [Contributing](docs/CONTRIBUTING.md)
+
+Batch 3.5 adds the approved static-first Rocket Lab first-party path with
+bounded employer index/detail retrieval, JSON-LD plus constrained HTML
+extraction, and terminal-only Greenhouse application provenance. Runtime
+observations use schema version 3; the registry remains the sole source-plan
+authority. Source operations are CLI-only and safe read-only visibility is
+available at `GET /job-discovery/sources` and
+`GET /job-discovery/sources/{source_id}/health`.
+
+```powershell
+python -m resume_tailor.cli.job_sources --format json refresh --dry-run
+python -m resume_tailor.cli.job_sources --format json health
+```
+
+Browser fallback is an explicit optional capability. It is never installed,
+downloaded, or launched during import, startup, CLI parsing, or ordinary
+tests. Playwright is a direct dependency, while browser binaries remain a
+separate machine setup step:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m playwright install chromium
+```
+
+The adapter prefers Playwright-managed Chromium and otherwise locates only a
+trusted system Chrome/Edge executable; registry configuration cannot provide
+an executable path or launch arguments. Browser requests remain allowlisted
+and bounded, with isolated contexts, no credentials or persistence, and a
+documented browser DNS TOCTOU residual risk. The verified local browser path
+uses Playwright 1.55.0 with managed Chromium 140.0.7339.16 (build v1187); the
+controlled local integration test passed three tests, including JavaScript-
+rendered listing and detail extraction. Browser binaries remain a separate
+explicit setup step and startup never installs or launches a browser.
+
+Source refresh uses the existing normalization, frozen evaluation, feed, alias,
+and transactional SQLite persistence pipeline. Robots policy is composed once
+per first-party source and enforced before static content fetches or browser
+launch. Lifecycle state records compiled audit, registry-plan, and extraction-
+profile hashes plus next eligibility. A global run deadline prevents new source
+starts after expiry. Browser action limits count actual attempts, and `--force`
+only bypasses cadence; it never bypasses source or security policy.

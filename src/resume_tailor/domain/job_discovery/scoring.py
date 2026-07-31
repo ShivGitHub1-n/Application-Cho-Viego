@@ -3,9 +3,11 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
+from resume_tailor.domain.job_discovery.grading import EVALUATION_POLICY_VERSION
 from resume_tailor.domain.job_discovery.models import (
     DiscoveredJob,
     JobRequirement,
+    FitGrade,
     JobRequirementSignals,
     JobScoreBreakdown,
     JobSearchPreferences,
@@ -55,6 +57,35 @@ def score_label(total: float) -> MatchLabel:
     if total >= 70:
         return MatchLabel.GOOD
     return MatchLabel.STRETCH
+
+
+def breakdown_from_evaluation(evaluation: object) -> JobScoreBreakdown:
+    """Adapt a current typed evaluation to the Plan 3 compatibility contract."""
+
+    diagnostics = evaluation.diagnostics
+    grade = evaluation.fit_grade
+    legacy_label = {
+        FitGrade.EXCELLENT: MatchLabel.STRONG,
+        FitGrade.GOOD: MatchLabel.GOOD,
+        FitGrade.WEAK: MatchLabel.STRETCH,
+        FitGrade.DONT_MATCH: MatchLabel.DONT_MATCH,
+    }[grade]
+    if evaluation.provisional.is_provisional:
+        legacy_label = MatchLabel.PROVISIONAL
+    return JobScoreBreakdown(
+        demonstrated_technical_evidence=diagnostics.demonstrated_technical_evidence,
+        required_coverage=diagnostics.required_coverage,
+        role_alignment=diagnostics.role_alignment,
+        level_alignment=diagnostics.level_alignment,
+        education_coursework=diagnostics.education_coursework,
+        preferred_skill_alignment=diagnostics.preferred_skill_alignment,
+        recency_completeness=diagnostics.recency_completeness,
+        total=diagnostics.total,
+        label=legacy_label,
+        provisional=evaluation.provisional.is_provisional,
+        fit_grade=grade,
+        evaluation_policy_version=evaluation.evaluation_policy_version,
+    )
 
 
 def recommendation_sort_key(
@@ -343,6 +374,17 @@ class ScoringPolicy:
             unmatched_core_occupational_requirements=list(components["unmatched"]),
             evidence_allocation=list(components["allocation"]),
             recommendation_only_factors_excluded=list(_EXCLUDED_FROM_FIT),
+            fit_grade={
+                MatchLabel.STRONG: FitGrade.EXCELLENT,
+                MatchLabel.GOOD: FitGrade.GOOD,
+                MatchLabel.STRETCH: FitGrade.WEAK,
+                MatchLabel.PROVISIONAL: {
+                    MatchLabel.STRONG: FitGrade.EXCELLENT,
+                    MatchLabel.GOOD: FitGrade.GOOD,
+                    MatchLabel.STRETCH: FitGrade.WEAK,
+                }[score_label(total)],
+            }[MatchLabel.PROVISIONAL if provisional else score_label(total)],
+            evaluation_policy_version=EVALUATION_POLICY_VERSION,
         )
 
 

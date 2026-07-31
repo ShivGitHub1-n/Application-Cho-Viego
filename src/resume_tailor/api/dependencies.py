@@ -12,12 +12,15 @@ from resume_tailor.application.job_discovery.preferences import (
 from resume_tailor.application.job_discovery.queries import (
     GetCurrentJobSearchPreferencesService,
     GetDiscoveryRunService,
+    GetJobFeedService,
 )
 from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
 from resume_tailor.application.job_discovery.saved import (
     CheckSavedJobAvailabilityService,
     SaveJobService,
 )
+from resume_tailor.application.job_discovery.source_health import SourceHealthQueryService
+from resume_tailor.application.job_discovery.source_refresh import SourceRefreshOrchestrator
 
 
 @dataclass
@@ -27,8 +30,11 @@ class JobDiscoveryServiceBundle:
     confirm_preferences: ConfirmJobSearchPreferencesService | None = None
     current_preferences: GetCurrentJobSearchPreferencesService | None = None
     runs: GetDiscoveryRunService | None = None
+    feed_queries: GetJobFeedService | None = None
     save: SaveJobService | None = None
     check_saved_availability: CheckSavedJobAvailabilityService | None = None
+    source_health: SourceHealthQueryService | None = None
+    source_refresh: SourceRefreshOrchestrator | None = None
     close_resources: Callable[[], None] | None = None
 
     def close(self) -> None:

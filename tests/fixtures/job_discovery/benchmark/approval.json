@@ -1,0 +1,30 @@
+{
+  "benchmark_status": "partially_approved",
+  "calibration": {
+    "approved": true,
+    "approval_status": "approved",
+    "approved_at": "2026-07-23",
+    "reviewer_authority": "project owner",
+    "decision": "approved as proposed",
+    "labels_frozen": true,
+    "approved_checksum": "962175c951442ce98637eec5b7f22b5fcf5694b1553c007200f9ce526950308f"
+  },
+  "validation": {
+    "approved": true,
+    "approval_status": "approved",
+    "proposal_status": "proposed",
+    "approved_on": "2026-07-23",
+    "reviewer_authority": "project_owner",
+    "decision": "approved_as_proposed",
+    "labels_frozen": true,
+    "approved_checksum": "4b5b70d577420c21d993aebec436e66be93aecdf909465a5865b8b3a18d14768",
+    "semantic_decision_digest": "0746c98f278cc7a1988a9e4e5d3da0184223f4f5b95005f46872bb6ddc5b5ba7",
+    "reviewer_decision": "",
+    "reviewer_notes": ""
+  },
+  "locked": {
+    "approved": false,
+    "approval_status": "unapproved",
+    "sealed": true
+  }
+}

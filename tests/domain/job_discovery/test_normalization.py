@@ -63,6 +63,8 @@ def test_normalization_is_deterministic_and_preserves_provenance() -> None:
     assert normalized.official_url == "https://boards.greenhouse.io/acme/jobs/123"
     assert normalized.canonical_description_hash
     assert normalized.source.source_id == "acme-board"
+    assert normalized.source_provenance[0].source_id == "acme-board"
+    assert normalized.source_provenance[0].external_job_id == "123"
     assert normalized.requisition_id == "REQ-123"
     assert record.model_dump(mode="python") == before
 

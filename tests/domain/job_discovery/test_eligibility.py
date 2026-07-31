@@ -240,6 +240,103 @@ def test_degree_and_graduation_conflicts_are_hard_gates_when_profile_facts_are_k
     assert EligibilityReasonCode.GRADUATION_CONFLICT in graduation_conflict.reasons
 
 
+def test_sponsorship_available_unavailable_and_unstated_preserve_authority() -> None:
+    unavailable = EligibilityEvaluator().assess(
+        _job(description="No visa sponsorship available. Required Python."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(
+            id="profile-1",
+            user_id="user-1",
+            display_name="Candidate",
+            requires_sponsorship=True,
+        ),
+    )
+    unstated = EligibilityEvaluator().assess(
+        _job(description="Required Python."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(
+            id="profile-1",
+            user_id="user-1",
+            display_name="Candidate",
+            requires_sponsorship=True,
+        ),
+    )
+    available = EligibilityEvaluator().assess(
+        _job(description="Visa sponsorship is available. Required Python."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(
+            id="profile-1",
+            user_id="user-1",
+            display_name="Candidate",
+            requires_sponsorship=True,
+        ),
+    )
+
+    assert unavailable.status is EligibilityStatus.INELIGIBLE
+    assert unstated.status is EligibilityStatus.UNKNOWN
+    assert available.status is EligibilityStatus.ELIGIBLE
+
+
+def test_license_clearance_and_citizenship_authority_is_typed() -> None:
+    license_result = EligibilityEvaluator().assess(
+        _job(description="An active professional license is required."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(
+            id="profile-1",
+            user_id="user-1",
+            display_name="Candidate",
+            professional_license_status="confirmed_none",
+        ),
+    )
+    unknown_license = EligibilityEvaluator().assess(
+        _job(description="An active professional license is required."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(id="profile-1", user_id="user-1", display_name="Candidate"),
+    )
+    credential_conflict = EligibilityEvaluator().assess(
+        _job(description="US citizenship and active security clearance are required."),
+        _preferences(),
+        as_of=NOW,
+        profile=MasterProfile(
+            id="profile-1",
+            user_id="user-1",
+            display_name="Candidate",
+            authorized_work_locations=["Canada"],
+            clearance_status="confirmed_none",
+        ),
+    )
+
+    assert license_result.status is EligibilityStatus.INELIGIBLE
+    assert "eligibility:license" in license_result.conflict_references
+    assert unknown_license.status is EligibilityStatus.UNKNOWN
+    assert credential_conflict.status is EligibilityStatus.INELIGIBLE
+    assert "eligibility:citizenship" in credential_conflict.conflict_references
+    assert "eligibility:clearance" in credential_conflict.conflict_references
+
+
+def test_degree_or_equivalent_experience_remains_an_alternative() -> None:
+    profile = MasterProfile(
+        id="profile-1",
+        user_id="user-1",
+        display_name="Candidate",
+        education=[{"school": "University", "program": "General Studies"}],
+        experiences=[{"id": "experience-1", "title": "Engineer", "kind": "experience"}],
+    )
+    result = EligibilityEvaluator().assess(
+        _job(description="Bachelor's degree or equivalent experience required."),
+        _preferences(),
+        as_of=NOW,
+        profile=profile,
+    )
+
+    assert result.status is EligibilityStatus.ELIGIBLE
+
+
 def test_eligibility_is_pure_and_unknown_posting_age_is_retained() -> None:
     job = _job(posted_at=None)
     preferences = _preferences()

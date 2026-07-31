@@ -167,6 +167,18 @@ class JobDeduplicator:
                         }
                     )
                 }
+                updates["source_provenance"] = sorted(
+                    [
+                        *canonical.source_provenance,
+                        *[item for alias in aliases for item in alias.source_provenance],
+                    ],
+                    key=lambda item: (
+                        item.source_id,
+                        item.connector_type.value,
+                        item.external_job_id,
+                        item.official_url,
+                    ),
+                )
                 for field in (
                     "posted_at",
                     "source_updated_at",

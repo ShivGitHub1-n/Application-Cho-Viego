@@ -14,6 +14,16 @@ from resume_tailor.domain.job_discovery.models import (
     SupportedJobSource,
     VerificationResult,
 )
+from resume_tailor.domain.job_discovery.providers import (
+    JobSourcePage,
+    ProviderCapabilities,
+    ProviderCursor,
+)
+from resume_tailor.domain.job_discovery.queries import ProviderJobQuery
+from resume_tailor.domain.job_discovery.source_lifecycle import (
+    SourceIdentityAlias,
+    SourceRuntimeState,
+)
 
 
 class JobSourceEnvelopeError(Exception):
@@ -41,6 +51,18 @@ class PreferenceVersionConflictError(ValueError):
 
 
 class JobSourceConnector(Protocol):
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities: ...
+
+    def fetch_page(
+        self,
+        source: SupportedJobSource,
+        query: ProviderJobQuery,
+        cursor: ProviderCursor,
+        *,
+        fetched_at: datetime,
+    ) -> JobSourcePage: ...
+
+    # Compatibility for the pre-Batch-3 integration tests and live smoke.
     def fetch(
         self, source: SupportedJobSource, *, fetched_at: datetime
     ) -> JobSourceFetchResult: ...
@@ -67,11 +89,23 @@ class DiscoveredJobRepository(Protocol):
 
 
 class JobRecommendationRepository(Protocol):
-    def replace_for_run(
-        self, run_id: str, recommendations: list[JobRecommendation]
-    ) -> None: ...
+    def replace_for_run(self, run_id: str, recommendations: list[JobRecommendation]) -> None: ...
 
     def list_for_run(self, run_id: str) -> list[JobRecommendation]: ...
+
+    def list_for_feed(
+        self, user_id: str, feed_kind: str, *, include_excluded: bool = False
+    ) -> list[JobRecommendation]: ...
+
+
+class AtomicJobDiscoveryPersistence(Protocol):
+    def persist_refresh(
+        self,
+        run: DiscoveryRun,
+        jobs: list[DiscoveredJob],
+        recommendations: list[JobRecommendation],
+        aliases: list[SourceIdentityAlias] | None = None,
+    ) -> None: ...
 
 
 class SavedJobRepository(Protocol):
@@ -101,8 +135,21 @@ class SupportedJobSourceRepository(Protocol):
     def list_enabled(self) -> list[SupportedJobSource]: ...
 
 
+class SourceRuntimeStateRepository(Protocol):
+    def get(self, source_id: str) -> SourceRuntimeState | None: ...
+
+    def upsert(self, state: SourceRuntimeState) -> None: ...
+
+
+class SourceIdentityAliasRepository(Protocol):
+    def upsert(self, alias: SourceIdentityAlias) -> None: ...
+
+    def list_for_source(self, source_id: str) -> list[SourceIdentityAlias]: ...
+
+
 __all__ = [
     "DiscoveredJobRepository",
+    "AtomicJobDiscoveryPersistence",
     "DiscoveryRunRepository",
     "JobSourceAuthenticationError",
     "JobSourceAvailabilityChecker",
@@ -116,4 +163,6 @@ __all__ = [
     "JobSearchPreferencesRepository",
     "SavedJobRepository",
     "SupportedJobSourceRepository",
+    "SourceRuntimeStateRepository",
+    "SourceIdentityAliasRepository",
 ]

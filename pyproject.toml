@@ -7,6 +7,19 @@ name = "resume-tailor"
 version = "0.1.0"
 description = "Evidence-backed AI resume tailoring platform"
 requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+  "pydantic>=2.8,<3.0",
+  "pydantic-settings>=2.4,<3.0",
+  "streamlit>=1.38,<2.0",
+  "python-docx>=1.1,<2.0",
+  "reportlab>=4.2,<5.0",
+  "httpx>=0.28.1,<0.29",
+  "httpcore>=1.0.9,<1.1",
+  "playwright>=1.55,<1.56",
+  "google-genai>=1.0,<2.0",
+]
 
 [tool.ruff]
 line-length = 100
@@ -18,7 +31,7 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["gemini_integration: requires configured Gemini credentials and may incur API cost", "job_source_integration: opt-in tests that require explicitly approved live Greenhouse or Lever configuration"]
+markers = ["gemini_integration: requires configured Gemini credentials and may incur API cost", "job_source_integration: opt-in tests that require explicitly approved live Greenhouse or Lever configuration", "job_discovery_locked: explicitly authorized locked benchmark tests; never part of ordinary development runs"]
 
 [tool.mypy]
 python_version = "3.11"

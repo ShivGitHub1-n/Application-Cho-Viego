@@ -6,7 +6,9 @@ from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
     JobRecommendation,
     JobSearchPreferences,
+    RecommendationVisibility,
 )
+from resume_tailor.domain.job_discovery.queries import FeedKind as _FeedKind
 from resume_tailor.ports.job_discovery import (
     DiscoveryRunRepository,
     JobRecommendationRepository,
@@ -60,10 +62,65 @@ class GetDiscoveryRunService:
         )
 
 
+@dataclass(frozen=True)
+class JobFeedDetails:
+    feed_kind: _FeedKind
+    items: list[JobRecommendation]
+    excluded_count: int
+    run: DiscoveryRun | None = None
+
+
+class GetJobFeedService:
+    def __init__(
+        self,
+        recommendations: JobRecommendationRepository,
+        runs: DiscoveryRunRepository | None = None,
+    ) -> None:
+        self._recommendations = recommendations
+        self._runs = runs
+
+    def get(
+        self,
+        user_id: str,
+        feed_kind: _FeedKind,
+        *,
+        excluded_only: bool = False,
+    ) -> JobFeedDetails:
+        all_items = self._recommendations.list_for_feed(
+            user_id, feed_kind.value, include_excluded=True
+        )
+        excluded = [
+            item for item in all_items if item.visibility is RecommendationVisibility.EXCLUDED
+        ]
+        latest_run_id = None
+        if all_items:
+            latest_created_at = max(item.created_at for item in all_items)
+            latest_run_id = max(
+                item.run_id for item in all_items if item.created_at == latest_created_at
+            )
+            all_items = [item for item in all_items if item.run_id == latest_run_id]
+            excluded = [
+                item
+                for item in all_items
+                if item.visibility is RecommendationVisibility.EXCLUDED
+            ]
+        items = excluded if excluded_only else [
+            item for item in all_items if item.visibility is RecommendationVisibility.VISIBLE
+        ]
+        return JobFeedDetails(
+            feed_kind=feed_kind,
+            items=items,
+            excluded_count=len(excluded),
+            run=self._runs.get(latest_run_id) if self._runs and latest_run_id else None,
+        )
+
+
 __all__ = [
     "DiscoveryRunDetails",
     "DiscoveryRunNotFoundError",
     "GetCurrentJobSearchPreferencesService",
+    "GetJobFeedService",
+    "JobFeedDetails",
     "GetDiscoveryRunService",
     "PreferencesNotFoundError",
 ]

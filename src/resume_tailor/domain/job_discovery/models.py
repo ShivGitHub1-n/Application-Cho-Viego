@@ -5,8 +5,16 @@ from enum import StrEnum
 import re
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from resume_tailor.domain.job_discovery.company_sources import (
+    AuditedSourcePlan,
+    ExtractionProfileSpec,
+    FirstPartyAuditEvidence,
+    GeographicCoverage,
+    RobotsPolicy,
+    SourceMechanism,
+)
 from resume_tailor.domain.models import RoleFamily
 
 
@@ -20,6 +28,12 @@ class WorkArrangement(StrEnum):
 class ConnectorType(StrEnum):
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
+    FIRST_PARTY = "first_party"
+
+
+class FeedKind(StrEnum):
+    TAILORED = "tailored"
+    EXPLORE = "explore"
 
 
 class LeverApiRegion(StrEnum):
@@ -46,6 +60,35 @@ class MatchLabel(StrEnum):
     GOOD = "good"
     STRETCH = "stretch"
     PROVISIONAL = "provisional"
+    DONT_MATCH = "dont_match"
+
+
+class FitGrade(StrEnum):
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    WEAK = "weak"
+    DONT_MATCH = "dont_match"
+
+
+class RequirementCriticality(StrEnum):
+    CRITICAL = "critical"
+    IMPORTANT = "important"
+    SUPPORTING = "supporting"
+
+
+class EvidenceQuality(StrEnum):
+    DEMONSTRATED = "demonstrated"
+    TRANSFERABLE = "transferable"
+    REVIEWED_SKILL = "reviewed_skill"
+    COURSEWORK_CONTEXT = "coursework_context"
+    ABSENT = "absent"
+
+
+class RequirementMatchStatus(StrEnum):
+    MATCHED = "matched"
+    INSUFFICIENT = "insufficient"
+    UNRESOLVED = "unresolved"
+    ABSENT = "absent"
 
 
 class EligibilityStatus(StrEnum):
@@ -74,6 +117,11 @@ class RecommendationGroup(StrEnum):
     FALLBACK = "fallback"
 
 
+class RecommendationVisibility(StrEnum):
+    VISIBLE = "visible"
+    EXCLUDED = "excluded"
+
+
 class DiscoveryRunStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
@@ -95,6 +143,9 @@ class JobLevel(StrEnum):
     MID = "mid"
     SENIOR = "senior"
     LEAD = "lead"
+    STAFF = "staff"
+    PRINCIPAL = "principal"
+    DIRECTOR = "director"
     UNKNOWN = "unknown"
 
 
@@ -179,6 +230,7 @@ class ProfileCapabilityEvidence(BaseModel):
     source_id: str
     source_text: str
     demonstrated: bool
+    evidence_quality: EvidenceQuality | None = None
 
 
 class ProfileCapabilityIndex(BaseModel):
@@ -211,6 +263,10 @@ class JobRequirement(BaseModel):
     source_text: str
     source_start: int
     source_end: int
+    requirement_id: str | None = None
+    criticality: RequirementCriticality | None = None
+    aliases: list[str] = Field(default_factory=list)
+    evidence_references: list[str] = Field(default_factory=list)
 
 
 class JobRequirementSignals(BaseModel):
@@ -220,6 +276,7 @@ class JobRequirementSignals(BaseModel):
     responsibilities: list[str] = Field(default_factory=list)
     experience_years: int | None = None
     degree_requirements: list[str] = Field(default_factory=list)
+    degree_equivalent_experience: bool = False
     graduation_requirements: list[str] = Field(default_factory=list)
     certification_requirements: list[str] = Field(default_factory=list)
     work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
@@ -232,6 +289,8 @@ class JobRequirementSignals(BaseModel):
 
 
 class SupportedJobSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     source_id: str
     connector_type: ConnectorType
     company_name: str
@@ -239,6 +298,44 @@ class SupportedJobSource(BaseModel):
     enabled: bool
     official_base_url: AnyHttpUrl
     lever_api_region: LeverApiRegion | None = None
+    audit_version: str | None = None
+    registry_plan_hash: str | None = None
+    extraction_profile_hash: str | None = None
+    priority_tier: int = Field(default=99, ge=1)
+    toronto_gta_relevance: bool = False
+    crawl_cadence_minutes: int = Field(default=1440, ge=1)
+
+
+class FirstPartySource(BaseModel):
+    """Immutable compiled runtime definition for an approved employer source."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str
+    company_id: str
+    company_name: str
+    canonical_domain: str
+    connector_type: Literal[ConnectorType.FIRST_PARTY] = ConnectorType.FIRST_PARTY
+    mechanism: Literal[SourceMechanism.FIRST_PARTY] = SourceMechanism.FIRST_PARTY
+    enabled: bool = True
+    official_base_url: AnyHttpUrl
+    allowed_hosts: tuple[str, ...]
+    redirect_hosts: tuple[str, ...] = ()
+    priority_tier: int = 99
+    geographic_coverage: GeographicCoverage = Field(default_factory=GeographicCoverage)
+    robots_policy: RobotsPolicy = RobotsPolicy.UNKNOWN
+    browser_rendering_allowed: bool = False
+    crawl_cadence_minutes: int = Field(default=1440, ge=1)
+    provider_configuration: None = None
+    source_plan: AuditedSourcePlan
+    first_party_audit: FirstPartyAuditEvidence | None = None
+    extraction_profile: ExtractionProfileSpec | None = None
+    audit_version: str
+    registry_plan_hash: str
+    extraction_profile_hash: str
+
+
+SourceDefinition = SupportedJobSource | FirstPartySource
 
 
 class SourceJobRecord(BaseModel):
@@ -247,12 +344,24 @@ class SourceJobRecord(BaseModel):
     company_name: str
     description: str
     official_url: AnyHttpUrl
+    application_url: AnyHttpUrl | None = None
     location_raw: str | None = None
     work_arrangement: WorkArrangement = WorkArrangement.UNKNOWN
     posted_at: datetime | None = None
     source_updated_at: datetime | None = None
     application_deadline: datetime | None = None
     source_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceProvenance(BaseModel):
+    source_id: str
+    connector_type: ConnectorType
+    external_job_id: str
+    official_url: str
+    fetched_at: datetime
+    page_cursor: str | None = None
+    source_updated_at: datetime | None = None
+    posted_at: datetime | None = None
 
 
 class SourceRecordWarningCode(StrEnum):
@@ -285,12 +394,13 @@ class VerificationResult(BaseModel):
 
 class DiscoveredJob(BaseModel):
     id: str
-    source: SupportedJobSource
+    source: SourceDefinition
     external_job_id: str
     title: str
     company_name: str
     description: str
     official_url: str
+    application_url: str | None = None
     location: NormalizedLocation
     work_arrangement: WorkArrangement
     role_family: RoleFamily | None = None
@@ -308,6 +418,7 @@ class DiscoveredJob(BaseModel):
     normalized_company_name: str = ""
     canonical_description_hash: str = ""
     source_alias_ids: list[str] = Field(default_factory=list)
+    source_provenance: list[SourceProvenance] = Field(default_factory=list)
 
 
 class EligibilityAssessment(BaseModel):
@@ -317,6 +428,10 @@ class EligibilityAssessment(BaseModel):
     location_match: bool | None = None
     verification_confidence: VerificationConfidence
     posting_age_days: int | None = None
+    posting_references: list[str] = Field(default_factory=list)
+    profile_references: list[str] = Field(default_factory=list)
+    conflict_references: list[str] = Field(default_factory=list)
+    unresolved_facts: list[str] = Field(default_factory=list)
 
 
 class JobScoreBreakdown(BaseModel):
@@ -380,6 +495,22 @@ class JobScoreBreakdown(BaseModel):
         return converted
 
 
+    fit_grade: FitGrade | None = None
+    evaluation_policy_version: str | None = None
+    historical_label: MatchLabel | None = None
+    historical_policy: bool = False
+
+    @model_validator(mode="after")
+    def mark_legacy_records(self) -> JobScoreBreakdown:
+        if self.evaluation_policy_version is None:
+            self.evaluation_policy_version = "jobs-score-legacy-v1"
+            self.historical_label = self.label
+            self.historical_policy = True
+            if self.label is MatchLabel.PROVISIONAL:
+                self.fit_grade = None
+        return self
+
+
 class RequirementEvidenceAllocation(BaseModel):
     category: RequirementCategory
     term: str
@@ -415,6 +546,13 @@ class JobRecommendation(BaseModel):
     gaps: list[str] = Field(default_factory=list)
     rank: int
     created_at: datetime
+    evaluation_policy_version: str | None = None
+    feed_kind: FeedKind = FeedKind.TAILORED
+    visibility: RecommendationVisibility = RecommendationVisibility.VISIBLE
+    unresolved_facts: list[str] = Field(default_factory=list)
+    provisional: bool = False
+    earlier_policy: bool = False
+    legacy_payload: dict[str, Any] | None = None
 
     @field_validator("created_at")
     @classmethod
@@ -435,9 +573,7 @@ class SavedJob(BaseModel):
 
     @field_validator("saved_at", "checked_at")
     @classmethod
-    def _saved_timestamps_must_be_timezone_aware(
-        cls, value: datetime | None
-    ) -> datetime | None:
+    def _saved_timestamps_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
         if value is not None:
             _require_timezone_aware(value, "saved job timestamp")
         return value
@@ -468,12 +604,11 @@ class DiscoveryRun(BaseModel):
     model_assisted: bool = False
     model_call_count: int = 0
     error_messages: list[str] = Field(default_factory=list)
+    source_outcomes: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("started_at", "completed_at")
     @classmethod
-    def _run_timestamps_must_be_timezone_aware(
-        cls, value: datetime | None
-    ) -> datetime | None:
+    def _run_timestamps_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
         if value is not None:
             _require_timezone_aware(value, "discovery run timestamp")
         return value

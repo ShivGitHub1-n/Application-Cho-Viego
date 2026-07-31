@@ -255,6 +255,10 @@ class MasterProfile(BaseModel):
         ),
     )
     skill_normalization_decisions: list[SkillNormalizationDecision] = Field(default_factory=list)
+    authorized_work_locations: list[str] = Field(default_factory=list)
+    requires_sponsorship: bool = False
+    professional_license_status: str = "unknown"
+    clearance_status: str = "unknown"
 
     @field_validator("id", "user_id", "display_name")
     @classmethod

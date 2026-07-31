@@ -18,6 +18,12 @@ from resume_tailor.domain.job_discovery.models import (
     VerificationResult,
     VerificationStatus,
 )
+from resume_tailor.domain.job_discovery.providers import (
+    JobSourcePage,
+    ProviderCapabilities,
+    ProviderCursor,
+)
+from resume_tailor.domain.job_discovery.queries import ProviderJobQuery
 from resume_tailor.infrastructure.job_sources._common import (
     arrangement,
     build_record,
@@ -49,8 +55,35 @@ class GreenhouseConnector:
         self._api_base_url = api_base_url.rstrip("/")
         self._clock = clock or (lambda: datetime.now(UTC))
 
-    def fetch(self, source: SupportedJobSource, *, fetched_at: datetime) -> JobSourceFetchResult:
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities:
         self._validate_source(source)
+        return ProviderCapabilities(
+            connector_type=ConnectorType.GREENHOUSE,
+            supports_title_or_keyword=False,
+            supports_sector=False,
+            supports_location=False,
+            supports_work_arrangement=False,
+            supports_level=False,
+            supports_employment_type=False,
+            supports_posting_date_boundary=False,
+            supports_pagination=False,
+            supports_page_size=False,
+            supports_availability_checks=True,
+            posted_timestamp_authority="job_detail.first_published",
+            updated_timestamp_authority="job.updated_at",
+        )
+
+    def fetch_page(
+        self,
+        source: SupportedJobSource,
+        query: ProviderJobQuery,
+        cursor: ProviderCursor,
+        *,
+        fetched_at: datetime,
+    ) -> JobSourcePage:
+        self._validate_source(source)
+        if cursor.value is not None:
+            raise JobSourceEnvelopeError("Greenhouse Job Board jobs are not paginated")
         payload = request_json(
             self._client,
             self._list_url(source),
@@ -75,7 +108,22 @@ class GreenhouseConnector:
                     )
                     self._apply_detail(record, detail, warnings)
         records.sort(key=lambda item: item.external_job_id)
-        return JobSourceFetchResult(records=records, warnings=sorted_warnings(warnings))
+        return JobSourcePage(
+            source=source,
+            cursor=cursor,
+            records=records,
+            warnings=sorted_warnings(warnings),
+            has_more=False,
+        )
+
+    def fetch(self, source: SupportedJobSource, *, fetched_at: datetime) -> JobSourceFetchResult:
+        page = self.fetch_page(
+            source,
+            ProviderJobQuery(feed_kind="tailored"),
+            ProviderCursor(),
+            fetched_at=fetched_at,
+        )
+        return JobSourceFetchResult(records=page.records, warnings=page.warnings)
 
     def check(self, source: SupportedJobSource, external_job_id: str) -> VerificationResult:
         self._validate_source(source)

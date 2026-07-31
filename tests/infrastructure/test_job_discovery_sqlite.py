@@ -6,6 +6,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from resume_tailor.application.job_discovery.presentation import (
+    normalize_job_description_for_display,
+)
 from resume_tailor.domain.job_discovery.models import (
     ConnectorType,
     DiscoveredJob,
@@ -28,11 +31,9 @@ from resume_tailor.domain.job_discovery.models import (
     WorkArrangement,
 )
 from resume_tailor.domain.models import RoleFamily
-from resume_tailor.application.job_discovery.presentation import (
-    normalize_job_description_for_display,
-)
 from resume_tailor.infrastructure.job_discovery_sqlite import (
     CorruptStoredJobDiscoveryError,
+    SQLiteAtomicJobDiscoveryPersistence,
     SQLiteDiscoveredJobRepository,
     SQLiteDiscoveryRunRepository,
     SQLiteJobRecommendationRepository,
@@ -143,7 +144,7 @@ def _run(run_id: str, status: DiscoveryRunStatus = DiscoveryRunStatus.RUNNING) -
     )
 
 
-def test_schema_initialization_is_idempotent_and_has_schema_version_one(tmp_path) -> None:
+def test_schema_initialization_is_idempotent_and_has_schema_version_three(tmp_path) -> None:
     database = tmp_path / "discovery.sqlite3"
     initialize_job_discovery_database(database)
     initialize_job_discovery_database(database)
@@ -151,9 +152,7 @@ def test_schema_initialization_is_idempotent_and_has_schema_version_one(tmp_path
     with sqlite3.connect(database) as connection:
         tables = {
             row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         assert tables == {
             "job_search_preferences",
@@ -162,32 +161,71 @@ def test_schema_initialization_is_idempotent_and_has_schema_version_one(tmp_path
             "job_recommendations",
             "saved_jobs",
             "supported_job_sources",
+            "source_runtime_state",
+            "job_identity_aliases",
+            "refresh_locks",
         }
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         expected_columns = {
             "job_search_preferences": {
-                "user_id", "profile_id", "version", "payload_json", "schema_version",
-                "created_at", "confirmed_at",
+                "user_id",
+                "profile_id",
+                "version",
+                "payload_json",
+                "schema_version",
+                "created_at",
+                "confirmed_at",
             },
             "discovered_jobs": {
-                "job_id", "external_job_id", "source_id", "payload_json", "schema_version",
+                "job_id",
+                "external_job_id",
+                "source_id",
+                "payload_json",
+                "schema_version",
                 "fetched_at",
             },
             "discovery_runs": {
-                "run_id", "user_id", "profile_id", "preference_version", "status",
-                "payload_json", "started_at", "completed_at", "warning_count", "error_json",
+                "run_id",
+                "user_id",
+                "profile_id",
+                "preference_version",
+                "status",
+                "payload_json",
+                "started_at",
+                "completed_at",
+                "warning_count",
+                "error_json",
+                "source_outcomes_json",
             },
             "job_recommendations": {
-                "recommendation_id", "run_id", "job_id", "group_name", "rank",
-                "payload_json", "created_at",
+                "recommendation_id",
+                "run_id",
+                "job_id",
+                "group_name",
+                "rank",
+                "payload_json",
+                "created_at",
+                "feed_kind",
+                "visibility",
             },
             "saved_jobs": {
-                "saved_id", "user_id", "job_id", "availability", "snapshot_json",
-                "snapshot_schema_version", "saved_at", "checked_at",
+                "saved_id",
+                "user_id",
+                "job_id",
+                "availability",
+                "snapshot_json",
+                "snapshot_schema_version",
+                "saved_at",
+                "checked_at",
             },
             "supported_job_sources": {
-                "source_id", "connector_type", "company_name", "board_token",
-                "official_base_url", "lever_api_region", "enabled",
+                "source_id",
+                "connector_type",
+                "company_name",
+                "board_token",
+                "official_base_url",
+                "lever_api_region",
+                "enabled",
             },
         }
         for table, columns in expected_columns.items():
@@ -205,8 +243,11 @@ def test_schema_initialization_is_idempotent_and_has_schema_version_one(tmp_path
             "idx_discovered_jobs_source_external",
             "idx_discovery_runs_user_profile_started",
             "idx_job_recommendations_run_rank",
+            "idx_job_recommendations_feed_visibility",
             "idx_saved_jobs_user_saved",
             "idx_supported_job_sources_enabled",
+            "idx_source_runtime_due",
+            "idx_job_identity_aliases_job",
         }
 
 
@@ -360,6 +401,33 @@ def test_reading_legacy_recommendation_does_not_rewrite_database(tmp_path) -> No
     assert raw_after == raw_legacy
 
 
+def test_legacy_recommendation_remains_readable_and_is_marked_earlier_policy(tmp_path) -> None:
+    database = tmp_path / "legacy-recommendation.sqlite3"
+    repository = SQLiteJobRecommendationRepository(database)
+    current = _recommendation("run-legacy")
+    repository.replace_for_run(current.run_id, [current])
+
+    with sqlite3.connect(database) as connection:
+        payload = current.model_dump(mode="json")
+        payload.pop("feed_kind")
+        payload.pop("visibility")
+        payload["score"].pop("evaluation_policy_version")
+        connection.execute(
+            "UPDATE job_recommendations SET payload_json = ? WHERE recommendation_id = ?",
+            (json.dumps(payload), current.id),
+        )
+        connection.commit()
+
+    loaded = repository.list_for_run(current.run_id)
+
+    assert len(loaded) == 1
+    assert loaded[0].earlier_policy is True
+    assert loaded[0].legacy_payload is not None
+    assert loaded[0].score.historical_label is MatchLabel.STRONG
+    assert loaded[0].score.fit_grade is None
+    assert loaded[0].evaluation_policy_version is None
+
+
 def test_recommendation_replacement_rolls_back_complete_operation_on_failure(tmp_path) -> None:
     repository = SQLiteJobRecommendationRepository(tmp_path / "discovery.sqlite3")
     original = _recommendation("run-1", "job-1")
@@ -371,6 +439,41 @@ def test_recommendation_replacement_rolls_back_complete_operation_on_failure(tmp
         repository.replace_for_run("run-1", [duplicate, _recommendation("run-1", "job-3")])
 
     assert repository.list_for_run("run-1") == [original]
+
+
+def test_atomic_refresh_rolls_back_run_jobs_and_recommendations_together(tmp_path) -> None:
+    database = tmp_path / "atomic.sqlite3"
+    persistence = SQLiteAtomicJobDiscoveryPersistence(database)
+    recommendation = _recommendation("run-atomic")
+    duplicate_id = recommendation.model_copy(update={"job_id": "job-2"})
+
+    with pytest.raises(sqlite3.IntegrityError):
+        persistence.persist_refresh(
+            _run("run-atomic", DiscoveryRunStatus.COMPLETED),
+            [_job()],
+            [recommendation, duplicate_id],
+        )
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM discovered_jobs").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM job_recommendations").fetchone()[0] == 0
+
+
+def test_atomic_refresh_retries_same_run_without_duplicate_rows(tmp_path) -> None:
+    database = tmp_path / "idempotent.sqlite3"
+    persistence = SQLiteAtomicJobDiscoveryPersistence(database)
+    run = _run("run-idempotent", DiscoveryRunStatus.COMPLETED)
+    job = _job()
+    recommendation = _recommendation(run.id, job.id)
+
+    persistence.persist_refresh(run, [job], [recommendation])
+    persistence.persist_refresh(run, [job], [recommendation])
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM discovered_jobs").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM job_recommendations").fetchone()[0] == 1
 
 
 def test_saved_job_round_trip_and_snapshot_is_immutable(tmp_path) -> None:

@@ -185,12 +185,16 @@ warnings or explicit source errors; a transport failure is not treated as
 confirmed unavailability.
 
 The deterministic pipeline normalizes provider records, deduplicates them,
-applies eligibility rules, and calculates profile-fit scores and labels before
-persisting results. Location handling uses only the approved city, region,
-country, and work-arrangement fields; it does not geocode or calculate radius
-or distance. SQLite stores preferences, discovered jobs, runs,
-recommendations, and saved-job records through repository ports, using the
-same application database as the existing profile store.
+builds one canonical requirement set, evaluates structural eligibility and
+title-first role relevance, allocates profile evidence through a single-use
+ledger, and assigns typed fit grades before reaching the current persistence
+boundary. Explanations retain exact posting and profile authority. Location
+handling uses only the approved city, region, country, and work-arrangement
+fields; it does not geocode or calculate radius or distance. SQLite stores
+preferences, discovered jobs, runs, recommendations, and saved-job records
+through repository ports, using the same application database as the existing
+profile store. Recommendation/feed persistence uses the transactional Batch 3
+schema-version-2 migration described below.
 
 Profile fit is separate from recommendation desirability. Its occupational
 core scores demonstrated technical evidence, required responsibility and
@@ -265,3 +269,66 @@ current cover-letter implementation.
 - AI inference needs conservative policy and evidence citations to remain trustworthy.
 - Company research must respect source terms, permissions, rate limits, and clear provenance.
 - DOCX-to-PDF conversion varies by platform; production export needs a chosen conversion service or runtime.
+
+## Batch 3 job-discovery boundaries
+
+Tailored queries may carry local profile and confirmed-preference references to
+the application layer; Explore queries carry only approved sectors and
+sanitized search controls. Conversion to `ProviderJobQuery` is an explicit
+allow-list: provider payloads never contain resume text, profile evidence,
+scores, explanations, gaps, or career-interest prose. Provider capabilities
+declare pushdown support, while the retrieval service records pushed-down,
+local, unsupported, and unrequested filters. Unsupported filters never
+silently broaden a query.
+
+Retrieval is bounded by source, page, record, timeout, and retry settings. It
+protects against repeated cursors and preserves successful sources when
+another source fails. Normalization and deduplication retain source-qualified
+identity, canonical URL authority, aliases, and complete provenance
+independently of provider or page order. Every deduplicated candidate is
+evaluated by the frozen evaluator. Tailored and Explore feed ordering and
+visibility are applied after evaluation; ordinary feeds hide Don't Match and
+hard-ineligible items but report `excluded_count`, and excluded endpoints
+return retained evaluations without recomputation.
+
+Schema version 2 is the single permanent feed migration. Version-1
+recommendations remain readable as explicitly earlier-policy records, and
+saved-job snapshots remain immutable. FastAPI exposes independent Tailored and
+Explore refresh/read/excluded-feed contracts; `/job-discovery/refresh` is a
+Tailored compatibility alias. The policy is development-gate-approved but not
+locked-release-certified; the locked split remains sealed. The dedicated Jobs
+UI belongs to Batch 4.
+
+## Batch 3.5 autonomous source discovery
+
+The approved company registry compiles into immutable provider or first-party
+runtime sources. Rocket Lab is explicit `FIRST_PARTY` and uses the employer
+detail URL as stable identity. Static-first sitemap/index/detail retrieval,
+bounded JobPosting JSON-LD, and declarative HTML extraction feed the existing
+retrieval, normalization, deduplication, evaluator, and Tailored/Explore path.
+Application URLs are terminal provenance and are never fetched.
+
+Browser fallback is an injected isolated capability only after an explicit
+`browser_required` result for an audited first-party plan. Static HTTP pins
+validated destination IPs; browsers retain a DNS TOCTOU residual risk because
+the browser resolves sockets. Host/path/resource interception, isolated
+contexts, bounded requests/actions/render time, and close-on-failure bound that
+risk. The real adapter is Playwright-backed, prefers Playwright-managed
+Chromium, and otherwise locates only trusted system Chrome/Edge paths; registry
+data cannot inject executable paths, launch arguments, scripts, or environment
+variables. Schema version 3 stores runtime observations, separate content and
+source-state fingerprints, aliases, and locks without copying registry
+authority, raw HTML, credentials, or full descriptions. Broad/force refresh is
+CLI-only and source visibility is read-only health data.
+
+Production source-refresh hardening composes one fail-closed robots checker
+into static and browser first-party retrieval without network work during
+startup. The orchestrator uses sanctioned Explore queries and hands retrieved
+records to the existing normalization, frozen evaluation, feed, alias, and
+transactional SQLite persistence boundary. Runtime state stamps compiled
+audit/plan/profile identity, separate content and source-state fingerprints,
+bounded cadence/backoff, and next eligibility. A global deadline prevents new
+source starts after expiry. Static and rendered indexes consume the same
+audited declarative extraction profile; browser action limits count actual
+attempts and stop unchanged bounded load-more DOM. CLI force bypasses cadence
+only.

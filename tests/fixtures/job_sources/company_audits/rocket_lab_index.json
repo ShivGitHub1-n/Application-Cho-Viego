@@ -1,0 +1,27 @@
+{
+  "fixture_kind": "redacted_first_party_index",
+  "source_url": "https://rocketlabcorp.com/careers/positions/",
+  "authority_host": "rocketlabcorp.com",
+  "listing_path": "/careers/positions/",
+  "cards": [
+    {
+      "detail_url": "https://rocketlabcorp.com/careers/positions/software-engineer-ii-long-beach-ca-1000000001/",
+      "stable_identity": "1000000001",
+      "title": "Software Engineer II",
+      "location": "Long Beach, CA",
+      "employment_type": "Regular"
+    },
+    {
+      "detail_url": "https://rocketlabcorp.com/careers/positions/software-engineer-ii-long-beach-ca-1000000001/",
+      "stable_identity": "1000000001",
+      "title": "Software Engineer II",
+      "location": "Long Beach, CA",
+      "employment_type": "Regular"
+    }
+  ],
+  "load_more": {
+    "observed": true,
+    "termination": "no additional cards after bounded load-more action"
+  },
+  "third_party_authority_hosts": []
+}
