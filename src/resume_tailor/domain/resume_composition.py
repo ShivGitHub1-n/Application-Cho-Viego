@@ -177,6 +177,25 @@ class PageFillIterationDiagnostic(BaseModel):
     reason: str
 
 
+class PageFitPortfolioDiagnostic(BaseModel):
+    """Safe snapshot of one bounded page-fit finalist and its measured outcome."""
+
+    candidate_id: str
+    finalist_rank: int = Field(ge=1)
+    selected_entry_ids: list[str] = Field(default_factory=list)
+    selected_bullet_ids: list[str] = Field(default_factory=list)
+    selected_skill_category_ids: list[str] = Field(default_factory=list)
+    quality_score: float
+    coverage_count: int = Field(ge=0)
+    estimated_utilization_ratio: float = Field(ge=0)
+    measured_utilization_ratio: float = Field(ge=0)
+    page_count: int | None = Field(default=None, ge=0)
+    exact: bool
+    fits_one_page: bool
+    provider: str
+    selected: bool = False
+
+
 class EntryBulletSelectionDiagnostic(BaseModel):
     entry_id: str
     entry_kind: str
@@ -318,6 +337,7 @@ class ResumeCompositionDiagnostic(BaseModel):
     unused_reviewed_bullet_ids: list[str] = Field(default_factory=list)
     unused_relevant_skill_category_ids: list[str] = Field(default_factory=list)
     page_fill_iterations: list[PageFillIterationDiagnostic] = Field(default_factory=list)
+    page_fit_finalists: list[PageFitPortfolioDiagnostic] = Field(default_factory=list)
     overflow_rollbacks: int = Field(default=0, ge=0)
     final_utilization_ratio: float = Field(ge=0)
     best_estimated_utilization_ratio: float = Field(ge=0)
@@ -379,6 +399,7 @@ __all__ = [
     "ExperienceSingleBulletExceptionReason",
     "LineFitVerificationStatus",
     "PageFillIterationDiagnostic",
+    "PageFitPortfolioDiagnostic",
     "PageFitEvaluation",
     "PageVerificationStatus",
     "PortfolioMarginalComparisonDiagnostic",

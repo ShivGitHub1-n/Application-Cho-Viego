@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from hashlib import sha256
+from itertools import groupby
 from typing import cast
 
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
@@ -70,6 +71,7 @@ from resume_tailor.domain.resume_composition import (
     ExperienceSingleBulletExceptionReason,
     PageFillIterationDiagnostic,
     PageFitEvaluation,
+    PageFitPortfolioDiagnostic,
     PageVerificationStatus,
     PortfolioMarginalComparisonDiagnostic,
     PreferredDensityStatus,
@@ -266,6 +268,9 @@ class _EvaluatedState:
     evaluation: PageFitEvaluation
     quality: float
     coverage_count: int
+    direct_requirement_count: int
+    direct_bullet_count: int
+    low_context_nondirect_count: int
     three_line_bullet_count: int
     substantive_project_count: int
 
@@ -456,6 +461,26 @@ class DeterministicResumeComposer:
                     skill_by_id,
                 ),
                 coverage_count=len(coverage),
+                direct_requirement_count=len(
+                    {
+                        requirement_id
+                        for evidence_id in state.bullet_ids
+                        for requirement_id in bullet_by_id[
+                            evidence_id
+                        ].direct_requirement_ids
+                    }
+                ),
+                direct_bullet_count=sum(
+                    bullet_by_id[evidence_id].relationship
+                    is EvidenceRelationship.DIRECT
+                    for evidence_id in state.bullet_ids
+                ),
+                low_context_nondirect_count=sum(
+                    bullet_by_id[evidence_id].relationship
+                    is not EvidenceRelationship.DIRECT
+                    and bullet_by_id[evidence_id].contextual_relevance < 40.0
+                    for evidence_id in state.bullet_ids
+                ),
                 three_line_bullet_count=sum(
                     bullet_by_id[evidence_id].line_fit.three_line_risk
                     for evidence_id in state.bullet_ids
@@ -530,8 +555,8 @@ class DeterministicResumeComposer:
                         for skill in candidate.category.skills
                     )
                 ]
-                credible_skill_ids = [
-                    item.category_id
+                credible_skills = [
+                    item
                     for item in skills
                     if item.relationship
                     in {
@@ -541,7 +566,17 @@ class DeterministicResumeComposer:
                     }
                     or item.category_id in supported_skills
                     or item.supported_skill_ids
-                ][: min(3, constraints.max_skill_lines)]
+                ]
+                skill_seed_limit = min(3, constraints.max_skill_lines)
+                if (
+                    constraints.max_skill_lines >= 4
+                    and len(credible_skills) >= 4
+                    and credible_skills[3].one_skill_exception_reason is not None
+                ):
+                    skill_seed_limit = 4
+                credible_skill_ids = [
+                    item.category_id for item in credible_skills[:skill_seed_limit]
+                ]
                 seed_skill_counts = list(dict.fromkeys([len(credible_skill_ids), 0]))
                 for skill_count in seed_skill_counts:
                     skill_ids = frozenset(credible_skill_ids[:skill_count])
@@ -991,6 +1026,9 @@ class DeterministicResumeComposer:
                 finalists.append(sparsest_fitting)
 
         final = ordered_fitting[0]
+        finalist_evaluations = {
+            item.state.key: item.evaluation for item in finalists
+        }
         exact_provider_available = attempt_exact_final
         exact_one_page_found = False
         last_exact_candidate: _EvaluatedState | None = None
@@ -1013,6 +1051,17 @@ class DeterministicResumeComposer:
                 if callable(batch_method)
                 else [None] * len(finalists)
             )
+            finalist_evaluations.update(
+                {
+                    finalist.state.key: batch_evaluation
+                    for finalist, batch_evaluation in zip(
+                        finalists,
+                        batch_evaluations,
+                        strict=True,
+                    )
+                    if batch_evaluation is not None
+                }
+            )
             for finalist_index, (finalist, batch_evaluation) in enumerate(
                 zip(finalists, batch_evaluations, strict=True),
                 start=1,
@@ -1027,6 +1076,7 @@ class DeterministicResumeComposer:
                         batch_evaluation,
                     ),
                 )
+                finalist_evaluations[finalist.state.key] = exact_candidate.evaluation
                 if not exact_candidate.evaluation.exact:
                     exact_provider_available = False
                     break
@@ -1143,6 +1193,35 @@ class DeterministicResumeComposer:
             and not (final_bound_excluded_sources)
         )
         outcome, reason = self._outcome(final, additional_evidence_unavailable)
+        page_fit_finalists = [
+            PageFitPortfolioDiagnostic(
+                candidate_id=(
+                    "page-fit-finalist:"
+                    + sha256(repr(item.state.key).encode("utf-8")).hexdigest()[:16]
+                ),
+                finalist_rank=index,
+                selected_entry_ids=sorted(
+                    {
+                        bullet_by_id[evidence_id].entry_id
+                        for evidence_id in item.state.bullet_ids
+                    }
+                ),
+                selected_bullet_ids=sorted(item.state.bullet_ids),
+                selected_skill_category_ids=sorted(item.state.skill_category_ids),
+                quality_score=item.quality,
+                coverage_count=item.coverage_count,
+                estimated_utilization_ratio=item.evaluation.utilization_ratio,
+                measured_utilization_ratio=finalist_evaluations[
+                    item.state.key
+                ].utilization_ratio,
+                page_count=finalist_evaluations[item.state.key].page_count,
+                exact=finalist_evaluations[item.state.key].exact,
+                fits_one_page=finalist_evaluations[item.state.key].fits_one_page,
+                provider=finalist_evaluations[item.state.key].provider,
+                selected=item.state.key == final.state.key,
+            )
+            for index, item in enumerate(finalists, start=1)
+        ]
         diagnostic = self._diagnostic(
             final,
             profile,
@@ -1171,6 +1250,7 @@ class DeterministicResumeComposer:
             additional_evidence_unavailable=additional_evidence_unavailable,
             outcome=outcome,
             reason=reason,
+            page_fit_finalists=page_fit_finalists,
             baseline_selected_entry_ids=(
                 {
                     *baseline.composition_diagnostic.selected_experience_ids,
@@ -2194,6 +2274,12 @@ class DeterministicResumeComposer:
             )
             if candidate.entry_kind is EntityKind.PROJECT and not opens_entry and depth == 1:
                 coherence_bonus += 9.0
+                if (
+                    candidate.relationship
+                    in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
+                    and candidate.contextual_relevance >= 40.0
+                ):
+                    coherence_bonus += 18.0
             if (
                 candidate.entry_kind is EntityKind.PROJECT
                 and opens_entry
@@ -2260,7 +2346,10 @@ class DeterministicResumeComposer:
                 penalty,
             )
             marginal = (skill_candidate.score * 0.52) - penalty
-            if len(skill_candidate.category.skills) == 1:
+            if (
+                len(skill_candidate.category.skills) == 1
+                and skill_candidate.one_skill_exception_reason is None
+            ):
                 penalty += 12.0
                 marginal -= 12.0
             if marginal < self._minimum_marginal_score:
@@ -2677,9 +2766,37 @@ class DeterministicResumeComposer:
             bullet.entry_id for bullet in bullets if bullet.entry_kind is EntityKind.PROJECT
         )
         credible_project_ids = self._credible_project_ids(list(bullet_by_id.values()))
+        central_project_ids = {
+            entry_id
+            for entry_id, candidates in groupby(
+                sorted(
+                    (
+                        bullet
+                        for bullet in bullet_by_id.values()
+                        if bullet.entry_kind is EntityKind.PROJECT
+                    ),
+                    key=lambda bullet: bullet.entry_id,
+                ),
+                key=lambda bullet: bullet.entry_id,
+            )
+            if len(
+                [
+                    candidate
+                    for candidate in candidates
+                    if candidate.relationship
+                    in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
+                    and candidate.contextual_relevance >= 40.0
+                ]
+            )
+            >= 2
+        }
         project_count = len(project_bullet_counts)
         substantive_project_count = sum(count >= 2 for count in project_bullet_counts.values())
         sparse_project_count = sum(count == 1 for count in project_bullet_counts.values())
+        sparse_central_project_count = sum(
+            count == 1 and entry_id in central_project_ids
+            for entry_id, count in project_bullet_counts.items()
+        )
         project_depth_adjustment = (
             16.0 + max(0, substantive_project_count - 1) * 4.0
             if substantive_project_count
@@ -2690,7 +2807,9 @@ class DeterministicResumeComposer:
             else 0.0
         )
         sparse_skill_row_count = sum(
-            len(skill_by_id[item].category.skills) == 1 for item in state.skill_category_ids
+            len(skill_by_id[item].category.skills) == 1
+            and skill_by_id[item].one_skill_exception_reason is None
+            for item in state.skill_category_ids
         )
         return round(
             experience_package_score
@@ -2702,6 +2821,7 @@ class DeterministicResumeComposer:
             + direct_requirement_adjustment
             + project_depth_adjustment
             - (sparse_project_count * 12.0)
+            - (sparse_central_project_count * 10.0)
             + (unique_coverage * 7.0)
             - (repeated_coverage * 6.0)
             - (sparse_skill_row_count * 12.0)
@@ -2720,6 +2840,10 @@ class DeterministicResumeComposer:
         ordered = sorted(
             states,
             key=lambda item: (
+                -item.direct_requirement_count,
+                -min(8, item.direct_bullet_count),
+                -item.substantive_project_count,
+                item.low_context_nondirect_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
                 -item.quality,
@@ -2738,6 +2862,10 @@ class DeterministicResumeComposer:
         ordered = sorted(
             unique.values(),
             key=lambda item: (
+                -item.direct_requirement_count,
+                -min(8, item.direct_bullet_count),
+                -item.substantive_project_count,
+                item.low_context_nondirect_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
                 -item.coverage_count,
@@ -2943,6 +3071,7 @@ class DeterministicResumeComposer:
         additional_evidence_unavailable: bool,
         outcome: CompositionOutcome,
         reason: str,
+        page_fit_finalists: list[PageFitPortfolioDiagnostic],
         baseline_selected_entry_ids: set[str] | None,
     ) -> ResumeCompositionDiagnostic:
         selected_bullets = {
@@ -4168,6 +4297,7 @@ class DeterministicResumeComposer:
                 if candidate.category_id not in final.state.skill_category_ids
             ],
             page_fill_iterations=iterations,
+            page_fit_finalists=page_fit_finalists,
             overflow_rollbacks=sum(item.overflow for item in iterations),
             final_utilization_ratio=final.evaluation.utilization_ratio,
             best_estimated_utilization_ratio=best_estimated_utilization,

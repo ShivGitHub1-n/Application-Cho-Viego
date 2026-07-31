@@ -282,6 +282,17 @@ def _build_and_store_resume_artifact(
         # therefore leaves the previous artifact and its bytes untouched.
         st.session_state["generated_resume_artifact"] = artifact_to_store
         st.session_state["resume"] = artifact_to_store.final_resume
+        if artifact_to_store.composition_diagnostic is not None:
+            st.session_state["resume_decision_trace"] = service.resume_decision_trace(
+                artifact_to_store,
+                profile,
+                plan.posting,
+                plan,
+                profile_source="application_profile_repository",
+                posting_source="streamlit_job_intake",
+            )
+        else:
+            st.session_state.pop("resume_decision_trace", None)
         st.session_state[GENERATED_RESUME_APPROVED_CLAIMS_KEY] = set(
             approved_claim_ids
         )

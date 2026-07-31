@@ -2,6 +2,10 @@ from collections.abc import Callable
 from datetime import datetime
 
 from resume_tailor.application.cover_letter import CoverLetterService
+from resume_tailor.application.decision_trace import (
+    ResumeDecisionTrace,
+    build_resume_decision_trace,
+)
 from resume_tailor.application.generated_artifact import (
     ResumeGenerationConfiguration,
     artifact_fingerprint,
@@ -410,6 +414,27 @@ class TailorResumeService:
     ) -> str:
         return artifact_fingerprint(
             self.artifact_fingerprint_inputs(plan, profile, approved_claim_ids)
+        )
+
+    def resume_decision_trace(
+        self,
+        artifact: GeneratedResumeArtifact,
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan,
+        *,
+        profile_source: str = "application_profile_repository",
+        posting_source: str = "job_intake",
+    ) -> ResumeDecisionTrace:
+        """Expose already-computed sanitized decisions for parity diagnostics."""
+
+        return build_resume_decision_trace(
+            artifact,
+            profile,
+            posting,
+            plan,
+            profile_source=profile_source,
+            posting_source=posting_source,
         )
 
     def build_generated_artifact(

@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterator
 from hashlib import sha256
 from pathlib import Path
+from time import perf_counter
 
 import pytest
 from docx import Document
@@ -496,12 +497,20 @@ def test_mixed_posting_selects_complementary_cross_disciplinary_evidence(
     diagnostic = resume.composition_diagnostic
 
     assert diagnostic is not None
-    assert {"firmware-intern", "cloud-intern"}.issubset(diagnostic.selected_experience_ids)
+    assert {
+        "firmware-intern",
+        "mechanical-team",
+        "controls-test-coop",
+    }.issubset(diagnostic.selected_experience_ids)
     assert "rover-controller" in diagnostic.selected_project_ids
     assert any(
         evidence_id.startswith("firmware-") for evidence_id in diagnostic.selected_bullet_ids
     )
-    assert any(evidence_id.startswith("cloud-") for evidence_id in diagnostic.selected_bullet_ids)
+    assert any(
+        evidence_id.startswith("controls-")
+        for evidence_id in diagnostic.selected_bullet_ids
+    )
+    assert "cloud-intern" not in diagnostic.selected_experience_ids
     assert {
         "mechanical-cad",
         "mechanical-prototype",
@@ -520,8 +529,8 @@ def test_mixed_posting_selects_complementary_cross_disciplinary_evidence(
     assert rover_mechanical.line_fit.awkward_wrap_risk is True
     assert rover_mechanical.line_fit.future_rewrite_recommended is True
     assert diagnostic.utilization_target_reached is False
-    assert len(diagnostic.selected_skill_category_ids) == 3
-    assert diagnostic.final_utilization_ratio == pytest.approx(0.8152815013404826)
+    assert len(diagnostic.selected_skill_category_ids) == 4
+    assert diagnostic.final_utilization_ratio == pytest.approx(0.8110589812332439)
 
 
 def test_sparse_profile_reports_insufficient_evidence_without_invention() -> None:
@@ -611,6 +620,185 @@ def test_redundant_bullets_are_suppressed_in_favor_of_distinct_coverage(
     assert "duplicate" in (duplicate_diagnostic.exclusion_reason or "")
     assert duplicate_diagnostic.redundancy_penalty > 0
     assert "firmware-hil-test" in selected
+
+
+def test_direct_hardware_projects_displace_low_context_software_volume() -> None:
+    profile = _synthetic_profile(
+        experiences=[
+            {"id": "controls-role", "title": "Controls Engineer", "kind": "experience"},
+            {"id": "sensor-role", "title": "Sensor Engineer", "kind": "experience"},
+            {"id": "data-role", "title": "Data Intern", "kind": "experience"},
+            {"id": "workflow-role", "title": "Workflow Intern", "kind": "experience"},
+        ],
+        projects=[
+            {"id": "actuator-project", "title": "Actuator Prototype", "kind": "project"},
+            {"id": "safety-project", "title": "Safety Controller", "kind": "project"},
+        ],
+        evidence=[
+            {
+                "id": "controls-interface",
+                "entity_id": "controls-role",
+                "source_text": (
+                    "Integrated C++ firmware with STM32 actuator drivers and CAN interfaces."
+                ),
+            },
+            {
+                "id": "controls-test",
+                "entity_id": "controls-role",
+                "source_text": "Troubleshot actuator wiring and validated embedded control timing.",
+            },
+            {
+                "id": "sensor-harness",
+                "entity_id": "sensor-role",
+                "source_text": (
+                    "Designed sensor architecture and wiring harnesses for physical "
+                    "prototypes."
+                ),
+            },
+            {
+                "id": "sensor-cad",
+                "entity_id": "sensor-role",
+                "source_text": (
+                    "Built CAD assemblies and documented hardware integration requirements."
+                ),
+            },
+            *[
+                {
+                    "id": f"data-volume-{index}",
+                    "entity_id": "data-role",
+                    "source_text": "Processed distributor sales data with Python and Pandas.",
+                }
+                for index in range(6)
+            ],
+            *[
+                {
+                    "id": f"workflow-volume-{index}",
+                    "entity_id": "workflow-role",
+                    "source_text": (
+                        "Configured multi-agent reporting workflows for policy analysis."
+                    ),
+                }
+                for index in range(6)
+            ],
+            {
+                "id": "actuator-design",
+                "entity_id": "actuator-project",
+                "source_text": (
+                    "Designed actuator gearing, encoder interfaces, and mechanical linkages."
+                ),
+            },
+            {
+                "id": "actuator-build",
+                "entity_id": "actuator-project",
+                "source_text": (
+                    "Built and tested the actuator assembly in SolidWorks and on hardware."
+                ),
+            },
+            {
+                "id": "safety-circuit",
+                "entity_id": "safety-project",
+                "source_text": (
+                    "Built a sensor-triggered controller with comparator and timer circuitry."
+                ),
+            },
+            {
+                "id": "safety-integration",
+                "entity_id": "safety-project",
+                "source_text": (
+                    "Integrated the motor driver, soldered wiring, and tested the physical "
+                    "prototype."
+                ),
+            },
+        ],
+    )
+    posting = JobPosting(
+        id="hardware-integration-posting",
+        title="Hardware Integration Engineer",
+        description=(
+            "Integrate sensors, STM32 microcontrollers, C++ firmware, actuator drivers, "
+            "wiring, CAD assemblies, physical prototypes, testing, and troubleshooting."
+        ),
+    )
+
+    resume = _compose_with_bounds(profile, posting, CompositionSearchBounds())
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert {"controls-role", "sensor-role"} <= set(diagnostic.selected_experience_ids)
+    assert {"actuator-project", "safety-project"} <= set(diagnostic.selected_project_ids)
+    assert all(
+        diagnostic.bullet_counts[project_id] >= 2
+        for project_id in ("actuator-project", "safety-project")
+    )
+    assert not {"data-role", "workflow-role"} & set(diagnostic.selected_experience_ids)
+    assert all(count <= 6 for count in diagnostic.bullet_counts.values())
+
+
+def test_expanded_complementary_volume_stays_bounded_and_nonredundant() -> None:
+    direct_concepts = (
+        "Integrated STM32 firmware with sensor interfaces.",
+        "Designed actuator wiring and embedded control interfaces.",
+        "Built physical hardware prototypes and mechanical assemblies.",
+        "Troubleshot integration faults through repeatable hardware testing.",
+    )
+    direct = [
+        (
+            f"direct-{entry}-{index}",
+            entry,
+            direct_concepts[index % len(direct_concepts)],
+        )
+        for entry in ("controls", "integration")
+        for index in range(12)
+    ]
+    weak = [
+        (
+            f"weak-{entry}-{index}",
+            entry,
+            "Processed repeated sales records with Python and Pandas reporting workflows.",
+        )
+        for entry in ("analytics", "automation")
+        for index in range(12)
+    ]
+    profile = _synthetic_profile(
+        experiences=[
+            {"id": entry, "title": "Engineering Contributor", "kind": "experience"}
+            for entry in ("controls", "integration", "analytics", "automation")
+        ],
+        projects=[],
+        evidence=[
+            {"id": evidence_id, "entity_id": entry, "source_text": text}
+            for evidence_id, entry, text in [*direct, *weak]
+        ],
+    )
+    posting = JobPosting(
+        id="expanded-hardware-posting",
+        title="Embedded Hardware Engineer",
+        description=(
+            "Integrate STM32 sensors, actuator wiring, embedded interfaces, physical "
+            "hardware, testing, and troubleshooting."
+        ),
+    )
+    bounds = CompositionSearchBounds(
+        maximum_estimated_page_evaluations=48,
+        maximum_expansion_operations=160,
+        maximum_ranked_bullets=24,
+    )
+
+    started = perf_counter()
+    resume = _compose_with_bounds(profile, posting, bounds)
+    elapsed = perf_counter() - started
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert set(diagnostic.selected_experience_ids)
+    assert set(diagnostic.selected_experience_ids) <= {"controls", "integration"}
+    assert not {"analytics", "automation"} & set(diagnostic.selected_experience_ids)
+    assert all(count <= 6 for count in diagnostic.bullet_counts.values())
+    assert diagnostic.estimated_page_evaluations <= 48
+    assert diagnostic.expansion_operations <= 160
+    assert elapsed < 10
+    selected_texts = [bullet.text.casefold() for bullet in _output_bullets(resume)]
+    assert len(selected_texts) == len(set(selected_texts))
 
 
 def test_selecting_entry_does_not_automatically_select_redundant_bullets() -> None:
