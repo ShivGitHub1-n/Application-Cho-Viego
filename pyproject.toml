@@ -18,7 +18,7 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["gemini_integration: requires configured Gemini credentials and may incur API cost", "job_source_integration: opt-in tests that require explicitly approved live Greenhouse or Lever configuration"]
+markers = ["gemini_integration: requires configured Gemini credentials and may incur API cost", "job_source_integration: opt-in tests that require explicitly approved live Greenhouse or Lever configuration", "job_discovery_locked: explicitly authorized locked benchmark tests; never part of ordinary development runs"]
 
 [tool.mypy]
 python_version = "3.11"
