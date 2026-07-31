@@ -12,6 +12,7 @@ from resume_tailor.application.job_discovery.preferences import (
 from resume_tailor.application.job_discovery.queries import (
     GetCurrentJobSearchPreferencesService,
     GetDiscoveryRunService,
+    GetJobFeedService,
 )
 from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
 from resume_tailor.application.job_discovery.saved import (
@@ -27,6 +28,7 @@ class JobDiscoveryServiceBundle:
     confirm_preferences: ConfirmJobSearchPreferencesService | None = None
     current_preferences: GetCurrentJobSearchPreferencesService | None = None
     runs: GetDiscoveryRunService | None = None
+    feed_queries: GetJobFeedService | None = None
     save: SaveJobService | None = None
     check_saved_availability: CheckSavedJobAvailabilityService | None = None
     close_resources: Callable[[], None] | None = None

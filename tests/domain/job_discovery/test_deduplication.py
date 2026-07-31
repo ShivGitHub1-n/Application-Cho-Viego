@@ -149,6 +149,26 @@ def test_same_external_id_with_conflicting_location_or_description_stays_distinc
     assert len(result.jobs) == 2
 
 
+def test_cross_source_aliases_retain_complete_provenance() -> None:
+    first = _job(external_job_id="gh-1", source_id="greenhouse-board")
+    second = _job(
+        external_job_id="lever-1",
+        source_id="lever-board",
+        url=first.official_url,
+    )
+
+    forward = deduplicate_jobs([first, second])
+    reverse = deduplicate_jobs([second, first])
+
+    assert forward == reverse
+    canonical = forward.jobs[0]
+    assert {item.source_id for item in canonical.source_provenance} == {
+        "greenhouse-board",
+        "lever-board",
+    }
+    assert {item.id for item in forward.groups[0].aliases} == {second.id}
+
+
 def test_similar_titles_with_different_requisitions_or_descriptions_stay_distinct() -> None:
     first = _job(external_job_id="1", requisition_id="REQ-1", description="Build Python APIs.")
     second = _job(

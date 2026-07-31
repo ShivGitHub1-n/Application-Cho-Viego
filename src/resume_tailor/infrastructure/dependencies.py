@@ -9,6 +9,7 @@ from resume_tailor.application.job_discovery.preferences import SuggestJobSearch
 from resume_tailor.application.job_discovery.queries import (
     GetCurrentJobSearchPreferencesService,
     GetDiscoveryRunService,
+    GetJobFeedService,
 )
 from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
 from resume_tailor.application.job_discovery.saved import (
@@ -24,6 +25,7 @@ from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
 from resume_tailor.infrastructure.job_discovery_sqlite import (
+    SQLiteAtomicJobDiscoveryPersistence,
     SQLiteDiscoveredJobRepository,
     SQLiteDiscoveryRunRepository,
     SQLiteJobRecommendationRepository,
@@ -96,6 +98,7 @@ def create_job_discovery_services(
     run_repository = SQLiteDiscoveryRunRepository(database)
     saved_job_repository = SQLiteSavedJobRepository(database)
     source_repository = SQLiteSupportedJobSourceRepository(database)
+    atomic_persistence = SQLiteAtomicJobDiscoveryPersistence(database)
 
     registry_configuration = resolved_settings.job_discovery_source_registry_path
     configured_sources = (
@@ -139,6 +142,7 @@ def create_job_discovery_services(
             discovered_jobs=job_repository,
             recommendations=recommendation_repository,
             runs=run_repository,
+            atomic_persistence=atomic_persistence,
         ),
         confirm_preferences=ConfirmJobSearchPreferencesService(
             profiles,
@@ -146,6 +150,7 @@ def create_job_discovery_services(
         ),
         current_preferences=GetCurrentJobSearchPreferencesService(preference_repository),
         runs=GetDiscoveryRunService(run_repository, recommendation_repository),
+        feed_queries=GetJobFeedService(recommendation_repository, run_repository),
         save=SaveJobService(job_repository, saved_job_repository),
         check_saved_availability=CheckSavedJobAvailabilityService(
             saved_job_repository,

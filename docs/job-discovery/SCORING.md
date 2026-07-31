@@ -17,7 +17,7 @@ order:
 Domain modules own these concepts and invariants. The application refresh
 service orchestrates the evaluator and retains the complete evaluation
 collection. Providers, persistence, API, and Streamlit remain outside the
-policy. Permanent recommendation/feed persistence migration is Plan 3 work.
+policy. Batch 3 owns the permanent recommendation/feed persistence migration.
 
 ## Fit and eligibility semantics
 
@@ -99,10 +99,9 @@ Tailored ranking is deterministic by:
 5. stable job identity.
 
 Don't Match is the lowest substantive grade. The evaluator retains all
-evaluated jobs for the later Plan 3 migration; the current compatibility
-adapter preserves existing external top-ten behavior and filters hard
-ineligible jobs at that boundary. Interests and preferred companies do not
-add points or raise a grade.
+evaluated jobs. Batch 3 persists every evaluation; ordinary feed visibility
+filters hard-ineligible and Don't Match items without deleting them. Interests
+and preferred companies do not add points or raise a grade.
 
 Current recommendation records carry the new grade and policy version while
 remaining readable by legacy consumers. Historical Strong/Good/Stretch and
@@ -175,3 +174,26 @@ agreement, 45% pairwise micro accuracy, 60% precision@5, zero hard-ineligible
 leakage, zero critical-gap Excellent leakage, and 100% traceability. No third
 locked execution occurred. Any further locked run requires fresh project-owner
 authorization.
+
+## Batch 3 persistence and feed boundary
+
+The frozen policy remains `jobs-fit-v2.1-calibrated`, with Plan 2 thresholds,
+eligibility rules, evidence rules, ranking rules, and explanation rules
+unchanged. It is development-gate-approved but not locked-release-certified.
+Batch 3 does not recalibrate or execute the locked marker.
+
+Every retrieved candidate is evaluated and persisted, including Excellent,
+Good, Weak, Don't Match, eligible, unknown, ineligible, provisional, and
+non-provisional results. User-facing values are `Excellent`, `Good`, `Weak`,
+and `Don't Match`; the stored Don't Match value is `dont_match`. Provisional is
+independent of grade. Ordinary visibility hides Don't Match and hard-ineligible
+items while retaining them for explicit excluded-feed retrieval.
+
+Tailored ordering is substantive FitGrade, substantive diagnostic fit,
+eligibility before unknown within equivalent fit, known freshness, and stable
+identity. Explore ordering is known posted timestamp first, newest known
+timestamp, substantive fit as a tie-break, and stable identity. Numeric scores
+are diagnostics, never hiring probability and never the primary user-facing
+result. The single feed migration stores feed kind, visibility, policy version,
+rank, reasons, gaps, unresolved facts, and source outcomes. Legacy labels and
+saved snapshots are preserved without claiming a verified current grade.

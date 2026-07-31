@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resume_tailor.api.dependencies import (
     JobDiscoveryServiceBundle,
@@ -20,11 +20,15 @@ from resume_tailor.application.job_discovery.saved import (
 )
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRun,
+    DiscoveryRunStatus,
     JobRecommendation,
     JobSearchPreferences,
     JobSearchPreferenceSuggestion,
+    RecommendationVisibility,
     SavedJob,
 )
+from resume_tailor.domain.job_discovery.providers import SourceOutcome
+from resume_tailor.domain.job_discovery.queries import FeedKind
 from resume_tailor.ports.job_discovery import PreferenceVersionConflictError
 
 
@@ -45,6 +49,32 @@ class RefreshDiscoveryRequest(BaseModel):
 class RefreshDiscoveryResponse(BaseModel):
     run: DiscoveryRun
     recommendations: list[JobRecommendation]
+
+
+class TailoredFeedRefreshRequest(BaseModel):
+    user_id: str = "local-user"
+    profile_id: str
+
+
+class ExploreFeedRefreshRequest(BaseModel):
+    user_id: str = "local-user"
+    sectors: list[str]
+    profile_id: str | None = None
+    title_keywords: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    page_size: int = 100
+    max_posting_age_days: int | None = None
+
+
+class JobFeedResponse(BaseModel):
+    feed_kind: FeedKind
+    items: list[JobRecommendation]
+    excluded_count: int
+    source_outcomes: list[SourceOutcome] = Field(default_factory=list)
+    partial_success: bool = False
+    policy_version: str | None = None
+    earlier_policy: bool = False
+    run: DiscoveryRun | None = None
 
 
 class PreferencesSuggestionResponse(BaseModel):
@@ -72,6 +102,42 @@ class AvailabilityResponse(BaseModel):
 
 
 router = APIRouter(prefix="/job-discovery", tags=["job-discovery"])
+
+
+def _feed_response(
+    *,
+    feed_kind: FeedKind,
+    run: DiscoveryRun | None,
+    recommendations: list[JobRecommendation],
+    excluded_only: bool = False,
+) -> JobFeedResponse:
+    excluded = [
+        item for item in recommendations if item.visibility is RecommendationVisibility.EXCLUDED
+    ]
+    items = excluded if excluded_only else [
+        item for item in recommendations if item.visibility is RecommendationVisibility.VISIBLE
+    ]
+    policy_versions = {
+        item.evaluation_policy_version
+        for item in recommendations
+        if item.evaluation_policy_version
+    }
+    return JobFeedResponse(
+        feed_kind=feed_kind,
+        items=items,
+        excluded_count=len(excluded),
+        source_outcomes=[
+            SourceOutcome.model_validate(item)
+            for item in (run.source_outcomes if run is not None else [])
+        ],
+        partial_success=(
+            run is not None
+            and run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+        ),
+        policy_version=next(iter(policy_versions)) if len(policy_versions) == 1 else None,
+        earlier_policy=any(item.earlier_policy for item in recommendations),
+        run=run,
+    )
 
 
 @router.post(
@@ -152,6 +218,201 @@ def refresh_discovery(
         return RefreshDiscoveryResponse(
             run=details.run,
             recommendations=details.recommendations,
+        )
+    finally:
+        services.close()
+
+
+@router.post(
+    "/feeds/tailored/refresh",
+    response_model=JobFeedResponse,
+)
+def refresh_tailored_feed(
+    request: TailoredFeedRefreshRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    if services.current_preferences is None:
+        raise HTTPException(status_code=503, detail="Job-search preferences are unavailable.")
+    try:
+        try:
+            preferences = services.current_preferences.get(request.user_id, request.profile_id)
+            run = services.refresh.refresh(
+                request.user_id,
+                request.profile_id,
+                preferences,
+                started_at=datetime.now(UTC),
+            )
+            details = (
+                services.runs.get(request.user_id, run.id)
+                if services.runs is not None
+                else None
+            )
+        except ProfileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Profile was not found.") from error
+        except PreferencesNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Preferences were not found.") from error
+        recommendations = (
+            details.recommendations
+            if details is not None and not isinstance(details, DiscoveryRun)
+            else []
+        )
+        return _feed_response(
+            feed_kind=FeedKind.TAILORED,
+            run=(
+                details.run
+                if details is not None and not isinstance(details, DiscoveryRun)
+                else run
+            ),
+            recommendations=recommendations,
+        )
+    finally:
+        services.close()
+
+
+@router.post(
+    "/feeds/explore/refresh",
+    response_model=JobFeedResponse,
+)
+def refresh_explore_feed(
+    request: ExploreFeedRefreshRequest,
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    if request.profile_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A profile_id is required when Explore fit evaluation is requested.",
+        )
+    try:
+        try:
+            run = services.refresh.refresh_explore(
+                request.user_id,
+                sectors=request.sectors,
+                profile_id=request.profile_id,
+                title_keywords=request.title_keywords,
+                locations=request.locations,
+                page_size=request.page_size,
+                max_posting_age_days=request.max_posting_age_days,
+                started_at=datetime.now(UTC),
+            )
+            details = (
+                services.runs.get(request.user_id, run.id)
+                if services.runs is not None
+                else None
+            )
+        except ProfileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Profile was not found.") from error
+        recommendations = (
+            details.recommendations
+            if details is not None and not isinstance(details, DiscoveryRun)
+            else []
+        )
+        return _feed_response(
+            feed_kind=FeedKind.EXPLORE,
+            run=(
+                details.run
+                if details is not None and not isinstance(details, DiscoveryRun)
+                else run
+            ),
+            recommendations=recommendations,
+        )
+    finally:
+        services.close()
+
+
+def _get_persisted_feed(
+    feed_kind: FeedKind,
+    *,
+    excluded_only: bool,
+    user_id: str,
+    services: JobDiscoveryServiceBundle,
+) -> JobFeedResponse:
+    if services.feed_queries is None:
+        raise HTTPException(status_code=503, detail="Feed retrieval is unavailable.")
+    details = services.feed_queries.get(
+        user_id, feed_kind, excluded_only=excluded_only
+    )
+    items = details.items
+    policy_versions = {
+        item.evaluation_policy_version for item in items if item.evaluation_policy_version
+    }
+    return JobFeedResponse(
+        feed_kind=feed_kind,
+        items=items,
+        excluded_count=details.excluded_count,
+        source_outcomes=(
+            [SourceOutcome.model_validate(item) for item in details.run.source_outcomes]
+            if details.run is not None
+            else []
+        ),
+        partial_success=(
+            details.run is not None
+            and details.run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+        ),
+        policy_version=next(iter(policy_versions)) if len(policy_versions) == 1 else None,
+        earlier_policy=any(item.earlier_policy for item in items),
+        run=details.run,
+    )
+
+
+@router.get("/feeds/tailored", response_model=JobFeedResponse)
+def get_tailored_feed(
+    user_id: str = Query(default="local-user", min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    try:
+        return _get_persisted_feed(
+            FeedKind.TAILORED,
+            excluded_only=False,
+            user_id=user_id,
+            services=services,
+        )
+    finally:
+        services.close()
+
+
+@router.get("/feeds/explore", response_model=JobFeedResponse)
+def get_explore_feed(
+    user_id: str = Query(default="local-user", min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    try:
+        return _get_persisted_feed(
+            FeedKind.EXPLORE,
+            excluded_only=False,
+            user_id=user_id,
+            services=services,
+        )
+    finally:
+        services.close()
+
+
+@router.get("/feeds/tailored/excluded", response_model=JobFeedResponse)
+def get_tailored_excluded_feed(
+    user_id: str = Query(default="local-user", min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    try:
+        return _get_persisted_feed(
+            FeedKind.TAILORED,
+            excluded_only=True,
+            user_id=user_id,
+            services=services,
+        )
+    finally:
+        services.close()
+
+
+@router.get("/feeds/explore/excluded", response_model=JobFeedResponse)
+def get_explore_excluded_feed(
+    user_id: str = Query(default="local-user", min_length=1),
+    services: JobDiscoveryServiceBundle = Depends(get_job_discovery_services),  # noqa: B008
+) -> JobFeedResponse:
+    try:
+        return _get_persisted_feed(
+            FeedKind.EXPLORE,
+            excluded_only=True,
+            user_id=user_id,
+            services=services,
         )
     finally:
         services.close()
@@ -243,6 +504,8 @@ __all__ = [
     "AvailabilityResponse",
     "ConfirmPreferencesRequest",
     "ConfirmPreferencesResponse",
+    "ExploreFeedRefreshRequest",
+    "JobFeedResponse",
     "JobDiscoveryServiceBundle",
     "PreferencesSuggestionResponse",
     "RefreshDiscoveryRequest",
@@ -250,6 +513,7 @@ __all__ = [
     "SaveJobRequest",
     "SavedJobResponse",
     "SavedJobsResponse",
+    "TailoredFeedRefreshRequest",
     "get_discovery_run",
     "check_saved_job_availability",
     "list_saved_jobs",

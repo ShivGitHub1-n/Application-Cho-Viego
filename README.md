@@ -62,6 +62,17 @@ unconfigured empty result as successful discovery. The smoke test performs
 only a bounded fetch against the explicitly configured source and does not log
 raw payloads or secrets.
 
+Batch 3 adds separate Tailored and Explore feed contracts. Tailored uses the
+reviewed profile and confirmed preferences locally; Explore uses approved
+sectors and sanitized retrieval controls. Provider requests are explicit
+allow-lists and never include profile/resume text, evidence, scores, or
+explanations. Retrieval is paged and bounded, records partial source success,
+retains provenance and excluded evaluations, and persists one feed refresh
+atomically. Legacy recommendations remain readable as earlier-policy results;
+saved posting snapshots remain immutable. The development-gate-approved
+policy is not locked-release-certified, and the dedicated Jobs UI is owned by
+Batch 4.
+
 ## Documentation
 
 - [Roadmap](ROADMAP.md)

@@ -14,6 +14,12 @@ from resume_tailor.domain.job_discovery.models import (
     SupportedJobSource,
     VerificationResult,
 )
+from resume_tailor.domain.job_discovery.providers import (
+    JobSourcePage,
+    ProviderCapabilities,
+    ProviderCursor,
+)
+from resume_tailor.domain.job_discovery.queries import ProviderJobQuery
 
 
 class JobSourceEnvelopeError(Exception):
@@ -41,6 +47,18 @@ class PreferenceVersionConflictError(ValueError):
 
 
 class JobSourceConnector(Protocol):
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities: ...
+
+    def fetch_page(
+        self,
+        source: SupportedJobSource,
+        query: ProviderJobQuery,
+        cursor: ProviderCursor,
+        *,
+        fetched_at: datetime,
+    ) -> JobSourcePage: ...
+
+    # Compatibility for the pre-Batch-3 integration tests and live smoke.
     def fetch(
         self, source: SupportedJobSource, *, fetched_at: datetime
     ) -> JobSourceFetchResult: ...
@@ -73,6 +91,19 @@ class JobRecommendationRepository(Protocol):
 
     def list_for_run(self, run_id: str) -> list[JobRecommendation]: ...
 
+    def list_for_feed(
+        self, user_id: str, feed_kind: str, *, include_excluded: bool = False
+    ) -> list[JobRecommendation]: ...
+
+
+class AtomicJobDiscoveryPersistence(Protocol):
+    def persist_refresh(
+        self,
+        run: DiscoveryRun,
+        jobs: list[DiscoveredJob],
+        recommendations: list[JobRecommendation],
+    ) -> None: ...
+
 
 class SavedJobRepository(Protocol):
     def save(self, saved: SavedJob) -> None: ...
@@ -103,6 +134,7 @@ class SupportedJobSourceRepository(Protocol):
 
 __all__ = [
     "DiscoveredJobRepository",
+    "AtomicJobDiscoveryPersistence",
     "DiscoveryRunRepository",
     "JobSourceAuthenticationError",
     "JobSourceAvailabilityChecker",
