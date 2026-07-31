@@ -120,6 +120,7 @@ st.markdown(
 _streamlit_run_started = perf_counter()
 
 _PENDING_REVIEW_RESET_KEY = "_pending_generated_content_review_reset"
+_PENDING_PROFILE_ID_INPUT_KEY = "_pending_profile_id_input"
 
 
 def _plan_claim_ids(plan: Any) -> set[str]:
@@ -176,6 +177,20 @@ def _apply_pending_generated_content_review_reset() -> None:
 
     if st.session_state.pop(_PENDING_REVIEW_RESET_KEY, False):
         st.session_state["generated_content_reviewed"] = False
+
+
+def _queue_profile_id_input(profile_id: str) -> None:
+    """Defer a widget-backed profile ID update until its next render."""
+
+    st.session_state[_PENDING_PROFILE_ID_INPUT_KEY] = profile_id
+
+
+def _apply_pending_profile_id_input() -> None:
+    """Apply profile selection before the profile ID widget is instantiated."""
+
+    pending = st.session_state.pop(_PENDING_PROFILE_ID_INPUT_KEY, None)
+    if pending is not None:
+        st.session_state["profile_id_input"] = pending
 
 _PROGRESS_LABELS = {
     GenerationStage.PROFILE_LOADING: "Loading profile",
@@ -616,7 +631,7 @@ def _persist_profile(
         _invalidate_job_discovery_profile_state()
     st.session_state["profile"] = profile
     st.session_state["profile_id"] = profile.id
-    st.session_state["profile_id_input"] = profile.id
+    _queue_profile_id_input(profile.id)
     st.session_state["job_discovery_profile_id"] = profile.id
     st.session_state["profile_load_status"] = "Reviewed profile saved."
     populate_profile_editor_state(
@@ -726,6 +741,7 @@ def _render_profile_page(
         "Review canonical facts and evidence. Generated wording is kept outside this profile."
     )
     _render_profile_status(st.session_state.get("profile"))
+    _apply_pending_profile_id_input()
     selected_id = st.text_input(
         "Selected profile ID",
         key="profile_id_input",
@@ -2124,7 +2140,7 @@ def _render_job_search_page(
             _invalidate_job_discovery_profile_state()
             st.session_state.pop("profile", None)
             st.session_state["profile_id"] = ""
-            st.session_state["profile_id_input"] = ""
+            _queue_profile_id_input("")
             st.session_state["profile_load_status"] = (
                 "The previously selected profile is no longer available."
             )
@@ -2137,7 +2153,7 @@ def _render_job_search_page(
         _invalidate_job_discovery_profile_state()
         st.session_state["profile"] = profile
         st.session_state["profile_id"] = profile.id
-        st.session_state["profile_id_input"] = profile.id
+        _queue_profile_id_input(profile.id)
         st.session_state["job_discovery_profile_id"] = profile.id
         st.session_state["profile_load_status"] = "Loaded from application storage."
         selected_user_id = profile.user_id

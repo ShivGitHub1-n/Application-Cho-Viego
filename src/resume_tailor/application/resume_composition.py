@@ -160,6 +160,10 @@ class CompositionSearchBounds:
     target_finalist_count: int = 8
 
 
+class ExactPaginationRequiredError(ValueError):
+    """Raised when bounded composition cannot produce an exact one-page finalist."""
+
+
 @dataclass(frozen=True)
 class _PostingContext:
     normalized_text: str
@@ -271,6 +275,7 @@ class _EvaluatedState:
     direct_requirement_count: int
     direct_bullet_count: int
     low_context_nondirect_count: int
+    domain_drift_project_count: int
     three_line_bullet_count: int
     substantive_project_count: int
 
@@ -450,6 +455,48 @@ class DeterministicResumeComposer:
                 )
             )
             coverage = self._state_coverage(state, bullet_by_id, skill_by_id)
+            selected_candidates = [bullet_by_id[item] for item in state.bullet_ids]
+            direct_requirement_counts = Counter(
+                requirement_id
+                for candidate in selected_candidates
+                for requirement_id in candidate.direct_requirement_ids
+            )
+            domain_drift_project_count = 0
+            for project_id in {
+                candidate.entry_id
+                for candidate in selected_candidates
+                if candidate.entry_kind is EntityKind.PROJECT
+            }:
+                project_candidates = [
+                    candidate
+                    for candidate in selected_candidates
+                    if candidate.entry_id == project_id
+                ]
+                project_requirements = {
+                    requirement_id
+                    for candidate in project_candidates
+                    for requirement_id in candidate.direct_requirement_ids
+                }
+                project = next(item for item in profile.projects if item.id == project_id)
+                project_title_overlap = any(
+                    _contains_phrase(context.normalized_text, token)
+                    for token in _normalize(project.title).split()
+                    if len(token) >= 4
+                )
+                if (
+                    project_requirements
+                    and len(project_candidates) == 1
+                    and not project_title_overlap
+                    and all(
+                        candidate.contextual_relevance < 40.0
+                        for candidate in project_candidates
+                    )
+                    and all(
+                        direct_requirement_counts[requirement_id] > 1
+                        for requirement_id in project_requirements
+                    )
+                ):
+                    domain_drift_project_count += 1
             return _EvaluatedState(
                 state=state,
                 resume=resume,
@@ -481,6 +528,7 @@ class DeterministicResumeComposer:
                     and bullet_by_id[evidence_id].contextual_relevance < 40.0
                     for evidence_id in state.bullet_ids
                 ),
+                domain_drift_project_count=domain_drift_project_count,
                 three_line_bullet_count=sum(
                     bullet_by_id[evidence_id].line_fit.three_line_risk
                     for evidence_id in state.bullet_ids
@@ -1092,32 +1140,26 @@ class DeterministicResumeComposer:
                 exact_fitting_candidates,
                 limit=len(exact_fitting_candidates),
             )[0]
-        elif not exact_provider_available:
-            # When Word/LibreOffice is unavailable, keep the strongest
-            # deterministic one-page finalist in the preferred density band
-            # instead of retaining a sparse state chosen only by the exact
-            # verification lane.  The estimate remains explicitly marked as
-            # unverified; it never relaxes overflow or grounding rules.
-            estimated_preferred = [
-                item
-                for item in ordered_fitting
-                if self._in_preferred_density_band(item.evaluation.utilization_ratio)
-                or (
-                    item.evaluation.utilization_ratio
-                    >= TEMPLATE_V1_PREFERRED_DENSITY_FLOOR
-                    and item.evaluation.utilization_ratio
-                    <= TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING
-                )
-            ]
-            if estimated_preferred:
-                final = self._best_states(
-                    estimated_preferred,
-                    limit=len(estimated_preferred),
-                )[0]
-        if exact_provider_available and not exact_one_page_found:
-            termination_reason = CompositionTerminationReason.ALL_ADMISSIBLE_CANDIDATES_OVERFLOWED
-            if last_exact_candidate is not None:
-                final = last_exact_candidate
+        elif attempt_exact_final and not exact_provider_available:
+            failure = next(
+                (
+                    evaluation.verification_failure
+                    for evaluation in finalist_evaluations.values()
+                    if not evaluation.exact and evaluation.verification_failure
+                ),
+                None,
+            )
+            detail = f" Provider detail: {failure}" if failure else ""
+            raise ExactPaginationRequiredError(
+                "Exact one-page pagination is unavailable; no generated resume artifact "
+                f"can be completed. Verify Microsoft Word or LibreOffice and retry.{detail}"
+            )
+        if attempt_exact_final and exact_provider_available and not exact_one_page_found:
+            raise ExactPaginationRequiredError(
+                "No exact one-page resume was found within the bounded finalist search; "
+                "no generated resume artifact was exported. Reduce reviewed content or "
+                "adjust the posting evidence selection, then retry."
+            )
 
         final_content_bound_sources: set[str] = set()
         for candidate in bullets:
@@ -2841,6 +2883,7 @@ class DeterministicResumeComposer:
             states,
             key=lambda item: (
                 -item.direct_requirement_count,
+                item.domain_drift_project_count,
                 -min(8, item.direct_bullet_count),
                 -item.substantive_project_count,
                 item.low_context_nondirect_count,

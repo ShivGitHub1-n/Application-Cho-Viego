@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Protocol
+from typing import NoReturn, Protocol
 from uuid import uuid4
 
 from docx import Document
@@ -100,15 +100,24 @@ class LibreOfficeDocxPageCountProvider:
                     check=False,
                     timeout=self._timeout_seconds,
                 )
-            except (OSError, subprocess.TimeoutExpired) as error:
+            except subprocess.TimeoutExpired as error:
                 raise PageCountVerificationError(
-                    "LibreOffice page-count verification could not complete within "
-                    f"{self._timeout_seconds:g} seconds: {error}"
+                    "LibreOffice page-count verification timed out after "
+                    f"{self._timeout_seconds:g} seconds."
+                ) from error
+            except OSError as error:
+                raise PageCountVerificationError(
+                    "LibreOffice page-count verification could not run: "
+                    f"{_sanitized_provider_detail(str(error), validated_paths[0])}"
                 ) from error
             if result.returncode != 0:
+                detail = _sanitized_provider_detail(
+                    result.stderr.strip() or result.stdout.strip(),
+                    validated_paths[0],
+                )
                 raise PageCountVerificationError(
                     f"LibreOffice could not render the DOCX for page-count verification: "
-                    f"{result.stderr.strip() or result.stdout.strip()} "
+                    f"{detail} "
                     f"({_docx_diagnostics(validated_paths[0], 'LibreOffice')})"
                 )
             measurements: list[PageCountMeasurement] = []
@@ -171,10 +180,13 @@ public static class ResumeWordNative {
 }
 '@
     [uint32]$createdProcessId = 0
-    [void][ResumeWordNative]::GetWindowThreadProcessId(
-        [IntPtr]$word.Hwnd,
-        [ref]$createdProcessId
-    )
+    $wordWindowHandle = $word.Hwnd
+    if ($null -ne $wordWindowHandle -and [long]$wordWindowHandle -ne 0) {
+        [void][ResumeWordNative]::GetWindowThreadProcessId(
+            [IntPtr][long]$wordWindowHandle,
+            [ref]$createdProcessId
+        )
+    }
     if ($createdProcessId -gt 0) {
         $createdProcess = Get-Process -Id $createdProcessId -ErrorAction Stop
         "$createdProcessId|$($createdProcess.StartTime.ToUniversalTime().Ticks)" |
@@ -231,9 +243,13 @@ finally {
                     f"Microsoft Word page-count verification could not run: {error}"
                 ) from error
         if result.returncode != 0:
+            detail = _sanitized_provider_detail(
+                result.stderr.strip() or result.stdout.strip(),
+                validated_paths[0],
+            )
             raise PageCountVerificationError(
                 "Microsoft Word could not render the DOCX for page-count verification: "
-                f"{result.stderr.strip() or result.stdout.strip()} "
+                f"{detail} "
                 f"({_docx_diagnostics(validated_paths[0], 'Microsoft Word')})"
             )
         try:
@@ -342,7 +358,13 @@ def _validated_docx_path(path: Path, provider: str) -> Path:
 def _docx_diagnostics(path: Path, provider: str) -> str:
     exists = path.is_file()
     size = path.stat().st_size if exists else 0
-    return f"provider={provider}; path={path}; exists={exists}; size={size} bytes"
+    return f"provider={provider}; file={path.name}; exists={exists}; size={size} bytes"
+
+
+def _sanitized_provider_detail(detail: str, path: Path) -> str:
+    sanitized = detail.replace(str(path), path.name).replace(path.as_posix(), path.name)
+    sanitized = re.sub(r"[\r\n\t]+", " ", sanitized).strip()
+    return sanitized[:800] or "No provider detail was returned."
 
 
 @dataclass(frozen=True)
@@ -477,7 +499,7 @@ class ManagedResumeRenderer:
                 measurement = self._page_count_provider.measure(path)
             except PageCountVerificationError as error:
                 self._last_verification_failure = str(error)
-                return self._accept_estimated_candidate(candidate, path)
+                self._reject_unverified_candidate(path)
             self._last_measurement = measurement
             if self._initial_measurement is None:
                 self._initial_measurement = measurement
@@ -486,11 +508,7 @@ class ManagedResumeRenderer:
                     f"Page-count provider {measurement.provider!r} is not exact; "
                     "the one-page invariant cannot be verified."
                 )
-                return self._accept_estimated_candidate(
-                    candidate,
-                    path,
-                    provider=measurement.provider,
-                )
+                self._reject_unverified_candidate(path, provider=measurement.provider)
             if measurement.page_count == 1:
                 self._last_page_utilization = diagnose_docx_page_utilization(
                     path,
@@ -517,13 +535,12 @@ class ManagedResumeRenderer:
             "The rendered DOCX did not reach one page within the bounded reduction loop."
         )
 
-    def _accept_estimated_candidate(
+    def _reject_unverified_candidate(
         self,
-        candidate: StructuredResume,
         path: Path,
         *,
         provider: str = "deterministic Template V1 occupancy estimate",
-    ) -> StructuredResume:
+    ) -> NoReturn:
         provisional = PageCountMeasurement(
             page_count=1,
             provider=provider,
@@ -547,17 +564,17 @@ class ManagedResumeRenderer:
             exact=False,
         )
         self._last_page_utilization = diagnostic
-        if diagnostic.estimated_utilization_ratio <= 1.0:
-            return candidate
         path.unlink(missing_ok=True)
         failure = (
             f" Exact pagination failure: {self._last_verification_failure}"
             if self._last_verification_failure
             else ""
         )
-        raise PageOverflowError(
-            "The deterministic Template V1 occupancy estimate exceeds one page while "
-            f"exact pagination is unavailable.{failure}"
+        raise PageCountVerificationError(
+            "Exact one-page pagination could not be verified, so no resume artifact was "
+            "exported. Confirm that Microsoft Word or LibreOffice can paginate the DOCX "
+            f"and generate again. Estimated utilization was "
+            f"{diagnostic.estimated_utilization_ratio:.1%}.{failure}"
         )
 
     def _render_pdf(self, resume: StructuredResume, path: Path) -> None:

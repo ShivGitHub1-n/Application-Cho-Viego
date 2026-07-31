@@ -13,6 +13,7 @@ from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.resume_composition import (
     CompositionSearchBounds,
     DeterministicResumeComposer,
+    ExactPaginationRequiredError,
     _posting_context,
     _State,
 )
@@ -106,6 +107,31 @@ class FixedRatioPageFitEvaluator:
             utilization_ratio=self.utilization_ratio,
             fits_one_page=True,
         )
+
+
+class FinalistSequencePageFitEvaluator(FixedRatioPageFitEvaluator):
+    def __init__(self, page_counts: list[int]) -> None:
+        super().__init__(0.90)
+        self.page_counts = page_counts
+        self.batch_page_counts: list[int] = []
+
+    def evaluate_batch(self, resumes: list[StructuredResume]) -> list[PageFitEvaluation]:
+        counts = [
+            self.page_counts[min(index, len(self.page_counts) - 1)]
+            for index in range(len(resumes))
+        ]
+        self.batch_page_counts = counts
+        return [
+            PageFitEvaluation(
+                status=PageUtilizationStatus.ACCEPTABLE_ONE_PAGE,
+                page_count=count,
+                exact=True,
+                provider="controlled exact finalist sequence",
+                utilization_ratio=0.90,
+                fits_one_page=count == 1,
+            )
+            for count in counts
+        ]
 
 
 class LineCostDensityEvaluator:
@@ -1117,6 +1143,218 @@ def test_exact_provider_failure_returns_typed_unverified_diagnostic(
     assert result.status.value == "unverified"
     assert result.verification_failure is not None
     assert "Controlled exact provider failure" in result.verification_failure
+
+
+def test_exact_two_page_finalist_is_rejected_and_later_one_page_finalist_wins() -> None:
+    profile = _synthetic_profile(
+        experiences=[{"id": "embedded-role", "title": "Embedded Developer", "kind": "experience"}],
+        projects=[],
+        evidence=[
+            {
+                "id": f"embedded-proof-{index}",
+                "entity_id": "embedded-role",
+                "source_text": text,
+            }
+            for index, text in enumerate(
+                (
+                    "Implemented C++ firmware for microcontroller control loops.",
+                    "Validated CAN networking with Linux diagnostic tooling.",
+                    "Automated Python hardware-in-the-loop safety tests.",
+                    "Debugged SPI sensor timing and interrupt latency.",
+                ),
+                start=1,
+            )
+        ],
+    )
+    posting = JobPosting(
+        id="exact-finalist-posting",
+        title="Embedded Systems Engineer",
+        description="Develop C++ firmware, CAN networking, Linux tools, and Python safety tests.",
+    )
+    evaluator = FinalistSequencePageFitEvaluator([2, 1])
+    baseline = StructuredResume(
+        profile_id=profile.id,
+        profile_version=profile.version,
+        posting_id=posting.id,
+        template_id="managed-engineering-v1",
+        display_name=profile.display_name,
+        strategy=ResumeStrategy(
+            role_family="embedded_systems",
+            primary_focus=posting.title,
+            rationale="Synthetic exact-pagination regression.",
+        ),
+    )
+
+    result = DeterministicResumeComposer(evaluator).compose(
+        baseline, profile, posting, TemplateConstraints()
+    )
+
+    assert evaluator.batch_page_counts[:2] == [2, 1]
+    assert result.composition_diagnostic is not None
+    assert result.composition_diagnostic.page_count == 1
+    assert result.composition_diagnostic.verification_status.value == "exact"
+
+
+def test_no_exact_one_page_finalist_returns_actionable_failure() -> None:
+    profile = _synthetic_profile(
+        experiences=[{"id": "firmware-role", "title": "Firmware Developer", "kind": "experience"}],
+        projects=[],
+        evidence=[
+            {
+                "id": "firmware-proof",
+                "entity_id": "firmware-role",
+                "source_text": "Implemented C++ firmware for an embedded controller.",
+            }
+        ],
+    )
+    posting = JobPosting(
+        id="overflow-posting",
+        title="Firmware Developer",
+        description="Implement embedded C++ firmware.",
+    )
+    evaluator = FinalistSequencePageFitEvaluator([2])
+    baseline = StructuredResume(
+        profile_id=profile.id,
+        profile_version=profile.version,
+        posting_id=posting.id,
+        template_id="managed-engineering-v1",
+        display_name=profile.display_name,
+        strategy=ResumeStrategy(
+            role_family="embedded_systems",
+            primary_focus=posting.title,
+            rationale="Synthetic exact-pagination regression.",
+        ),
+    )
+
+    with pytest.raises(ExactPaginationRequiredError, match="No exact one-page resume"):
+        DeterministicResumeComposer(evaluator).compose(
+            baseline, profile, posting, TemplateConstraints()
+        )
+
+
+def test_unavailable_exact_pagination_cannot_complete_composition() -> None:
+    profile = _synthetic_profile(
+        experiences=[{"id": "linux-role", "title": "Linux Developer", "kind": "experience"}],
+        projects=[],
+        evidence=[
+            {
+                "id": "linux-proof",
+                "entity_id": "linux-role",
+                "source_text": "Built Linux networking diagnostics in Python.",
+            }
+        ],
+    )
+    posting = JobPosting(
+        id="unverified-posting",
+        title="Linux Networking Developer",
+        description="Build Linux networking diagnostics in Python.",
+    )
+    baseline = StructuredResume(
+        profile_id=profile.id,
+        profile_version=profile.version,
+        posting_id=posting.id,
+        template_id="managed-engineering-v1",
+        display_name=profile.display_name,
+        strategy=ResumeStrategy(
+            role_family="networking",
+            primary_focus=posting.title,
+            rationale="Synthetic unavailable-pagination regression.",
+        ),
+    )
+    composer = DeterministicResumeComposer(
+        TemplateV1PageFitEvaluator(FailingExactPageProvider())
+    )
+
+    with pytest.raises(ExactPaginationRequiredError, match="pagination is unavailable"):
+        composer.compose(baseline, profile, posting, TemplateConstraints())
+
+
+def test_embedded_networking_portfolio_outranks_unrelated_governance_and_bi() -> None:
+    profile = _synthetic_profile(
+        experiences=[],
+        projects=[
+            {"id": "robotics-control", "title": "Autonomous Controls Platform", "kind": "project"},
+            {"id": "network-stack", "title": "Embedded Network Stack", "kind": "project"},
+            {"id": "governance-suite", "title": "Generative AI Governance Suite", "kind": "project"},
+            {"id": "bi-dashboard", "title": "Executive BI Dashboard", "kind": "project"},
+        ],
+        evidence=[
+            {
+                "id": "controls-cpp",
+                "entity_id": "robotics-control",
+                "source_text": "Implemented C++ microcontroller control loops for robotic actuators.",
+            },
+            {
+                "id": "controls-safety",
+                "entity_id": "robotics-control",
+                "source_text": "Validated perception-driven safety interlocks with Python hardware-in-the-loop tests.",
+            },
+            {
+                "id": "network-linux",
+                "entity_id": "network-stack",
+                "source_text": "Built Linux networking diagnostics for CAN and Ethernet telemetry.",
+            },
+            {
+                "id": "network-firmware",
+                "entity_id": "network-stack",
+                "source_text": "Developed embedded C++ firmware for reliable microcontroller communications.",
+            },
+            {
+                "id": "governance-policy",
+                "entity_id": "governance-suite",
+                "source_text": "Built Python automation for generative AI governance policy and executive risk controls.",
+            },
+            {
+                "id": "governance-reporting",
+                "entity_id": "governance-suite",
+                "source_text": "Automated model compliance reporting for enterprise stakeholders.",
+            },
+            {
+                "id": "bi-model",
+                "entity_id": "bi-dashboard",
+                "source_text": "Deployed Power BI semantic models on Linux for finance performance reporting.",
+            },
+            {
+                "id": "bi-kpis",
+                "entity_id": "bi-dashboard",
+                "source_text": "Delivered executive KPI dashboards and quarterly business insights.",
+            },
+        ],
+        technical_skills=[
+            {"id": "embedded-skills", "category": "Embedded", "values": ["C++", "Python", "Linux", "CAN", "Ethernet"]}
+        ],
+    )
+    posting = JobPosting(
+        id="orbital-platform-posting",
+        title="Embedded Networking Software Engineer",
+        description=(
+            "Develop Linux C++ and Python software for embedded networking, CAN and Ethernet, "
+            "microcontrollers, robotic controls, perception, and safety validation."
+        ),
+    )
+    resume = _compose_with_bounds(
+        profile,
+        posting,
+        CompositionSearchBounds(
+            maximum_selected_bullets=8,
+            maximum_selected_entries=4,
+            maximum_project_entries=4,
+            maximum_bullets_per_entry=2,
+        ),
+    )
+    selected = {bullet.id for bullet in _output_bullets(resume)}
+
+    selected_diagnostics = [
+        item
+        for item in resume.composition_diagnostic.selected_candidates
+        if "governance-policy" in item.source_ids
+    ]
+    assert selected == {
+        "controls-cpp",
+        "controls-safety",
+        "network-linux",
+        "network-firmware",
+    }, [item.model_dump() for item in selected_diagnostics]
 
 
 def test_composition_correction_does_not_change_template_v1_package() -> None:

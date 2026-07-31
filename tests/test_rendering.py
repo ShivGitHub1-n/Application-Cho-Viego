@@ -183,7 +183,7 @@ def test_strict_docx_page_gate_reduces_optional_content_until_one_page(tmp_path:
     )
 
 
-def test_docx_page_gate_returns_typed_unverified_estimate(tmp_path: Path) -> None:
+def test_docx_page_gate_rejects_unverified_estimate(tmp_path: Path) -> None:
     renderer = ManagedResumeRenderer(page_count_provider=_EstimatedPageCountProvider())
     resume = StructuredResume(
         profile_id="profile-1",
@@ -198,15 +198,43 @@ def test_docx_page_gate_returns_typed_unverified_estimate(tmp_path: Path) -> Non
         ),
     )
 
-    output = renderer.render_docx(resume, tmp_path / "estimated.docx")
+    output = tmp_path / "estimated.docx"
+    with pytest.raises(PageCountVerificationError, match="no resume artifact was exported"):
+        renderer.render_docx(resume, output)
 
-    assert output.exists()
+    assert not output.exists()
     assert renderer.last_measurement is not None
     assert renderer.last_measurement.exact is False
     assert renderer.last_page_utilization is not None
     assert renderer.last_page_utilization.status.value == "unverified"
     assert renderer.last_verification_failure is not None
     assert "not exact" in renderer.last_verification_failure
+
+
+def test_word_pagination_guards_unavailable_window_handle_before_intptr_cast(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    docx_path = tmp_path / "candidate.docx"
+    docx_path.write_bytes(b"controlled-docx")
+    scripts: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        scripts.append(command[-1])
+        return subprocess.CompletedProcess(command, 0, "1\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "resume_tailor.infrastructure.rendering.shutil.which",
+        lambda _name: "powershell.exe",
+    )
+
+    measurement = MicrosoftWordDocxPageCountProvider().measure(docx_path)
+
+    assert measurement.page_count == 1
+    assert "$null -ne $wordWindowHandle" in scripts[0]
+    assert "[long]$wordWindowHandle -ne 0" in scripts[0]
+    assert "[IntPtr]$word.Hwnd" not in scripts[0]
 
 
 def test_underfill_expansion_is_disabled_and_geometry_is_not_a_page_fit_control(
