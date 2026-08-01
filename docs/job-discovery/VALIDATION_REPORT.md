@@ -54,6 +54,24 @@ after the final test run below.
   `domain/job_discovery/evidence.py`, `domain/job_discovery/scoring.py`, and
   the Greenhouse/Lever adapters; no Batch 5 production file was modified.
 
+## Remediation verification
+
+The independent-review remediation added deterministic permutation coverage,
+real schema-v1/v2 repository reads, and a composed refresh/API/presentation
+flow. The remediation verification produced:
+
+- The three remediation files together: 16 passed and 1 expected HTTPX
+  deprecation warning.
+- Domain/application suites plus the determinism matrix: 212 passed for each
+  of `PYTHONHASHSEED=1`, `2`, `777`, and `99991`.
+- Snapshot compatibility plus SQLite persistence: 21 passed.
+- API plus Streamlit Jobs tests: 50 passed and 1 expected HTTPX deprecation
+  warning.
+- The complete affected Jobs allowlist: 430 passed, 1 known sandbox-only
+  Playwright `WinError 5` failure, and 1 expected HTTPX deprecation warning.
+- Changed-test and changed-query Ruff checks passed. Strict mypy remains at
+  the documented 28 pre-existing errors.
+
 ## Historical approved results
 
 The Batch 4 retrospective records the user-accepted populated harness and real
@@ -68,6 +86,13 @@ The real Playwright browser integration test remains unavailable in this
 environment because the sandbox raises `WinError 5` before Chromium starts.
 The expected Streamlit/HTTPX deprecation warning is non-functional. No
 unexplained Jobs test failure was observed.
+
+Exact DOCX health may return HTTP 503 when exact page-count tooling is
+unavailable. This is a known environment-only condition outside Jobs final
+hardening scope. Batch 5 did not modify DOCX rendering, health behavior,
+resume generation, or the related test; the condition was not concealed or
+converted into a passing result, and no DOCX test is included in the affected
+Jobs allowlist above.
 
 ## Benchmark disclosure
 
