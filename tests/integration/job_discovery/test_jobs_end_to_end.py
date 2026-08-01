@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime
+from inspect import signature
 
 from fastapi.testclient import TestClient
 
@@ -546,11 +547,48 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
     first_run = refresh.refresh(
         "local-user", profile.id, preferences, started_at=NOW
     )
+
+    def behavioral_feed(feed_kind: FeedKind) -> dict[str, object]:
+        visible = feed_queries.get("local-user", feed_kind, profile_id=profile.id)
+        excluded = feed_queries.get(
+            "local-user", feed_kind, profile_id=profile.id, excluded_only=True
+        )
+        recommendations = [*visible.items, *excluded.items]
+        job_payloads = sorted(
+            [jobs.get(item.job_id).model_dump(mode="json") for item in recommendations],
+            key=lambda item: str(item["id"]),
+        )
+        alias_payloads = sorted(
+            [
+                alias.model_dump(mode="json")
+                for source_id in ("source-a", "source-b", "source-failed")
+                for alias in aliases.list_for_source(source_id)
+            ],
+            key=lambda item: (str(item["source_id"]), str(item["identity_value"])),
+        )
+        return {
+            "visible": [item.model_dump(mode="json") for item in visible.items],
+            "excluded": [item.model_dump(mode="json") for item in excluded.items],
+            "excluded_count": visible.excluded_count,
+            "jobs": job_payloads,
+            "aliases": alias_payloads,
+        }
+
     first_feed = feed_queries.get("local-user", FeedKind.TAILORED, profile_id=profile.id)
+    first_tailored_behavior = behavioral_feed(FeedKind.TAILORED)
+    with sqlite3.connect(database) as connection:
+        first_recommendation_count = connection.execute(
+            "SELECT COUNT(*) FROM job_recommendations WHERE run_id = ?",
+            (first_run.id,),
+        ).fetchone()[0]
+        first_discovered_count = connection.execute(
+            "SELECT COUNT(*) FROM discovered_jobs"
+        ).fetchone()[0]
+
     second_run = refresh.refresh(
         "local-user", profile.id, preferences, started_at=NOW
     )
-    second_feed = feed_queries.get("local-user", FeedKind.TAILORED, profile_id=profile.id)
+    second_tailored_behavior = behavioral_feed(FeedKind.TAILORED)
     explore_run = refresh.refresh_explore(
         "local-user",
         sectors=["Software Engineering"],
@@ -558,7 +596,8 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
         started_at=NOW,
     )
     explore_feed = feed_queries.get("local-user", FeedKind.EXPLORE, profile_id=profile.id)
-    refresh.refresh_explore(
+    first_explore_behavior = behavioral_feed(FeedKind.EXPLORE)
+    repeated_explore_run = refresh.refresh_explore(
         "local-user",
         sectors=["Software Engineering"],
         profile_id=profile.id,
@@ -567,22 +606,25 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
     repeated_explore_feed = feed_queries.get(
         "local-user", FeedKind.EXPLORE, profile_id=profile.id
     )
+    second_explore_behavior = behavioral_feed(FeedKind.EXPLORE)
 
-    first_payload = [item.model_dump(mode="json") for item in first_feed.items]
-    second_payload = [item.model_dump(mode="json") for item in second_feed.items]
-    explore_payload = [item.model_dump(mode="json") for item in explore_feed.items]
-    repeated_explore_payload = [
-        item.model_dump(mode="json") for item in repeated_explore_feed.items
-    ]
     assert first_run.id == second_run.id
-    assert first_payload == second_payload
-    assert explore_payload == repeated_explore_payload
+    assert first_run.model_dump(mode="json") == second_run.model_dump(mode="json")
+    assert first_tailored_behavior == second_tailored_behavior
+    assert first_explore_behavior == second_explore_behavior
+    assert explore_run.id == repeated_explore_run.id
+    assert explore_run.model_dump(mode="json") == repeated_explore_run.model_dump(mode="json")
     assert first_run.duplicate_count == 1
+    assert second_run.duplicate_count == 1
     assert first_run.failed_sources == ["source-failed"]
+    assert second_run.failed_sources == first_run.failed_sources
     assert first_run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+    assert second_run.status is first_run.status
     assert explore_run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+    assert repeated_explore_run.status is explore_run.status
     assert first_feed.feed_kind is FeedKind.TAILORED
     assert explore_feed.feed_kind is FeedKind.EXPLORE
+    assert repeated_explore_feed.feed_kind is FeedKind.EXPLORE
     assert first_feed.excluded_count >= 1
     assert all(item.visibility is RecommendationVisibility.VISIBLE for item in first_feed.items)
     assert all(item.visibility is RecommendationVisibility.VISIBLE for item in explore_feed.items)
@@ -596,13 +638,20 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
     }
 
     with sqlite3.connect(database) as connection:
-        recommendation_count = connection.execute(
+        second_recommendation_count = connection.execute(
             "SELECT COUNT(*) FROM job_recommendations WHERE run_id = ?",
             (first_run.id,),
         ).fetchone()[0]
-        discovered_count = connection.execute("SELECT COUNT(*) FROM discovered_jobs").fetchone()[0]
-    assert recommendation_count == len(first_run.source_outcomes) + 2
-    assert discovered_count == 5
+        second_discovered_count = connection.execute(
+            "SELECT COUNT(*) FROM discovered_jobs"
+        ).fetchone()[0]
+    assert first_recommendation_count == second_recommendation_count
+    assert first_discovered_count == second_discovered_count
+    assert second_recommendation_count == len(second_run.source_outcomes) + 2
+    assert second_discovered_count == 5
+    assert len(second_tailored_behavior["visible"]) == len(
+        {item["id"] for item in second_tailored_behavior["visible"]}
+    )
 
     saved_repository = SQLiteSavedJobRepository(database)
     saved = SaveJobService(jobs, saved_repository).save(
@@ -618,6 +667,13 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
         snapshot_after.posting_snapshot.official_url
         == snapshot_before.posting_snapshot.official_url
     )
+    assert snapshot_after.availability is snapshot_before.availability
+    assert snapshot_after.posting_snapshot.source_alias_ids == (
+        snapshot_before.posting_snapshot.source_alias_ids
+    )
+    assert snapshot_after.posting_snapshot.source_provenance == (
+        snapshot_before.posting_snapshot.source_provenance
+    )
 
     services = JobDiscoveryServiceBundle(
         suggest_preferences=object(),
@@ -627,6 +683,7 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
         ),
         runs=GetDiscoveryRunService(runs, recommendations),
         feed_queries=feed_queries,
+        save=SaveJobService(jobs, saved_repository),
     )
     experience = JobsExperienceService(
         profiles=profiles,
@@ -639,27 +696,41 @@ def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempoten
     assert [item.job_id for item in presentation.visible] == [
         item.job_id for item in first_feed.items
     ]
+    selected = presentation.visible[0]
+    assert selected.grade in {
+        FitGrade.EXCELLENT,
+        FitGrade.GOOD,
+        FitGrade.WEAK,
+        FitGrade.DONT_MATCH,
+    }
+    assert selected.eligibility is first_feed.items[0].eligibility.status
+    assert selected.provisional is first_feed.items[0].provisional
+    assert selected.saved is True
+    assert selected.official_url == jobs.get(selected.job_id).official_url
+    assert selected.job_id == first_feed.items[0].job_id
     assert all("total" not in item.model_dump() for item in presentation.visible)
     assert all(item.feed_kind is FeedKind.TAILORED for item in presentation.visible)
     assert all(item.visibility is RecommendationVisibility.VISIBLE for item in presentation.visible)
-    assert any(item.unresolved_facts for item in presentation.visible)
+    unknown_view = next(
+        item for item in presentation.visible if item.eligibility is EligibilityStatus.UNKNOWN
+    )
+    assert unknown_view.unresolved_facts
+    assert unknown_view.provisional is True
+    excluded_view = experience.load_excluded(profile.id, FeedKind.TAILORED)
+    assert excluded_view
+    assert all(item.visibility is RecommendationVisibility.EXCLUDED for item in excluded_view)
+    assert {item.job_id for item in excluded_view}.isdisjoint(
+        {item.job_id for item in presentation.visible}
+    )
 
-    class ForbiddenServiceSpy:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def __call__(self, *args, **kwargs) -> None:
-            self.calls += 1
-
-    forbidden = {
-        name: ForbiddenServiceSpy()
-        for name in ("gemini", "plan", "resume", "cover_letter", "docx", "pdf", "export")
-    }
+    handoff_parameters = set(signature(PrepareTailoringHandoffService.__init__).parameters)
+    assert handoff_parameters - {"self", "jobs", "saved_jobs"} == set()
     prepared = experience.prepare_tailoring(first_feed.items[0].job_id, profile.id)
     assert prepared.title == presentation.visible[0].title
     assert prepared.description
     assert prepared.official_url
-    assert not any(spy.calls for spy in forbidden.values())
+    assert prepared.posting_id == presentation.visible[0].job_id
+    assert prepared.profile_id == profile.id
     assert not hasattr(prepared, "plan")
     assert not hasattr(prepared, "resume")
     assert not hasattr(prepared, "cover_letter")

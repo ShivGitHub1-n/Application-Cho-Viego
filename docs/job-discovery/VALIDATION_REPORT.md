@@ -7,8 +7,14 @@ Starting HEAD: `740aefa1c83ae8f9c47be4ceac8accc29644a6c0`
 ## Scope and status
 
 Batch 5 is a verification and narrow-defect-remediation pass. No new Jobs
-product feature or production defect fix was required. The Batch 5 changes
-add offline integration, determinism, and snapshot/migration coverage only.
+product feature was added. A focused preference-order determinism test exposed
+a production defect: semantically equivalent location, level, and
+source-restriction orderings generated different provider-query payloads.
+`src/resume_tailor/domain/job_discovery/queries.py` now canonicalizes those
+order-insensitive fields while preserving intentional target-title priority.
+The production fix does not change scoring, eligibility, normal UI score
+visibility, providers, or Jobs product scope. The remaining Batch 5 changes
+add offline integration, determinism, and snapshot/migration coverage.
 Tailored and Explore ordering, fit grades, eligibility, provisional state,
 excluded visibility, saved snapshots, API ownership, and tailoring handoff
 remain backend/application contracts.
@@ -16,7 +22,7 @@ remain backend/application contracts.
 This report records verification performed during Batch 5. It does not claim
 locked-release certification.
 
-## Tests run during Batch 5
+## Initial tests run during Batch 5
 
 | Command/scope | Result |
 | --- | --- |
@@ -33,7 +39,7 @@ locked-release certification.
 The complete affected Jobs command and final verification results are recorded
 after the final test run below.
 
-## Final explicit verification
+## Initial final explicit verification
 
 - Complete affected Jobs allowlist, including the real Playwright integration:
   437 passed, 1 known sandbox-only `WinError 5` failure, and 1 expected
@@ -48,11 +54,20 @@ after the final test run below.
   and the offline harness: passed, with expected bare-Streamlit warnings.
 - Ruff on the three Batch 5 test files: passed.
 - Ruff on the affected production scope: one pre-existing untouched import
-  ordering finding in `application/job_discovery/presentation.py`; no Batch 5
-  production file was modified.
+  ordering finding in `application/job_discovery/presentation.py`; the narrow
+  `queries.py` production fix passed Ruff.
 - Strict mypy on the explicit Jobs production scope: 28 pre-existing errors in
   `domain/job_discovery/evidence.py`, `domain/job_discovery/scoring.py`, and
-  the Greenhouse/Lever adapters; no Batch 5 production file was modified.
+  the Greenhouse/Lever adapters; `queries.py` introduced no new error.
+
+## Production defect remediation
+
+The focused preference-order test was red before the fix: `1 failed, 6
+passed`. After `queries.py` canonicalized locations, levels, and source
+restrictions, the focused result was `7 passed`. This was the only Batch 5
+production change. It preserves target-title priority and does not alter
+scoring, eligibility, normal UI numeric-score visibility, provider coverage,
+or product scope.
 
 ## Remediation verification
 
@@ -71,6 +86,28 @@ flow. The remediation verification produced:
   Playwright `WinError 5` failure, and 1 expected HTTPX deprecation warning.
 - Changed-test and changed-query Ruff checks passed. Strict mypy remains at
   the documented 28 pre-existing errors.
+
+## Second-remediation verification
+
+The second independent-review remediation extended the real evaluation/feed
+boundaries, final Tailored preference output, repeated-refresh comparisons,
+handoff composition proof, and public presentation assertions. The exact
+results were:
+
+- Determinism matrix: 7 passed.
+- Composed end-to-end integration: 4 passed and 1 expected HTTPX
+  deprecation warning.
+- Both remediation files together: 11 passed and 1 expected HTTPX
+  deprecation warning.
+- Domain/application suites plus determinism matrix: 212 passed for each of
+  `PYTHONHASHSEED=1`, `2`, `777`, and `99991`.
+- Snapshot compatibility plus SQLite persistence: 21 passed.
+- API plus Streamlit Jobs tests: 50 passed and 1 expected HTTPX deprecation
+  warning.
+- Complete affected Jobs allowlist: 430 passed, 1 known sandbox-only
+  Playwright `WinError 5` failure, and 1 expected HTTPX deprecation warning.
+- Changed production query and changed test Ruff checks passed.
+- Strict mypy remains at the documented 28 pre-existing errors.
 
 ## Historical approved results
 
