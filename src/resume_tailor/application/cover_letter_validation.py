@@ -95,6 +95,25 @@ _INTERNAL_PROSE_PATTERNS = (
     r"\bnarrative thread\b",
     r"\bimplementation evidence\b",
 )
+_REPETITIVE_NARRATIVE_PATTERNS = (
+    r"\bi also worked with\b",
+    r"\bthe work included\b",
+    r"\banother responsibility involved\b",
+    r"\bmy work included\b",
+    r"\bmy [^.]{1,80} work involved\b",
+)
+_UNRESOLVED_PLACEHOLDER_PATTERNS = (
+    r"\[(?:company|company name|role|job title)\]",
+    r"\{(?:company|company_name|role|job_title)\}",
+    r"<(?:company|company name|role|job title)>",
+)
+_UNSUBJECTED_ACTION_PATTERN = re.compile(
+    r"^(?:assembled|authored|automated|built|collaborated|created|deployed|designed|"
+    r"developed|documented|engineered|evaluated|implemented|integrated|led|modeled|"
+    r"modelled|owned|prototyped|selected|specified|supported|tested|troubleshot|used|"
+    r"verified|working|integrating|testing)\b",
+    re.IGNORECASE,
+)
 _CONTENT_STOPWORDS = {
     "about",
     "after",
@@ -661,12 +680,35 @@ class CoverLetterValidator:
         resume_consistency: list[CoverLetterResumeConsistencyFinding],
     ) -> list[CoverLetterQualityGateResult]:
         combined = " ".join(paragraph.text for paragraph in paragraphs)
-        generic_codes = self._generic_codes(combined)
-        repetitive_structure = self._has_repetitive_paragraph_structure(paragraphs)
+        rejected_text = " ".join(claim.text for claim in rejected_claims)
+        evaluated_text = " ".join(value for value in (combined, rejected_text) if value)
+        rejected_codes = {code for claim in rejected_claims for code in claim.codes}
+        generic_codes = self._generic_codes(evaluated_text)
+        repetitive_structure = self._has_repetitive_paragraph_structure(paragraphs) or (
+            sum(
+                len(re.findall(pattern, evaluated_text, re.IGNORECASE))
+                for pattern in _REPETITIVE_NARRATIVE_PATTERNS
+            )
+            >= 2
+        )
         mechanical_posting = self._has_mechanical_posting_reference(paragraphs)
-        resume_paraphrase = self._is_resume_paraphrase(paragraphs, evidence)
-        enumerative_closing = self._has_enumerative_closing(paragraphs)
-        narrative_developed = self._has_sufficient_narrative_development(paragraphs, evidence)
+        resume_paraphrase = self._is_resume_paraphrase(paragraphs, evidence) or (
+            self._text_paraphrases_multiple_sources(rejected_text, evidence)
+        )
+        enumerative_closing = self._has_enumerative_closing(paragraphs) or bool(
+            re.search(
+                r"\b(?:experience spanning|contribute (?:now )?through|background spans|"
+                r"experience across)\b",
+                rejected_text,
+                re.IGNORECASE,
+            )
+            and rejected_text.count(",") >= 3
+        )
+        narrative_developed = (
+            self._has_sufficient_narrative_development(paragraphs, evidence)
+            and not repetitive_structure
+            and not resume_paraphrase
+        )
         authority_mode = self._company_authority_mode(research)
         specific_company = self._specific_company_connection(
             paragraphs,
@@ -695,6 +737,23 @@ class CoverLetterValidator:
         }
         role_present = posting.title.casefold() in combined.casefold() or any(
             paragraph.purpose is CoverLetterParagraphPurpose.ROLE_FIT for paragraph in paragraphs
+        )
+        narrative_integrity_codes = self._narrative_integrity_codes(
+            evaluated_text,
+            paragraphs,
+            evidence,
+            posting,
+        )
+        rejected_style = any(
+            code.startswith("formulaic_phrase:")
+            or code
+            in {
+                "available_company_name_replaced_by_placeholder",
+                "unresolved_placeholder",
+                "ungrammatical_posting_fragment",
+                "sentence_fragment",
+            }
+            for code in rejected_codes
         )
         return [
             self._gate(
@@ -731,10 +790,10 @@ class CoverLetterValidator:
             ),
             self._gate(
                 "generic_language",
-                not generic_codes and not structurally_generic,
+                not generic_codes and not structurally_generic and not rejected_style,
                 (
                     "generic_language_absent"
-                    if not generic_codes and not structurally_generic
+                    if not generic_codes and not structurally_generic and not rejected_style
                     else "structurally_generic"
                 ),
                 (
@@ -744,6 +803,23 @@ class CoverLetterValidator:
                         "The draft uses formulaic wording or a generic application structure: "
                         f"{', '.join(generic_codes) if generic_codes else 'structural pattern'}."
                     )
+                ),
+            ),
+            self._gate(
+                "narrative_integrity",
+                not narrative_integrity_codes,
+                (
+                    "narrative_integrity_verified"
+                    if not narrative_integrity_codes
+                    else narrative_integrity_codes[0]
+                ),
+                (
+                    "Sentences are complete, non-repetitive, placeholder-free, and retain "
+                    "canonical titles and reviewed qualifications."
+                    if not narrative_integrity_codes
+                    else "Narrative integrity failed: "
+                    + ", ".join(narrative_integrity_codes)
+                    + "."
                 ),
             ),
             self._gate(
@@ -958,18 +1034,23 @@ class CoverLetterValidator:
         if any(re.search(pattern, lowered) for pattern in _INTERNAL_PROSE_PATTERNS):
             codes.append("internal_application_language")
         if posting.company_name and re.search(
-            r"\b(?:the employer|the organization)\b",
+            r"\b(?:the employer|the organization|your organization)\b",
             lowered,
         ):
             codes.append("available_company_name_replaced_by_placeholder")
+        if any(re.search(pattern, lowered) for pattern in _UNRESOLVED_PLACEHOLDER_PATTERNS):
+            codes.append("unresolved_placeholder")
         if re.search(
-            r"\b(?:includes work on|work on)\s+(?:act as|working with|responsible for)\b",
+            r"\b(?:includes work on|work on|emphasis on work on)\s+"
+            r"(?:act as|alongside|working with|responsible for)\b",
             lowered,
         ):
             codes.append("ungrammatical_posting_fragment")
         if text.count("—") + text.count("--") > 2:
             codes.append("excessive_em_dashes")
         sentences = cls._sentences(text)
+        if any(_UNSUBJECTED_ACTION_PATTERN.match(sentence.strip()) for sentence in sentences):
+            codes.append("sentence_fragment")
         if sum(sentence.casefold().startswith("i ") for sentence in sentences) > 2:
             codes.append("repetitive_i_openings")
         posting_words = posting.description.split()
@@ -1226,6 +1307,109 @@ class CoverLetterValidator:
         reused_body_evidence = len(body_evidence_ids) != len(set(body_evidence_ids))
         return role_summaries >= 2 or mechanical_connections >= 2 or reused_body_evidence
 
+    @classmethod
+    def _text_paraphrases_multiple_sources(
+        cls,
+        text: str,
+        evidence: list[CoverLetterEvidenceRecord],
+    ) -> bool:
+        text_terms = cls._content_terms(text)
+        high_overlap = 0
+        for record in evidence:
+            if record.kind not in {
+                CoverLetterEvidenceKind.EXPERIENCE,
+                CoverLetterEvidenceKind.PROJECT,
+            }:
+                continue
+            source_terms = cls._content_terms(record.source_text)
+            if source_terms and len(source_terms & text_terms) / len(source_terms) >= 0.72:
+                high_overlap += 1
+        return high_overlap >= 2
+
+    @classmethod
+    def _narrative_integrity_codes(
+        cls,
+        text: str,
+        paragraphs: list[CoverLetterParagraph],
+        evidence: list[CoverLetterEvidenceRecord],
+        posting: JobPosting,
+    ) -> list[str]:
+        lowered = text.casefold()
+        codes: list[str] = []
+        if posting.company_name and re.search(
+            r"\b(?:the employer|the organization|your organization)\b",
+            lowered,
+        ):
+            codes.append("known_company_replaced_by_placeholder")
+        if any(re.search(pattern, lowered) for pattern in _UNRESOLVED_PLACEHOLDER_PATTERNS):
+            codes.append("unresolved_placeholder")
+        if re.search(
+            r"\b(?:includes work on|work on|emphasis on work on)\s+"
+            r"(?:act as|alongside|working with|responsible for)\b",
+            lowered,
+        ):
+            codes.append("malformed_posting_fragment")
+        if any(
+            _UNSUBJECTED_ACTION_PATTERN.match(sentence.strip())
+            for sentence in cls._sentences(text)
+        ):
+            codes.append("sentence_fragment")
+        template_count = sum(
+            len(re.findall(pattern, lowered))
+            for pattern in _REPETITIVE_NARRATIVE_PATTERNS
+        )
+        if template_count >= 2:
+            codes.append("repetitive_narrative_template")
+
+        canonical_titles = {
+            title.casefold()
+            for record in evidence
+            if (title := (record.entry_title or "").strip())
+        }
+        promoted_titles = {
+            match.group(0).strip().casefold()
+            for match in re.finditer(
+                r"\b(?:chief|director|head|lead|manager|principal|senior|staff)\s+"
+                r"(?:[A-Z][A-Za-z0-9&+/-]*\s+){0,5}"
+                r"(?:engineer|architect|designer|researcher|developer|manager)\b",
+                text,
+                re.IGNORECASE,
+            )
+        }
+        if promoted_titles - canonical_titles:
+            codes.append("unsupported_title_change")
+
+        degree_terms = re.findall(
+            r"\b(?:associate(?:'s)?|bachelor(?:'s)?|master(?:'s)?|doctoral|doctorate|phd)"
+            r"(?:\s+degree)?\b",
+            lowered,
+        )
+        qualification_authority = " ".join(record.source_text for record in evidence).casefold()
+        if degree_terms and any(term not in qualification_authority for term in degree_terms):
+            codes.append("unsupported_degree_qualification")
+
+        body = [
+            paragraph
+            for paragraph in paragraphs
+            if paragraph.purpose
+            not in {CoverLetterParagraphPurpose.OPENING, CoverLetterParagraphPurpose.CLOSING}
+        ]
+        if any(
+            sum(
+                bool(
+                    re.match(
+                        r"^(?:As |In (?:my|the) ).+?\bI\s+",
+                        sentence,
+                    )
+                )
+                for sentence in cls._sentences(paragraph.text)
+            )
+            >= 5
+            for paragraph in body
+        ):
+            codes.append("excessive_evidence_listing")
+        return list(dict.fromkeys(codes))
+
     @staticmethod
     def _has_mechanical_posting_reference(
         paragraphs: list[CoverLetterParagraph],
@@ -1437,13 +1621,19 @@ class DeterministicCoverLetterComposer:
                 developed_evidence,
                 research,
                 posting,
-                CoverLetterLengthClass.DEVELOPED,
+                CoverLetterLengthClass.CONCISE,
             ),
             self._compose(
                 developed_evidence,
                 research,
                 posting,
                 CoverLetterLengthClass.STANDARD,
+            ),
+            self._compose(
+                developed_evidence,
+                research,
+                posting,
+                CoverLetterLengthClass.DEVELOPED,
             ),
         ]
 
@@ -1456,132 +1646,13 @@ class DeterministicCoverLetterComposer:
         factual = [
             item for item in evidence if item.kind is not CoverLetterEvidenceKind.USER_MOTIVATION
         ]
-        experience_threads = self._threads_of_kind(
-            factual,
-            CoverLetterEvidenceKind.EXPERIENCE,
-        )
-        project_threads = self._threads_of_kind(
-            factual,
-            CoverLetterEvidenceKind.PROJECT,
-        )
-        if len(experience_threads) < 2 or not project_threads:
-            raise ValueError(
-                "A source-bound fallback requires two professional threads and one project"
-            )
-        threads = [experience_threads[0], experience_threads[1], project_threads[0]]
-        representatives = [thread[0] for thread in threads]
-        posting_fact_ids = [
-            fact.id
-            for fact in research.facts
-            if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
-        ][:3]
-        if not posting_fact_ids:
-            raise ValueError("A source-bound fallback requires posting authority")
-        length_class = CoverLetterLengthClass.DEVELOPED
-        posting_concepts = self._authority_concepts(research, posting)
-        opening_text = self._posting_grounded_opening(
-            representatives,
-            self._company_fact(research),
+        if not factual:
+            raise ValueError("A source-bound fallback requires reviewed candidate evidence")
+        return self._compose(
+            factual[: min(6, len(factual))],
+            research,
             posting,
-            posting_concepts=posting_concepts,
-        )
-        body_specs = [
-            (
-                CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION,
-                "source-bound-primary",
-                threads[0],
-            ),
-            (
-                CoverLetterParagraphPurpose.CONTRIBUTION,
-                "source-bound-secondary",
-                threads[1],
-            ),
-            (
-                CoverLetterParagraphPurpose.ROLE_FIT,
-                "source-bound-project",
-                threads[2],
-            ),
-        ]
-        paragraphs = [
-            self._source_bound_paragraph(
-                purpose=CoverLetterParagraphPurpose.OPENING,
-                text=opening_text,
-                evidence_ids=[item.id for item in representatives],
-                posting_fact_ids=posting_fact_ids,
-                metadata=[
-                    CoverLetterCanonicalMetadata.COMPANY_NAME,
-                    CoverLetterCanonicalMetadata.ROLE_TITLE,
-                ],
-                narrative_thread_id="source-bound-opening",
-                length_class=length_class,
-            )
-        ]
-        for index, (purpose, thread_id, thread) in enumerate(body_specs):
-            body_text = self._evidence_paragraph(
-                thread,
-                index=index,
-                length_class=length_class,
-            )
-            title = thread[0].entry_title or "engineering role"
-            if index == 0:
-                body_text = body_text.replace(
-                    f"As {title}, my work included",
-                    f"My responsibilities as {title} included",
-                    1,
-                )
-            elif index == 1:
-                body_text = body_text.replace(
-                    f"In my {title} role, my work included",
-                    f"During my time as {title}, the work included",
-                    1,
-                )
-            paragraphs.append(
-                self._source_bound_paragraph(
-                    purpose=purpose,
-                    text=body_text,
-                    evidence_ids=[item.id for item in thread],
-                    posting_fact_ids=[],
-                    metadata=[],
-                    narrative_thread_id=thread_id,
-                    length_class=length_class,
-                )
-            )
-        company = (posting.company_name or "").strip() or "your organization"
-        focuses = [self._thread_focus(item) for item in representatives]
-        closing_text = " ".join(
-            [
-                (
-                    f"My work with {focuses[0]} complements my experience with "
-                    f"{focuses[1]} and {focuses[2]} for the {posting.title} position "
-                    f"at {company}."
-                ),
-                (
-                    "Together, those engineering threads fit the role's stated "
-                    "integration and testing responsibilities."
-                ),
-                (
-                    "I would welcome the opportunity to discuss the position and the "
-                    "engineering work it requires."
-                ),
-                "Thank you for considering my application.",
-            ]
-        )
-        paragraphs.append(
-            self._source_bound_paragraph(
-                purpose=CoverLetterParagraphPurpose.CLOSING,
-                text=closing_text,
-                evidence_ids=[item.id for item in representatives],
-                posting_fact_ids=posting_fact_ids,
-                metadata=[
-                    CoverLetterCanonicalMetadata.COMPANY_NAME,
-                    CoverLetterCanonicalMetadata.ROLE_TITLE,
-                ],
-                narrative_thread_id="source-bound-closing",
-                length_class=length_class,
-            )
-        )
-        return CoverLetterDraftOutput(
-            paragraphs=paragraphs
+            CoverLetterLengthClass.DEVELOPED,
         )
 
     @staticmethod
@@ -1659,25 +1730,40 @@ class DeterministicCoverLetterComposer:
         posting: JobPosting,
         length_class: CoverLetterLengthClass,
     ) -> CoverLetterDraftOutput:
-        company_fact = self._company_fact(research)
         posting_fact_ids = [
             fact.id
             for fact in research.facts
             if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
         ][:3]
         if not posting_fact_ids:
-            posting_fact_ids = [str(company_fact.id)]
+            posting_fact_ids = [str(self._company_fact(research).id)]
         threads = self._evidence_threads(evidence)
+        if not threads:
+            raise ValueError("A deterministic cover letter requires an evidence thread")
         representatives = [thread[0] for thread in threads]
-        posting_concepts = self._authority_concepts(research, posting)
+        posting_concepts = self._prioritize_role_concepts(
+            self._authority_concepts(research, posting),
+            posting,
+        )
+        per_thread = 2 if length_class is CoverLetterLengthClass.DEVELOPED else 1
+        if len(threads) >= 3:
+            primary_records = [
+                record for thread in threads[:2] for record in thread[:per_thread]
+            ][:3]
+            secondary_records = threads[2][:2]
+        elif len(threads) == 2:
+            primary_records = threads[0][:per_thread]
+            secondary_records = threads[1][:2]
+        else:
+            primary_records = threads[0][:per_thread]
+            secondary_records = threads[0][:1]
         paragraphs = [
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.OPENING,
-                text=self._posting_grounded_opening(
+                text=self._narrative_opening(
                     representatives,
-                    company_fact,
                     posting,
-                    posting_concepts=posting_concepts,
+                    posting_concepts,
                 ),
                 evidence_ids=[item.id for item in representatives],
                 posting_fact_ids=posting_fact_ids,
@@ -1687,99 +1773,288 @@ class DeterministicCoverLetterComposer:
                 ],
                 narrative_thread_id="thread-opening",
                 length_class=length_class,
-            )
-        ]
-        for index, thread in enumerate(threads):
-            purpose = (
-                CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION
-                if index == 0
-                else CoverLetterParagraphPurpose.CONTRIBUTION
-            )
-            body_text = self._evidence_paragraph(
-                thread,
-                index=index,
-                length_class=length_class,
-            )
-            title = thread[0].entry_title or "engineering role"
-            if index == 0:
-                body_text = body_text.replace(
-                    f"As {title}, my work included",
-                    f"My responsibilities as {title} included",
-                    1,
-                )
-            elif index == 1:
-                body_text = body_text.replace(
-                    f"In my {title} role, my work included",
-                    f"During my time as {title}, the work included",
-                    1,
-                )
-            paragraphs.append(
-                self._source_bound_paragraph(
-                    purpose=purpose,
-                    text=body_text,
-                    evidence_ids=[record.id for record in thread],
-                    posting_fact_ids=[],
-                    metadata=[],
-                    narrative_thread_id=f"thread-evidence-{index + 1}",
+            ),
+            self._source_bound_paragraph(
+                purpose=CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION,
+                text=self._narrative_body(
+                    primary_records,
+                    posting_concepts,
                     length_class=length_class,
-                )
-            )
-        company = (posting.company_name or "").strip() or "your organization"
-        thread_labels = [
-            item.entry_title
-            or (
-                "technical project"
-                if item.kind is CoverLetterEvidenceKind.PROJECT
-                else "engineering role"
-            )
-            for item in representatives
-        ]
-        if len(thread_labels) >= 3:
-            fit_sentence = (
-                f"My work as {thread_labels[0]} complements my "
-                f"{thread_labels[1]} experience and the {thread_labels[2]} project "
-                f"for the {posting.title} position at {company}."
-            )
-        elif len(thread_labels) == 2:
-            fit_sentence = (
-                f"My work as {thread_labels[0]} complements my "
-                f"{thread_labels[1]} experience for the {posting.title} position "
-                f"at {company}."
-            )
-        else:
-            fit_sentence = (
-                f"My work as {thread_labels[0]} is relevant to the "
-                f"{posting.title} position at {company}."
-            )
-        closing_text = " ".join(
-            [
-                fit_sentence,
-                (
-                    "Together, those engineering threads fit the role's stated "
-                    "integration and testing responsibilities."
+                    adjacent=False,
+                    secondary=False,
                 ),
-                (
-                    "I would welcome the opportunity to discuss the position and the "
-                    "engineering work it requires."
+                evidence_ids=[item.id for item in primary_records],
+                posting_fact_ids=posting_fact_ids,
+                metadata=[],
+                narrative_thread_id="thread-primary-evidence",
+                length_class=length_class,
+            ),
+            self._source_bound_paragraph(
+                purpose=CoverLetterParagraphPurpose.ROLE_FIT,
+                text=self._narrative_body(
+                    secondary_records,
+                    posting_concepts,
+                    length_class=length_class,
+                    adjacent=any(
+                        record.selection_reason.casefold().startswith(
+                            ("adjacent", "complementary")
+                        )
+                        or self._narrowly_adjacent_to_role(record, posting_concepts)
+                        for record in secondary_records
+                    ),
+                    secondary=True,
                 ),
-                "Thank you for considering my application.",
-            ]
-        )
-        paragraphs.append(
+                evidence_ids=[item.id for item in secondary_records],
+                posting_fact_ids=posting_fact_ids,
+                metadata=[],
+                narrative_thread_id="thread-role-connection",
+                length_class=length_class,
+            ),
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.CLOSING,
-                text=closing_text,
+                text=self._narrative_closing(
+                    representatives,
+                    posting,
+                    posting_concepts,
+                ),
                 evidence_ids=[item.id for item in representatives],
                 posting_fact_ids=posting_fact_ids,
                 metadata=[
                     CoverLetterCanonicalMetadata.COMPANY_NAME,
                     CoverLetterCanonicalMetadata.ROLE_TITLE,
                 ],
-                narrative_thread_id="thread-fit-closing",
+                narrative_thread_id="thread-closing",
                 length_class=length_class,
+            ),
+        ]
+        return CoverLetterDraftOutput(paragraphs=paragraphs)
+
+    def _narrative_opening(
+        self,
+        evidence: list[CoverLetterEvidenceRecord],
+        posting: JobPosting,
+        posting_concepts: list[str],
+    ) -> str:
+        company = (posting.company_name or "").strip()
+        destination = f" at {company}" if company else ""
+        role_focus = self._joined(posting_concepts[:3])
+        candidate_focus = self._joined(
+            [self._thread_focus(item) for item in evidence[:3]]
+        )
+        return " ".join(
+            [
+                f"I am applying for the {posting.title} role{destination}.",
+                f"The role's focus on {role_focus} connects directly to my experience "
+                f"with {candidate_focus}.",
+                (
+                    "That combination of technical development and practical engineering "
+                    "constraints is what interests me about the position."
+                ),
+            ]
+        )
+
+    def _narrative_body(
+        self,
+        records: list[CoverLetterEvidenceRecord],
+        posting_concepts: list[str],
+        *,
+        length_class: CoverLetterLengthClass,
+        adjacent: bool,
+        secondary: bool,
+    ) -> str:
+        sentences = [
+            self._complete_evidence_sentence(record, index=index)
+            for index, record in enumerate(records)
+        ]
+        focuses = [self._thread_focus(record) for record in records]
+        sentences.append(
+            "This thread adds a complementary view of how technical choices affect "
+            "behavior at the system boundary."
+            if secondary
+            else "Together, my work connected technical choices to practical "
+            "implementation constraints."
+        )
+        if adjacent:
+            adjacent_scope = " or ".join(posting_concepts[:2])
+            sentences.extend(
+                [
+                    (
+                        "This thread is adjacent to the role, not evidence of "
+                        f"{adjacent_scope} experience."
+                    ),
+                    (
+                        f"Its narrower relevance is the demonstrated work with "
+                        f"{self._joined(focuses[:2])}."
+                    ),
+                ]
+            )
+        else:
+            role_focus = self._joined(posting_concepts[:2])
+            sentences.append(
+                f"The connection to {role_focus} comes from that demonstrated technical work."
+            )
+        if length_class is CoverLetterLengthClass.DEVELOPED:
+            if secondary:
+                sentences.extend(
+                    [
+                        (
+                            "That perspective helps me distinguish a transferable method "
+                            "from a claim of direct domain experience."
+                        ),
+                        (
+                            "Keeping that boundary explicit lets the strongest demonstrated "
+                            "connection remain central."
+                        ),
+                    ]
+                )
+            else:
+                sentences.extend(
+                    [
+                        (
+                            "Following those choices through implementation gave me a "
+                            "practical view of system trade-offs."
+                        ),
+                        (
+                            "My work also required the design, software, and evaluation to "
+                            "remain coherent as the prototype developed."
+                        ),
+                    ]
+                )
+        elif length_class is CoverLetterLengthClass.CONCISE:
+            sentences = sentences[:3]
+        return " ".join(sentences)
+
+    @staticmethod
+    def _narrowly_adjacent_to_role(
+        record: CoverLetterEvidenceRecord,
+        posting_concepts: list[str],
+    ) -> bool:
+        source_terms = CoverLetterValidator._content_terms(
+            " ".join(
+                [
+                    record.source_text,
+                    *record.technologies,
+                    *record.outcomes,
+                ]
             )
         )
-        return CoverLetterDraftOutput(paragraphs=paragraphs)
+        role_terms = CoverLetterValidator._content_terms(" ".join(posting_concepts))
+        return len(source_terms & role_terms) <= 1
+
+    def _narrative_closing(
+        self,
+        evidence: list[CoverLetterEvidenceRecord],
+        posting: JobPosting,
+        posting_concepts: list[str],
+    ) -> str:
+        company = (posting.company_name or "").strip()
+        destination = f" at {company}" if company else ""
+        candidate_focus = self._joined(
+            [self._thread_focus(item) for item in evidence[:3]]
+        )
+        role_focus = self._joined(posting_concepts[:2])
+        return " ".join(
+            [
+                (
+                    f"I would welcome the opportunity to discuss the {posting.title} "
+                    f"role{destination}."
+                ),
+                (
+                    f"My direct experience with {candidate_focus} connects to the position's "
+                    f"focus on {role_focus}."
+                ),
+                "Thank you for considering my application.",
+            ]
+        )
+
+    @classmethod
+    def _complete_evidence_sentence(
+        cls,
+        record: CoverLetterEvidenceRecord,
+        *,
+        index: int,
+    ) -> str:
+        action = cls._finite_action(record.source_text)
+        title = record.entry_title or (
+            "technical project"
+            if record.kind is CoverLetterEvidenceKind.PROJECT
+            else "engineering work"
+        )
+        if action is None:
+            focus = cls._thread_focus(record)
+            return f"The {title} work gave me direct experience with {focus}."
+        normalized_source = " ".join(record.source_text.split()).strip(" .,:;-")
+        project_label = title if title.casefold().endswith("project") else f"{title} project"
+        if (
+            len(normalized_source.split()) >= 8
+            and action.casefold() == normalized_source.casefold()
+        ):
+            focus = (
+                cls._joined(list(record.technologies[:3]))
+                if record.technologies
+                else cls._thread_focus(record)
+            )
+            if record.kind is CoverLetterEvidenceKind.PROJECT:
+                return f"The {project_label} gave me direct experience with {focus}."
+            return f"My {title} work gave me direct experience with {focus}."
+        action_terms = re.findall(r"[a-z0-9+#-]+", action.casefold())
+        missing_technologies = []
+        for technology in record.technologies:
+            technology_terms = re.findall(r"[a-z0-9+#-]+", technology.casefold())
+            if not technology_terms or not all(
+                any(
+                    term == action_term
+                    or (
+                        len(term) >= 6
+                        and len(action_term) >= 6
+                        and term[:6] == action_term[:6]
+                    )
+                    for action_term in action_terms
+                )
+                for term in technology_terms
+            ):
+                missing_technologies.append(technology)
+        if len(normalized_source.split()) >= 8 and missing_technologies:
+            additions = cls._joined(missing_technologies[:3])
+            if record.kind is CoverLetterEvidenceKind.PROJECT:
+                if index == 0:
+                    return f"In the {project_label}, I {action} and incorporated {additions}."
+                return (
+                    f"A second part of the {project_label} {action} and incorporated "
+                    f"{additions}."
+                )
+            if index == 0:
+                return f"As {title}, I {action} and incorporated {additions}."
+            return f"In related {title} work, I {action} and incorporated {additions}."
+        if record.kind is CoverLetterEvidenceKind.PROJECT:
+            return f"In the {project_label}, I {action}."
+        if index == 0:
+            return f"As {title}, I {action}."
+        return f"In my {title} work, I {action}."
+
+    @staticmethod
+    def _finite_action(text: str) -> str | None:
+        cleaned = " ".join(text.split()).strip(" .,:;-")
+        cleaned = re.sub(r"^(?:I|we)\s+", "", cleaned, flags=re.IGNORECASE)
+        verbs = (
+            "assembled|authored|automated|built|collaborated|created|deployed|designed|"
+            "developed|documented|engineered|evaluated|implemented|integrated|led|modeled|"
+            "modelled|owned|prototyped|selected|specified|supported|tested|troubleshot|used|"
+            "verified"
+        )
+        if not re.match(rf"^(?:{verbs})\b", cleaned, re.IGNORECASE):
+            return None
+        first_clause = re.split(
+            rf"(?<!\d)[,;](?!\d)|\s+and\s+(?=(?:{verbs})\b)",
+            cleaned,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        words = first_clause.split()
+        if len(words) > 24:
+            first_clause = " ".join(words[:24]).rstrip(" ,;:-")
+        first_clause = re.sub(r"\b(?:and|with|to)$", "", first_clause).strip()
+        return first_clause[:1].casefold() + first_clause[1:]
 
     def _posting_grounded_opening(
         self,
@@ -1822,7 +2097,8 @@ class DeterministicCoverLetterComposer:
             if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
         ]
         concepts = [concept for concept in concepts if concept]
-        return concepts or cls._posting_concepts(posting.description, posting)
+        flattened = cls._split_role_concepts(concepts)
+        return flattened or cls._posting_concepts(posting.description, posting)
 
     def _evidence_paragraph(
         self,
@@ -1985,9 +2261,60 @@ class DeterministicCoverLetterComposer:
             concepts.append(concept)
             seen.add(normalized)
         if concepts:
-            return concepts[:4]
+            return cls._split_role_concepts(concepts)[:4]
         role_terms = sorted(CoverLetterValidator._content_terms(posting.title))
         return role_terms[:3] or ["the stated engineering responsibilities"]
+
+    @staticmethod
+    def _split_role_concepts(concepts: list[str]) -> list[str]:
+        output: list[str] = []
+        for concept in concepts:
+            for part in re.split(r",\s*", concept):
+                cleaned = re.sub(
+                    r"^(?:architecture|development|implementation|integration|"
+                    r"investigation|testing|work) of\s+",
+                    "",
+                    part.strip(),
+                    flags=re.IGNORECASE,
+                )
+                cleaned = re.sub(
+                    r"^prototype\s+",
+                    "prototyping ",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                )
+                cleaned = re.sub(r"^run\s+", "", cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r"^(?:and|or)\s+", "", cleaned, flags=re.IGNORECASE)
+                cleaned = DeterministicCoverLetterComposer._noun_sequence(cleaned)
+                if cleaned and cleaned.casefold() not in {
+                    item.casefold() for item in output
+                }:
+                    output.append(cleaned)
+        return output[:6]
+
+    @staticmethod
+    def _prioritize_role_concepts(
+        concepts: list[str],
+        posting: JobPosting,
+    ) -> list[str]:
+        actionable = [
+            concept for concept in concepts if not concept.casefold().endswith("responsibilities")
+        ]
+        if len(actionable) >= 3:
+            concepts = actionable
+        title_terms = CoverLetterValidator._content_terms(posting.title)
+        return [
+            concept
+            for _, concept in sorted(
+                enumerate(concepts),
+                key=lambda item: (
+                    not bool(
+                        CoverLetterValidator._content_terms(item[1]) & title_terms
+                    ),
+                    item[0],
+                ),
+            )
+        ]
 
     @staticmethod
     def _posting_fragments(text: str) -> list[str]:
@@ -2001,11 +2328,13 @@ class DeterministicCoverLetterComposer:
                     item.strip()
                     for item in re.split(
                         r",\s+(?=(?:act|architect|build|collaborate|create|define|design|"
-                        r"develop|implement|integrate|investigate|iterate|lead|maintain|"
-                        r"perform|select|support|test|translate|troubleshoot|work|working)\b)|"
+                        r"develop|execute|implement|integrate|investigate|iterate|lead|maintain|"
+                        r"perform|prototype|run|select|support|test|translate|troubleshoot|"
+                        r"work|working)\b)|"
                         r"\band\s+(?=(?:act|architect|build|collaborate|create|define|design|"
-                        r"develop|implement|integrate|investigate|iterate|lead|maintain|"
-                        r"perform|select|support|test|translate|troubleshoot|work)\b)",
+                        r"develop|execute|implement|integrate|investigate|iterate|lead|maintain|"
+                        r"perform|prototype|run|select|support|test|translate|troubleshoot|"
+                        r"work)\b)",
                         sentence,
                         flags=re.IGNORECASE,
                     )
@@ -2038,7 +2367,8 @@ class DeterministicCoverLetterComposer:
                 cleaned = f"{act_as.group(1)} responsibilities"
             else:
                 cleaned = cls._noun_sequence(cleaned)
-        return " ".join(cleaned.split()[:10]).rstrip(" ,")
+        normalized = " ".join(cleaned.split()[:14]).rstrip(" ,")
+        return re.sub(r"\s+(?:and|or|to|of|with)$", "", normalized, flags=re.IGNORECASE)
 
     @staticmethod
     def _normalize_partner_terms(value: str) -> str:
@@ -2060,6 +2390,7 @@ class DeterministicCoverLetterComposer:
             "define": "definition of",
             "design": "design of",
             "develop": "development of",
+            "execute": "execution of",
             "implement": "implementation of",
             "integrate": "integration of",
             "investigate": "investigation of",
@@ -2067,6 +2398,8 @@ class DeterministicCoverLetterComposer:
             "lead": "leadership of",
             "maintain": "maintenance of",
             "perform": "",
+            "prototype": "prototyping",
+            "run": "",
             "select": "selection of",
             "support": "support for",
             "test": "testing of",
@@ -2076,11 +2409,11 @@ class DeterministicCoverLetterComposer:
         }
         cleaned = value.strip()
         coordinated = re.fullmatch(
-            r"(act|architect|build|collaborate|create|define|design|develop|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|select|support|test|"
+            r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
+            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
             r"translate|troubleshoot|work)\s+and\s+"
-            r"(act|architect|build|collaborate|create|define|design|develop|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|select|support|test|"
+            r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
+            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
             r"translate|troubleshoot|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
@@ -2090,8 +2423,8 @@ class DeterministicCoverLetterComposer:
             second = action_nouns[coordinated.group(2).casefold()].rstrip(" of")
             return f"{first} and {second} of {coordinated.group(3)}"
         action = re.match(
-            r"^(act|architect|build|collaborate|create|define|design|develop|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|select|support|test|"
+            r"^(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
+            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
             r"translate|troubleshoot|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
@@ -2315,7 +2648,15 @@ class DeterministicCoverLetterComposer:
                 *cls._technical_phrases(record.source_text),
             )
         ]
-        unique = [value for value in dict.fromkeys(values) if value]
+        unique = [
+            value
+            for value in dict.fromkeys(values)
+            if value
+            and not re.fullmatch(
+                r"[<>~]?\d+(?:[.,]\d+)?(?:%|ms|fps|hz|khz|mhz|gb|mb)?",
+                value.casefold(),
+            )
+        ]
         if unique:
             return unique[0]
         title = records[0].entry_title or "hands-on engineering"

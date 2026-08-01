@@ -109,7 +109,7 @@ def test_all_candidate_rejection_reports_validator_separation_and_stays_fatal() 
         service.generate_artifact(profile, posting, plan, recipient=recipient(posting))
 
     diagnostics = captured.value.diagnostics
-    assert len(diagnostics) == 3
+    assert len(diagnostics) == 4
     assert all(
         diagnostic.claim_validation is CoverLetterQualityGateStatus.FAILED
         for diagnostic in diagnostics
@@ -168,7 +168,7 @@ def test_source_bound_fallback_is_used_only_after_richer_candidates_fail() -> No
     assert source_bound.source_bound_sentence_count == source_bound.sentence_count
     assert source_bound.unbound_sentence_count == 0
     assert source_bound.rendering_attempted
-    assert len(artifact.letter.paragraphs) == 5
+    assert len(artifact.letter.paragraphs) == 4
     assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
     assert all(
         sentence.posting_fact_ids

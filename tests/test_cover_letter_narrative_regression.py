@@ -128,9 +128,7 @@ class _UnavailablePagination:
         raise PageCountVerificationError("Offline regression uses occupancy estimation")
 
 
-def test_exact_672_percent_huawei_draft_is_a_rejected_regression_fixture(
-    tmp_path: Path,
-) -> None:
+def test_malformed_huawei_draft_is_a_rejected_regression_fixture() -> None:
     profile, posting, plan, research, evidence = _production_case()
     output = _rejected_huawei_output(
         [item.id for item in evidence],
@@ -147,30 +145,7 @@ def test_exact_672_percent_huawei_draft_is_a_rejected_regression_fixture(
         "enumerative_closing",
         "insufficient_narrative_development",
     } <= _failed_codes(validated)
-    letter = CoverLetter(
-        profile_id=profile.id,
-        profile_version=profile.version,
-        posting_id=posting.id,
-        plan_fingerprint="regression-plan",
-        candidate_name=profile.display_name,
-        contact=profile.contact,
-        date_text="July 21, 2026",
-        job_title=posting.title,
-        company_name=posting.company_name,
-        recipient={"company": posting.company_name},
-        salutation="Dear Hiring Manager,",
-        paragraphs=validated.paragraphs,
-        signoff_name=profile.display_name,
-    )
-    fitted = CoverLetterPageFitter(
-        CoverLetterRenderer(page_count_provider=_UnavailablePagination())
-    ).fit([letter], tmp_path)
-
-    assert fitted.diagnostic.status is CoverLetterPageFitStatus.SEVERE_UNDERFILL
-    assert fitted.diagnostic.underfill_or_overflow == "severe_underfill"
-    assert fitted.diagnostic.estimated_utilization == pytest.approx(0.6721450617)
-    assert fitted.diagnostic.estimated_remaining_lines == 18
-    assert fitted.diagnostic.candidates[0].rejection_code == "severe_underfill"
+    assert not CoverLetterService._required_content_gates_pass(validated.quality_gates)
 
 
 @pytest.mark.parametrize(
@@ -296,7 +271,7 @@ def test_substantive_developed_variant_improves_density_and_reaches_preferred_ba
     assert renderer.pagination_attempt_count == 1
 
 
-def test_real_offline_occupancy_estimate_reaches_preferred_band() -> None:
+def test_real_offline_candidate_respects_concise_narrative_policy() -> None:
     profile, posting, plan, _, _ = _production_case()
     service = CoverLetterService(
         renderer=CoverLetterRenderer(page_count_provider=_UnavailablePagination())
@@ -309,9 +284,12 @@ def test_real_offline_occupancy_estimate_reaches_preferred_band() -> None:
         date_text="July 21, 2026",
     )
 
-    assert 0.92 <= artifact.page_fit.estimated_utilization <= 0.95
-    assert artifact.page_fit.estimated_remaining_lines == 3
-    assert artifact.page_fit.preferred_density_reachable
+    narrative_words = sum(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs)
+    assert 300 <= narrative_words <= 425
+    assert 0.70 <= artifact.page_fit.estimated_utilization <= 0.80
+    assert artifact.page_fit.estimated_remaining_lines > 0
+    assert not artifact.page_fit.preferred_density_reachable
+    assert artifact.page_fit.underfill_or_overflow == "balanced_one_page"
     assert artifact.page_fit.status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED
     assert artifact.call_counts.provider_calls == 0
     assert artifact.call_counts.research_network_requests == 0

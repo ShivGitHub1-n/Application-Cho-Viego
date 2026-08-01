@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v7"
+COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v8"
 COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v2"
-COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v5"
+COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v6"
 COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v4:standard-business-brief"
 
 COVER_LETTER_WRITING_CONSTRAINTS = (
@@ -18,9 +18,9 @@ COVER_LETTER_WRITING_CONSTRAINTS = (
     "metrics, ownership, scope, or outcomes.",
     "Use a natural technically capable early-career voice: specific, conversational, "
     "concise, and professional.",
-    "Normally use five body paragraphs and aim for 475 to 550 words when three distinct "
-    "substantive evidence threads support that length; use less when evidence is sparse "
-    "and never pad the page with generic enthusiasm or repeated facts.",
+    "Use a direct opening, two synthesized evidence paragraphs, and a concise closing. "
+    "Aim for 300 to 425 words when the reviewed evidence supports that length; use less "
+    "when evidence is sparse and never pad the page with generic enthusiasm or repeated facts.",
     "Open with a concrete technical or company connection, not an application "
     "announcement or generic enthusiasm.",
     "Close with a direct contribution-and-direction statement; do not repeat the "

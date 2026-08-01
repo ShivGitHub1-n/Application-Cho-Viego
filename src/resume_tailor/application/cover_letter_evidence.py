@@ -55,105 +55,49 @@ class CoverLetterEvidencePortfolio:
                 if item.evidence_id in evidence_by_id and item.entry_id in entries
             ][:3]
             sparse_fallback = bool(candidates)
+        candidates_by_entry: dict[str, list[RetrievedEvidence]] = {}
+        for candidate in candidates:
+            candidates_by_entry.setdefault(candidate.entry_id, []).append(candidate)
+        for thread in candidates_by_entry.values():
+            thread.sort(key=self._candidate_key)
+
+        selected_threads: list[list[RetrievedEvidence]] = []
+        used_requirements: set[str] = set()
+        used_features: set[str] = set()
+        while candidates_by_entry and len(selected_threads) < 3:
+            ranked_threads = sorted(
+                candidates_by_entry.values(),
+                key=lambda thread: self._thread_key(
+                    thread,
+                    used_requirements=used_requirements,
+                    used_features=used_features,
+                ),
+            )
+            thread = ranked_threads[0]
+            selected_threads.append(thread)
+            candidates_by_entry.pop(thread[0].entry_id)
+            used_requirements.update(self._thread_requirements(thread))
+            used_features.update(feature for item in thread for feature in item.meaningful_overlap)
+
         selected: list[RetrievedEvidence] = []
-
-        if candidates:
-            selected.append(
-                min(
-                    candidates,
-                    key=lambda item: (
-                        _RELATIONSHIP_PRIORITY[item.relationship],
-                        item.entry_kind != "experience",
-                        item.evidence_id not in resume_evidence_ids,
-                        item.rank,
-                    ),
-                )
-            )
-
-        while len(selected) < min(3, len(candidates)):
-            used_ids = {item.evidence_id for item in selected}
-            used_entries = {item.entry_id for item in selected}
-            used_requirements = {
-                requirement
-                for item in selected
-                for requirement in [
-                    *item.direct_requirement_ids,
-                    *item.adjacent_requirement_ids,
-                    *item.complementary_requirement_ids,
-                ]
-            }
-            remaining = [item for item in candidates if item.evidence_id not in used_ids]
-            if not remaining:
-                break
-            used_features = {feature for item in selected for feature in item.normalized_features}
-            second_experience_available = (
-                len(selected) == 1
-                and selected[0].entry_kind == "experience"
-                and any(
-                    item.entry_kind == "experience"
-                    and item.entry_id not in used_entries
-                    and item.relationship
-                    in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
-                    for item in remaining
-                )
-            )
-            remaining.sort(
+        for thread in selected_threads:
+            representative = thread[0]
+            selected.append(representative)
+            representative_requirements = self._item_requirements(representative)
+            representative_features = set(representative.meaningful_overlap)
+            supporting = sorted(
+                thread[1:],
                 key=lambda item: (
-                    (
-                        item.entry_id in used_entries
-                        or item.relationship
-                        not in {
-                            EvidenceRelationship.DIRECT,
-                            EvidenceRelationship.ADJACENT,
-                        }
-                    ),
-                    second_experience_available and item.entry_kind != "experience",
-                    _RELATIONSHIP_PRIORITY[item.relationship],
-                    (
-                        len(selected) >= 2
-                        and not any(chosen.entry_kind == "project" for chosen in selected)
-                        and item.entry_kind != "project"
-                    ),
-                    not bool(
-                        set(
-                            [
-                                *item.direct_requirement_ids,
-                                *item.adjacent_requirement_ids,
-                                *item.complementary_requirement_ids,
-                            ]
-                        )
-                        - used_requirements
-                    ),
-                    len(set(item.normalized_features) & used_features),
-                    item.evidence_id in resume_evidence_ids,
-                    item.rank,
-                )
+                    -len(self._item_requirements(item) - representative_requirements),
+                    -len(set(item.meaningful_overlap) - representative_features),
+                    *self._candidate_key(item),
+                ),
             )
-            selected.append(remaining[0])
-
-        for thread in list(selected):
-            if len(selected) >= 6:
-                break
-            used_ids = {item.evidence_id for item in selected}
-            used_features = {feature for item in selected for feature in item.normalized_features}
-            supporting = [
-                item
-                for item in candidates
-                if item.evidence_id not in used_ids
-                and item.entry_id == thread.entry_id
-                and item.relationship
-                in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
-            ]
-            if not supporting:
-                continue
-            supporting.sort(
-                key=lambda item: (
-                    len(set(item.normalized_features) & used_features),
-                    _RELATIONSHIP_PRIORITY[item.relationship],
-                    item.rank,
-                )
-            )
-            selected.append(supporting[0])
+            if supporting and supporting[0].relationship in {
+                EvidenceRelationship.DIRECT,
+                EvidenceRelationship.ADJACENT,
+            }:
+                selected.append(supporting[0])
 
         records: list[CoverLetterEvidenceRecord] = []
         for retrieved in selected:
@@ -180,6 +124,7 @@ class CoverLetterEvidencePortfolio:
                     selection_reason=self._selection_reason(
                         source.id in resume_evidence_ids,
                         retrieved.matched_requirements,
+                        relationship=retrieved.relationship,
                         sparse_fallback=sparse_fallback,
                     ),
                 )
@@ -236,6 +181,60 @@ class CoverLetterEvidencePortfolio:
         return records, diagnostic
 
     @staticmethod
+    def _item_requirements(item: RetrievedEvidence) -> set[str]:
+        return {
+            *item.direct_requirement_ids,
+            *item.adjacent_requirement_ids,
+            *item.complementary_requirement_ids,
+        }
+
+    @classmethod
+    def _thread_requirements(cls, thread: list[RetrievedEvidence]) -> set[str]:
+        return {requirement for item in thread for requirement in cls._item_requirements(item)}
+
+    @staticmethod
+    def _candidate_key(item: RetrievedEvidence) -> tuple[object, ...]:
+        return (
+            _RELATIONSHIP_PRIORITY[item.relationship],
+            -len(item.direct_requirement_ids),
+            -len(item.meaningful_overlap),
+            -item.contextual_relevance,
+            -item.total_score,
+            item.rank,
+            item.evidence_id,
+        )
+
+    @classmethod
+    def _thread_key(
+        cls,
+        thread: list[RetrievedEvidence],
+        *,
+        used_requirements: set[str],
+        used_features: set[str],
+    ) -> tuple[object, ...]:
+        requirements = cls._thread_requirements(thread)
+        features = {feature for item in thread for feature in item.meaningful_overlap}
+        direct_requirements = {
+            requirement
+            for item in thread
+            for requirement in item.direct_requirement_ids
+        }
+        best = thread[0]
+        return (
+            _RELATIONSHIP_PRIORITY[best.relationship],
+            -best.total_score,
+            -best.contextual_relevance,
+            -len(direct_requirements),
+            -len(features),
+            -len(direct_requirements - used_requirements),
+            -len(requirements - used_requirements),
+            -len(features - used_features),
+            -sum(item.total_score for item in thread[:2]),
+            best.rank,
+            best.entry_id,
+        )
+
+    @staticmethod
     def _final_resume_evidence_ids(
         final_resume: StructuredResume | None,
         plan: TailoringPlan,
@@ -265,6 +264,7 @@ class CoverLetterEvidencePortfolio:
         selected_in_resume: bool,
         requirements: list[str],
         *,
+        relationship: EvidenceRelationship,
         sparse_fallback: bool,
     ) -> str:
         if sparse_fallback:
@@ -277,9 +277,13 @@ class CoverLetterEvidencePortfolio:
             f" It connects to: {', '.join(rendered_requirements)}." if rendered_requirements else ""
         )
         if selected_in_resume:
-            return "Strong reviewed evidence consistent with the final resume narrative." + context
+            return (
+                f"{relationship.value.title()} reviewed evidence consistent with the final "
+                "resume narrative." + context
+            )
         return (
-            "Strong reviewed evidence omitted from the one-page resume that adds a distinct thread."
+            f"{relationship.value.title()} reviewed evidence omitted from the one-page resume "
+            "that adds a distinct thread."
             + context
         )
 

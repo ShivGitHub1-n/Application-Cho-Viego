@@ -967,6 +967,7 @@ class CoverLetterService:
             structural_validation=aggregate(
                 {
                     "generic_language",
+                    "narrative_integrity",
                     "paragraph_structure",
                     "posting_reference",
                     "closing_structure",
@@ -1077,6 +1078,7 @@ class CoverLetterService:
             "company_grounding",
             "interchangeability",
             "generic_language",
+            "narrative_integrity",
             "narrative_structure",
             "resume_complement",
             "paragraph_structure",

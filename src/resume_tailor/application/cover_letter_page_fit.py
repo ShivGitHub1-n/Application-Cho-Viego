@@ -53,7 +53,11 @@ class CoverLetterPageFitter:
         profile = candidates[0].layout_profile
         diagnostics: list[CoverLetterPageFitCandidateDiagnostic] = []
         for index, (letter, result) in enumerate(zip(candidates, results, strict=True)):
-            status = self._status(result, profile)
+            status = self._status(
+                result,
+                profile,
+                narrative_word_count=self._narrative_word_count(letter),
+            )
             diagnostics.append(
                 CoverLetterPageFitCandidateDiagnostic(
                     candidate_id=f"cover-fit:{index}",
@@ -80,7 +84,11 @@ class CoverLetterPageFitter:
                     rejection_reason=self._rejection_reason(status, result),
                 )
             )
-        selected_index = self._select_index(diagnostics, profile.target_utilization)
+        selected_index = self._select_index(
+            diagnostics,
+            profile.target_utilization,
+            candidates,
+        )
         selected_update: dict[str, object] = {"selected": True}
         if diagnostics[selected_index].status in {
             CoverLetterPageFitStatus.PREFERRED_DENSITY,
@@ -129,6 +137,8 @@ class CoverLetterPageFitter:
     def _status(
         result: CoverLetterRenderedCandidate,
         profile: CoverLetterLayoutProfile,
+        *,
+        narrative_word_count: int,
     ) -> CoverLetterPageFitStatus:
         floor = float(profile.preferred_utilization_floor)
         ceiling = float(profile.preferred_utilization_ceiling)
@@ -141,7 +151,9 @@ class CoverLetterPageFitter:
             return CoverLetterPageFitStatus.OVERFLOW
         if floor <= ratio <= ceiling:
             return CoverLetterPageFitStatus.PREFERRED_DENSITY
-        if acceptable_floor <= ratio <= acceptable_ceiling:
+        if acceptable_floor <= ratio <= acceptable_ceiling or (
+            290 <= narrative_word_count <= 425 and result.page_count == 1
+        ):
             return CoverLetterPageFitStatus.ACCEPTABLE_DENSITY
         return CoverLetterPageFitStatus.SEVERE_UNDERFILL
 
@@ -149,6 +161,7 @@ class CoverLetterPageFitter:
     def _select_index(
         diagnostics: list[CoverLetterPageFitCandidateDiagnostic],
         target: float,
+        candidates: list[CoverLetter],
     ) -> int:
         priority = {
             CoverLetterPageFitStatus.PREFERRED_DENSITY: 0,
@@ -158,8 +171,14 @@ class CoverLetterPageFitter:
             CoverLetterPageFitStatus.BLANK_TRAILING_PAGE: 4,
             CoverLetterPageFitStatus.PAGINATION_UNVERIFIED: 1,
         }
+        policy_length_indices = [
+            index
+            for index, candidate in enumerate(candidates)
+            if 290 <= CoverLetterPageFitter._narrative_word_count(candidate) <= 425
+        ]
+        eligible_indices = policy_length_indices or list(range(len(diagnostics)))
         return min(
-            range(len(diagnostics)),
+            eligible_indices,
             key=lambda index: (
                 priority[diagnostics[index].status],
                 abs(diagnostics[index].estimated_utilization - target),
@@ -167,6 +186,10 @@ class CoverLetterPageFitter:
                 index,
             ),
         )
+
+    @staticmethod
+    def _narrative_word_count(letter: CoverLetter) -> int:
+        return sum(len(paragraph.text.split()) for paragraph in letter.paragraphs)
 
     @staticmethod
     def _rejection_reason(
@@ -207,6 +230,11 @@ class CoverLetterPageFitter:
             return "blank_trailing_page"
         if diagnostic.status is CoverLetterPageFitStatus.OVERFLOW:
             return "overflow"
+        if diagnostic.status in {
+            CoverLetterPageFitStatus.PREFERRED_DENSITY,
+            CoverLetterPageFitStatus.ACCEPTABLE_DENSITY,
+        }:
+            return "balanced_one_page"
         if diagnostic.estimated_utilization < float(profile.acceptable_utilization_floor):
             return "severe_underfill"
         return "balanced_one_page"

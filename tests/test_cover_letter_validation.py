@@ -122,7 +122,7 @@ def test_invalid_paragraph_does_not_destroy_valid_siblings() -> None:
     assert result.rejected_claims
     assert {paragraph.purpose for paragraph in result.paragraphs} == {
         CoverLetterParagraphPurpose.OPENING,
-        CoverLetterParagraphPurpose.CONTRIBUTION,
+        CoverLetterParagraphPurpose.ROLE_FIT,
         CoverLetterParagraphPurpose.CLOSING,
     }
 
@@ -370,7 +370,7 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
         CoverLetterService.default_research_request(posting)
     )
 
-    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[0]
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
     result = CoverLetterValidator().validate_output(output, evidence, research, posting)
     text = " ".join(paragraph.text for paragraph in result.paragraphs)
     lowered = text.casefold()
@@ -391,23 +391,22 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
             "implementation evidence",
         )
     )
-    assert 475 <= len(text.split()) <= 550
-    assert len(result.paragraphs) == 5
-    assert max(len(paragraph.text.split()) for paragraph in result.paragraphs) <= 130
+    assert 300 <= len(text.split()) <= 425
+    assert len(result.paragraphs) == 4
+    assert max(len(paragraph.text.split()) for paragraph in result.paragraphs) <= 135
     assert diagnostic.narrative_thread_count == 3
     distinct_threads = []
     for item in evidence:
         if item.entity_id not in {thread.entity_id for thread in distinct_threads}:
             distinct_threads.append(item)
-    assert [item.kind for item in distinct_threads] == [
-        CoverLetterEvidenceKind.EXPERIENCE,
+    assert {item.kind for item in distinct_threads} == {
         CoverLetterEvidenceKind.EXPERIENCE,
         CoverLetterEvidenceKind.PROJECT,
-    ]
+    }
     assert len({item for paragraph in body for item in paragraph.candidate_evidence_ids}) == sum(
         len(paragraph.candidate_evidence_ids) for paragraph in body
     )
-    assert len([paragraph for paragraph in body if paragraph.candidate_evidence_ids]) == 3
+    assert len([paragraph for paragraph in body if paragraph.candidate_evidence_ids]) == 2
     assert "STM32" in text
     assert "sensor" in lowered
     assert "actuator" in lowered

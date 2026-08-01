@@ -60,6 +60,19 @@ class _UnavailablePaginationProvider:
         )
 
 
+class _ExactResumePaginationProvider:
+    def measure(self, _path: Path) -> PageCountMeasurement:
+        return PageCountMeasurement(
+            page_count=1,
+            provider="synthetic exact resume pagination",
+            confidence="exact",
+            exact=True,
+        )
+
+    def measure_many(self, paths: list[Path]) -> list[PageCountMeasurement]:
+        return [self.measure(path) for path in paths]
+
+
 class _CountingResearchFetcher:
     def __init__(self) -> None:
         self.calls = 0
@@ -124,7 +137,7 @@ def _configure_offline_app(
     monkeypatch.setattr(
         dependencies,
         "ExactDocxPageCountProvider",
-        lambda **_kwargs: pagination,
+        lambda **_kwargs: _ExactResumePaginationProvider(),
     )
     monkeypatch.setattr(
         dependencies,
@@ -137,7 +150,7 @@ def _configure_offline_app(
         page_count_provider: DocxPageCountProvider | None = None,
     ) -> _CountingCoverRenderer:
         renderer = _CountingCoverRenderer(
-            ProductionCoverLetterRenderer(page_count_provider=page_count_provider)
+            ProductionCoverLetterRenderer(page_count_provider=pagination)
         )
         cover_renderers.append(renderer)
         return renderer
@@ -329,10 +342,10 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     employer_text_lower = employer_text.casefold()
     assert posting.company_name in employer_text
     assert "the employer" not in employer_text_lower
-    assert len(artifact.letter.paragraphs) == 5
-    assert 400 <= len(employer_text.split()) <= 500
+    assert len(artifact.letter.paragraphs) == 4
+    assert 290 <= len(employer_text.split()) <= 425
     assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
-    assert max(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs) <= 130
+    assert max(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs) <= 135
     assert all(
         phrase not in employer_text_lower
         for phrase in (
@@ -359,7 +372,8 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     assert page_fit_status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED
     assert not artifact.page_fit.exact_pagination
     assert artifact.page_fit.manual_word_inspection_required
-    assert 0.80 <= artifact.page_fit.estimated_utilization <= 0.96
+    assert 0.65 <= artifact.page_fit.estimated_utilization <= 0.96
+    assert artifact.page_fit.underfill_or_overflow == "balanced_one_page"
     assert "null System.IntPtr" in (artifact.page_fit.pagination_failure or "")
     page_gate = next(gate for gate in artifact.quality_gates if gate.gate == "page_fit")
     assert page_gate.status is CoverLetterQualityGateStatus.REVIEW_REQUIRED
