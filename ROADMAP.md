@@ -70,26 +70,21 @@
   expansion.
 - Added scoped theme-aware Jobs styling, responsive split-panel/stacked feed
   behavior, a deterministic offline AppTest/browser harness, and a manual
-  browser checklist. The user has completed final manual browser validation in
-  the populated harness and real application. The implementation remains
-  uncommitted and awaits one independent review-only pass.
+  browser checklist. The user completed final manual browser validation in
+  the populated harness and real application. Batch 4 is merged in the current
+  baseline; its manual evidence remains the visual baseline for later changes.
 
-## Batch 4 handoff and next sequence
+### Batch 5 - final Jobs hardening
 
-The immediate sequence is: independent review-only pass over the complete dirty
-diff; remediation of confirmed findings only; focused tests and manual smoke
-checks if code changes; final APPROVED result; then the user stages, commits,
-pushes `feature/jobs-ui`, opens the Batch 4 PR, and resolves CI/review findings
-before merge. Do not invent a named Batch 5 before a post-merge product-status
-audit.
-
-After Batch 4 merges, the likely next product direction is master-resume DOCX
-ingestion, structural extraction of experiences/projects/bullets/skills and
-formatting, a larger master bullet library, better experience/project bullet
-selection, cover-letter two-page behavior, and real end-to-end Resume Tailor
-and Cover Letter validation. This is provisional direction pending the status
-audit; expanding Jobs immediately would be scope creep unless that audit finds
-a critical Jobs defect.
+- Verify retrieval, persistence, migrations, saved snapshots, API delivery,
+  Streamlit delivery, source/security boundaries, and historical compatibility
+  with explicit offline tests.
+- Enforce deterministic source, identity, feed, serialization, and refresh
+  behavior across supported hash seeds.
+- Record actual validation and manual evidence without claiming a locked
+  benchmark result or new browser evidence.
+- Batch 5 adds no new Jobs product feature. The next step is a separate
+  independent review-only pass.
 
 ## Phase 7 — Application Management
 
@@ -121,5 +116,7 @@ compiled lifecycle identity and cadence state, applies a global run deadline,
 enforces audited extraction profiles, and counts actual browser action attempts.
 The real local browser gate was externally verified with Playwright `1.55.0`
 and managed Chromium `140.0.7339.16` (build v1187): three integration tests
-passed. Implementation is complete and pending final independent review; it is
-not committed or merged.
+passed. Implementation is complete and merged in the current baseline. Its
+provider, first-party, lifecycle, and source-health contracts are covered by
+the Batch 5 offline hardening pass; a separate independent review remains the
+next gate.

@@ -97,4 +97,5 @@ checks before approval.
 | Populated offline harness | Accepted after manual browser validation | User |
 | Real application routing and persisted-data path | Accepted after manual browser validation | User |
 | Dark/light Jobs styling and responsive interaction | Accepted for Batch 4 handoff | User |
-| Independent review of the complete dirty diff | Pending | Next Codex pass |
+| Batch 4 independent review of the complete diff | Accepted | Batch 4 review record |
+| Batch 5 independent review-only pass | Pending | Next Codex pass |

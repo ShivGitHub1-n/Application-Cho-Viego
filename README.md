@@ -156,7 +156,7 @@ until recommendations have been successfully refreshed and persisted.
 
 ## Batch 4 status and operating notes
 
-Batch 4 is an uncommitted, manually accepted dedicated Jobs experience. It has
+Batch 4 is the merged, manually accepted dedicated Jobs experience. It has
 four sections: Tailored for you, Explore sectors, Saved, and Preferences. It
 supports reviewed-profile selection, recommendation refresh, explicit excluded
 jobs, immutable saved snapshots with availability checks, and a safe Tailor
@@ -179,4 +179,7 @@ generate a plan, render a resume, export DOCX/PDF, or generate a cover letter.
 
 See the [Batch 4 retrospective](docs/engineering/BATCH_4_JOBS_UI_RETROSPECTIVE.md)
 for the complete workflow, manual acceptance status, independent-review result,
-known environment conditions, and commit/PR next steps.
+and known environment conditions. Batch 5 records final offline hardening
+verification in the [validation report](docs/job-discovery/VALIDATION_REPORT.md)
+and preserves the manual evidence boundary in the
+[manual report](docs/job-discovery/MANUAL_TEST_REPORT.md).
