@@ -1,7 +1,7 @@
 # Batch 4 Jobs UI retrospective
 
 Date: 2026-07-31  
-Status: manually accepted by the user; final independent review APPROVED; intentionally uncommitted.
+Status: manually accepted by the user; final independent review APPROVED; merged in the current baseline.
 
 ## Executive summary
 
@@ -74,8 +74,8 @@ prepares existing workflow inputs and does not generate anything.
 
 ## Production risks and remaining limitations
 
-The complete Batch 4 diff is large and remains uncommitted. Documentation may
-expose follow-up inconsistencies. Playwright and exact-DOCX checks have known
+The Batch 4 implementation is merged. Documentation may expose follow-up
+inconsistencies. Playwright and exact-DOCX checks have known
 environment-only failures. Unit and AppTest
 coverage cannot establish exact browser appearance or physical pointer bounds.
 Streamlit owns parts of widget rendering, so exact Figma pixel parity is not a
@@ -148,15 +148,11 @@ Final verification recorded:
 - Zero Batch 4-introduced or Batch 4-modified Ruff violations remain.
 - 72 verified untouched legacy E501 findings remain in the dirty repository.
 
-Batch 4 is still uncommitted. The immediate sequence is user-controlled: review
-this documentation cleanup, stage the complete Batch 4 worktree, commit it,
-push `feature/jobs-ui`, open the Batch 4 pull request with the test and manual
-acceptance evidence, resolve CI or PR review findings, and merge after approval.
-After merge, perform a consolidated product-status audit. A likely future
-direction is master-resume DOCX ingestion/extraction, a larger bullet library,
-better bullet selection, cover-letter two-page behavior, and end-to-end
-tailoring validation; this remains provisional and is not an approved Batch 5
-roadmap item.
+Batch 4 is merged. Batch 5 is the final Jobs hardening pass and adds no new
+Jobs product feature. Its offline validation and manual-evidence boundary are
+recorded in `docs/job-discovery/VALIDATION_REPORT.md` and
+`docs/job-discovery/MANUAL_TEST_REPORT.md`. A separate independent review-only
+pass remains the next gate.
 
 ## Benchmark disclosure
 
