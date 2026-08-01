@@ -70,15 +70,21 @@ class TailoredJobQuery(BaseModel):
             feed_kind=FeedKind.TAILORED,
             role_families=[],
             titles=[*preferences.target_titles, *preferences.related_title_variants],
-            locations=[location.raw for location in preferences.locations if location.raw],
+            locations=sorted(
+                [location.raw for location in preferences.locations if location.raw],
+                key=str.casefold,
+            ),
             work_arrangements=(
                 []
                 if preferences.work_arrangement is WorkArrangement.UNKNOWN
                 else [preferences.work_arrangement]
             ),
-            levels=[level for level in preferences.job_levels if level is not JobLevel.UNKNOWN],
+            levels=sorted(
+                [level for level in preferences.job_levels if level is not JobLevel.UNKNOWN],
+                key=lambda level: level.value,
+            ),
             max_posting_age_days=preferences.max_posting_age_days,
-            source_restrictions=list(self.source_restrictions),
+            source_restrictions=sorted(self.source_restrictions, key=str.casefold),
             page_size=self.page_size,
             cursor=cursor,
         )

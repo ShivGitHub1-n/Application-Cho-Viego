@@ -16,6 +16,7 @@ from resume_tailor.domain.job_discovery.models import (
     RecommendationGroup,
     SavedJob,
     SavedJobAvailability,
+    SourceProvenance,
     SupportedJobSource,
     VerificationConfidence,
     VerificationStatus,
@@ -96,7 +97,7 @@ def _recommendation() -> JobRecommendation:
     )
 
 
-def _create_version_one_database(path) -> None:
+def _create_version_one_database(path, *, snapshot_json: str = '{"immutable":true}') -> None:
     with sqlite3.connect(path) as connection:
         connection.executescript(
             """
@@ -136,15 +137,25 @@ def _create_version_one_database(path) -> None:
                 board_token TEXT NOT NULL, official_base_url TEXT NOT NULL,
                 lever_api_region TEXT, enabled INTEGER NOT NULL
             );
-            INSERT INTO saved_jobs VALUES
-                ('saved-1', 'user-1', 'job-1', 'available', '{"immutable":true}', 1,
-                 '2026-07-30T12:00:00+00:00', NULL);
             """
+        )
+        connection.execute(
+            "INSERT INTO saved_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "saved-1",
+                "user-1",
+                "job-1",
+                "available",
+                snapshot_json,
+                1,
+                "2026-07-30T12:00:00+00:00",
+                None,
+            ),
         )
 
 
-def _create_version_two_database(path) -> None:
-    _create_version_one_database(path)
+def _create_version_two_database(path, *, snapshot_json: str = '{"immutable":true}') -> None:
+    _create_version_one_database(path, snapshot_json=snapshot_json)
     with sqlite3.connect(path) as connection:
         connection.execute(
             "ALTER TABLE discovery_runs ADD COLUMN source_outcomes_json TEXT NOT NULL DEFAULT '[]'"
@@ -173,6 +184,40 @@ def test_schema_v1_and_v2_migrations_preserve_snapshot_payloads(tmp_path) -> Non
             assert connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='source_runtime_state'"
             ).fetchone() == ("source_runtime_state",)
+
+
+def test_schema_v1_and_v2_snapshots_are_readable_through_repository(tmp_path) -> None:
+    snapshot = _job().model_copy(
+        update={
+            "source_provenance": [
+                SourceProvenance(
+                    source_id="source-a",
+                    connector_type=ConnectorType.GREENHOUSE,
+                    external_job_id="external-1",
+                    official_url="https://boards.greenhouse.io/example/jobs/1",
+                    fetched_at=NOW,
+                )
+            ]
+        }
+    )
+    payload = json.dumps(snapshot.model_dump(mode="json"), sort_keys=True)
+
+    for create in (_create_version_one_database, _create_version_two_database):
+        database = tmp_path / f"readable-{create.__name__}.sqlite3"
+        create(database, snapshot_json=payload)
+        job_discovery_migrations.initialize_job_discovery_database(database)
+        job_discovery_migrations.initialize_job_discovery_database(database)
+
+        repository = SQLiteSavedJobRepository(database)
+        loaded = repository.get("user-1", "saved-1")
+
+        assert loaded is not None
+        assert loaded.posting_snapshot == snapshot
+        assert loaded.posting_snapshot.description == snapshot.description
+        assert loaded.posting_snapshot.official_url == snapshot.official_url
+        assert loaded.posting_snapshot.source_provenance == snapshot.source_provenance
+        assert loaded.availability is SavedJobAvailability.AVAILABLE
+        assert repository.get("user-1", "saved-1") == loaded
 
 
 def test_schema_v3_reads_saved_jobs_and_repeated_migration_is_safe(tmp_path) -> None:

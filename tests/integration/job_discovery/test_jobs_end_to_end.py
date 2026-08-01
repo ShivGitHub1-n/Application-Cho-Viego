@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 
-from resume_tailor.api.job_discovery import _feed_response
+from fastapi.testclient import TestClient
+
+from resume_tailor.api.dependencies import JobDiscoveryServiceBundle, get_job_discovery_services
+from resume_tailor.api.main import app
+from resume_tailor.application.job_discovery.experience import JobsExperienceService
 from resume_tailor.application.job_discovery.feed_services import FeedAssemblyService
 from resume_tailor.application.job_discovery.handoff import PrepareTailoringHandoffService
+from resume_tailor.application.job_discovery.queries import (
+    GetCurrentJobSearchPreferencesService,
+    GetDiscoveryRunService,
+    GetJobFeedService,
+)
+from resume_tailor.application.job_discovery.refresh import RefreshJobDiscoveryService
 from resume_tailor.application.job_discovery.retrieval import RetrievalService
 from resume_tailor.application.job_discovery.saved import (
     CheckSavedJobAvailabilityService,
@@ -47,8 +58,11 @@ from resume_tailor.domain.job_discovery.queries import FeedKind, TailoredJobQuer
 from resume_tailor.domain.models import MasterProfile, RoleFamily
 from resume_tailor.infrastructure.job_discovery_sqlite import (
     SQLiteAtomicJobDiscoveryPersistence,
+    SQLiteDiscoveredJobRepository,
+    SQLiteDiscoveryRunRepository,
     SQLiteJobRecommendationRepository,
     SQLiteSavedJobRepository,
+    SQLiteSourceIdentityAliasRepository,
 )
 
 NOW = datetime(2026, 7, 30, 12, tzinfo=UTC)
@@ -71,19 +85,22 @@ def _record(
     source_id: str = "source-a",
     url_id: str | None = None,
     posted_at: datetime | None = NOW,
+    location_raw: str | None = "Toronto, ON, Canada",
+    company: str = "Example Robotics",
     description: str = "Build Python services and test reliable systems.",
+    requisition_id: str | None = None,
 ) -> SourceJobRecord:
     url_suffix = url_id or external_id
     return SourceJobRecord(
         external_job_id=external_id,
         title="Software Engineer",
-        company_name="Example Robotics",
+        company_name=company,
         description=description,
         official_url=f"https://boards.greenhouse.io/{source_id}/jobs/{url_suffix}",
-        location_raw="Toronto, ON, Canada",
+        location_raw=location_raw,
         work_arrangement=WorkArrangement.REMOTE,
         posted_at=posted_at,
-        source_payload={"requisition_id": f"REQ-{url_suffix}"},
+        source_payload={"requisition_id": requisition_id or f"REQ-{url_suffix}"},
     )
 
 
@@ -138,7 +155,7 @@ def _evaluation(
     )
 
 
-def _preferences() -> JobSearchPreferences:
+def _preferences(*, excluded_companies: list[str] | None = None) -> JobSearchPreferences:
     return JobSearchPreferences(
         user_id="local-user",
         profile_id="profile-1",
@@ -153,6 +170,7 @@ def _preferences() -> JobSearchPreferences:
         work_arrangement=WorkArrangement.REMOTE,
         work_arrangement_mode=WorkArrangementPreferenceMode.PREFERRED,
         preferred_companies=[],
+        excluded_companies=excluded_companies or [],
         created_at=NOW,
         confirmed_at=NOW,
     )
@@ -338,40 +356,343 @@ def test_saved_snapshot_and_availability_refresh_change_only_status_metadata(tmp
     assert checked.saved_at == NOW
 
 
-def test_api_and_handoff_boundaries_preserve_feed_kind_and_prepare_only_inputs() -> None:
-    _, tailored = _recommendations(FeedKind.TAILORED)
-    _, explore = _recommendations(FeedKind.EXPLORE)
-    tailored_response = _feed_response(
-        feed_kind=FeedKind.TAILORED,
-        run=None,
-        recommendations=tailored,
-    )
-    explore_response = _feed_response(
-        feed_kind=FeedKind.EXPLORE,
-        run=None,
-        recommendations=explore,
-    )
-    assert tailored_response.feed_kind is FeedKind.TAILORED
-    assert explore_response.feed_kind is FeedKind.EXPLORE
-    assert all(item.feed_kind is FeedKind.TAILORED for item in tailored_response.items)
-    assert all(item.feed_kind is FeedKind.EXPLORE for item in explore_response.items)
+class _ComposedProfileRepository:
+    def __init__(self, profile: MasterProfile) -> None:
+        self.profile = profile
 
-    job = _job("handoff")
+    def get(self, profile_id: str) -> MasterProfile | None:
+        return self.profile if profile_id == self.profile.id else None
 
-    class Jobs:
-        def get(self, job_id: str) -> DiscoveredJob | None:
-            return job if job_id == job.id else None
+    def list_all(self) -> list[MasterProfile]:
+        return [self.profile]
 
-    class Saved:
-        def get(self, user_id: str, saved_id: str):
+
+class _ComposedPreferencesRepository:
+    def __init__(self, preferences: JobSearchPreferences) -> None:
+        self.preferences = preferences
+
+    def get_current(self, user_id: str, profile_id: str) -> JobSearchPreferences | None:
+        if (user_id, profile_id) != (self.preferences.user_id, self.preferences.profile_id):
             return None
+        return self.preferences
 
-    handoff = PrepareTailoringHandoffService(Jobs(), Saved()).from_discovered(
-        job.id, profile_id="profile-1"
+    def get(self, user_id: str, profile_id: str) -> JobSearchPreferences:
+        preferences = self.get_current(user_id, profile_id)
+        if preferences is None:
+            raise LookupError("preferences were not found")
+        return preferences
+
+
+class _ComposedSourceRepository:
+    def __init__(self, sources: list[SupportedJobSource]) -> None:
+        self.sources = sources
+
+    def list_enabled(self) -> list[SupportedJobSource]:
+        return list(self.sources)
+
+
+class _ComposedConnector:
+    def __init__(self, records: list[SourceJobRecord], *, failure: bool = False) -> None:
+        self.records = records
+        self.failure = failure
+
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            connector_type=source.connector_type,
+            supports_title_or_keyword=False,
+            supports_sector=False,
+            supports_location=False,
+            supports_work_arrangement=False,
+            supports_level=False,
+            supports_employment_type=False,
+            supports_posting_date_boundary=False,
+            supports_pagination=True,
+            supports_page_size=True,
+            supports_availability_checks=True,
+        )
+
+    def fetch_page(self, source, query, cursor, *, fetched_at):
+        if self.failure:
+            raise RuntimeError("offline source failure")
+        return JobSourcePage(source=source, records=list(self.records))
+
+
+def _composed_system(tmp_path):
+    profile = MasterProfile(
+        id="profile-1",
+        user_id="local-user",
+        version=1,
+        display_name="Candidate",
+        experiences=[
+            {
+                "id": "entry-1",
+                "title": "Software Engineer",
+                "kind": "experience",
+                "technologies": ["Python"],
+            }
+        ],
+        evidence=[
+            {
+                "id": "evidence-1",
+                "entity_id": "entry-1",
+                "source_text": "Built Python software systems.",
+                "technologies": ["Python"],
+            }
+        ],
     )
-    assert handoff.title == job.title
-    assert handoff.description == job.description
-    assert handoff.official_url == job.official_url
-    assert not hasattr(handoff, "plan")
-    assert not hasattr(handoff, "resume")
-    assert not hasattr(handoff, "cover_letter")
+    preferences = _preferences(excluded_companies=["Excluded Corp"])
+    sources = [_source("source-a"), _source("source-b"), _source("source-failed")]
+    source_records = {
+        "source-a": [
+            _record(
+                "eligible",
+                source_id="source-a",
+                description="Required Python. Build eligible systems.",
+            ),
+            _record(
+                "unknown",
+                source_id="source-a",
+                location_raw=None,
+                posted_at=None,
+                description="Required Python. Build unknown systems.",
+            ),
+            _record(
+                "excluded",
+                source_id="source-a",
+                company="Excluded Corp",
+                description="Required Python. Build excluded systems.",
+            ),
+            _record(
+                "dont-match",
+                source_id="source-a",
+                description="Required CUDA and JAX. Build unrelated systems.",
+            ),
+            _record(
+                "duplicate-a",
+                source_id="source-a",
+                url_id="shared",
+                description="Required Python. Build shared systems.",
+                requisition_id="REQ-SHARED",
+            ),
+        ],
+        "source-b": [
+            _record(
+                "duplicate-b",
+                source_id="source-b",
+                url_id="shared",
+                description="Required Python. Build shared systems.",
+                requisition_id="REQ-SHARED",
+            )
+        ],
+    }
+    database = tmp_path / "composed-jobs.sqlite3"
+    profiles = _ComposedProfileRepository(profile)
+    preferences_repository = _ComposedPreferencesRepository(preferences)
+    source_repository = _ComposedSourceRepository(sources)
+    jobs = SQLiteDiscoveredJobRepository(database)
+    recommendations = SQLiteJobRecommendationRepository(database)
+    runs = SQLiteDiscoveryRunRepository(database)
+    aliases = SQLiteSourceIdentityAliasRepository(database)
+    connectors = {
+        ConnectorType.GREENHOUSE: {
+            "source-a": _ComposedConnector(source_records["source-a"]),
+            "source-b": _ComposedConnector(source_records["source-b"]),
+            "source-failed": _ComposedConnector([], failure=True),
+        }
+    }
+    refresh = RefreshJobDiscoveryService(
+        profiles=profiles,
+        preferences=preferences_repository,
+        sources=source_repository,
+        connectors=connectors,
+        discovered_jobs=jobs,
+        recommendations=recommendations,
+        runs=runs,
+        atomic_persistence=SQLiteAtomicJobDiscoveryPersistence(database),
+        aliases=aliases,
+    )
+    feed_queries = GetJobFeedService(recommendations, runs)
+    handoff = PrepareTailoringHandoffService(jobs, SQLiteSavedJobRepository(database))
+    return (
+        database,
+        profile,
+        preferences,
+        profiles,
+        jobs,
+        recommendations,
+        runs,
+        aliases,
+        refresh,
+        feed_queries,
+        handoff,
+    )
+
+
+def test_composed_refresh_api_presentation_and_handoff_are_offline_and_idempotent(tmp_path) -> None:
+    (
+        database,
+        profile,
+        preferences,
+        profiles,
+        jobs,
+        recommendations,
+        runs,
+        aliases,
+        refresh,
+        feed_queries,
+        handoff,
+    ) = _composed_system(tmp_path)
+
+    first_run = refresh.refresh(
+        "local-user", profile.id, preferences, started_at=NOW
+    )
+    first_feed = feed_queries.get("local-user", FeedKind.TAILORED, profile_id=profile.id)
+    second_run = refresh.refresh(
+        "local-user", profile.id, preferences, started_at=NOW
+    )
+    second_feed = feed_queries.get("local-user", FeedKind.TAILORED, profile_id=profile.id)
+    explore_run = refresh.refresh_explore(
+        "local-user",
+        sectors=["Software Engineering"],
+        profile_id=profile.id,
+        started_at=NOW,
+    )
+    explore_feed = feed_queries.get("local-user", FeedKind.EXPLORE, profile_id=profile.id)
+    refresh.refresh_explore(
+        "local-user",
+        sectors=["Software Engineering"],
+        profile_id=profile.id,
+        started_at=NOW,
+    )
+    repeated_explore_feed = feed_queries.get(
+        "local-user", FeedKind.EXPLORE, profile_id=profile.id
+    )
+
+    first_payload = [item.model_dump(mode="json") for item in first_feed.items]
+    second_payload = [item.model_dump(mode="json") for item in second_feed.items]
+    explore_payload = [item.model_dump(mode="json") for item in explore_feed.items]
+    repeated_explore_payload = [
+        item.model_dump(mode="json") for item in repeated_explore_feed.items
+    ]
+    assert first_run.id == second_run.id
+    assert first_payload == second_payload
+    assert explore_payload == repeated_explore_payload
+    assert first_run.duplicate_count == 1
+    assert first_run.failed_sources == ["source-failed"]
+    assert first_run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+    assert explore_run.status is DiscoveryRunStatus.COMPLETED_WITH_WARNINGS
+    assert first_feed.feed_kind is FeedKind.TAILORED
+    assert explore_feed.feed_kind is FeedKind.EXPLORE
+    assert first_feed.excluded_count >= 1
+    assert all(item.visibility is RecommendationVisibility.VISIBLE for item in first_feed.items)
+    assert all(item.visibility is RecommendationVisibility.VISIBLE for item in explore_feed.items)
+    assert any(item.eligibility.status is EligibilityStatus.UNKNOWN for item in first_feed.items)
+    assert len(aliases.list_for_source("source-a")) >= 1
+    shared_job = jobs.get(_job("duplicate-a", source_id="source-a", url_id="shared").id)
+    assert shared_job is not None
+    assert {item.source_id for item in shared_job.source_provenance} == {
+        "source-a",
+        "source-b",
+    }
+
+    with sqlite3.connect(database) as connection:
+        recommendation_count = connection.execute(
+            "SELECT COUNT(*) FROM job_recommendations WHERE run_id = ?",
+            (first_run.id,),
+        ).fetchone()[0]
+        discovered_count = connection.execute("SELECT COUNT(*) FROM discovered_jobs").fetchone()[0]
+    assert recommendation_count == len(first_run.source_outcomes) + 2
+    assert discovered_count == 5
+
+    saved_repository = SQLiteSavedJobRepository(database)
+    saved = SaveJobService(jobs, saved_repository).save(
+        "local-user", first_feed.items[0].job_id, saved_at=NOW
+    )
+    snapshot_before = saved_repository.get("local-user", saved.id)
+    refresh.refresh("local-user", profile.id, preferences, started_at=NOW)
+    snapshot_after = saved_repository.get("local-user", saved.id)
+    assert snapshot_before is not None
+    assert snapshot_after is not None
+    assert snapshot_after.posting_snapshot == snapshot_before.posting_snapshot
+    assert (
+        snapshot_after.posting_snapshot.official_url
+        == snapshot_before.posting_snapshot.official_url
+    )
+
+    services = JobDiscoveryServiceBundle(
+        suggest_preferences=object(),
+        refresh=refresh,
+        current_preferences=GetCurrentJobSearchPreferencesService(
+            _ComposedPreferencesRepository(preferences)
+        ),
+        runs=GetDiscoveryRunService(runs, recommendations),
+        feed_queries=feed_queries,
+    )
+    experience = JobsExperienceService(
+        profiles=profiles,
+        services=services,
+        jobs=jobs,
+        handoff=handoff,
+        now=lambda: NOW,
+    )
+    presentation = experience.load_feed(profile.id, FeedKind.TAILORED)
+    assert [item.job_id for item in presentation.visible] == [
+        item.job_id for item in first_feed.items
+    ]
+    assert all("total" not in item.model_dump() for item in presentation.visible)
+    assert all(item.feed_kind is FeedKind.TAILORED for item in presentation.visible)
+    assert all(item.visibility is RecommendationVisibility.VISIBLE for item in presentation.visible)
+    assert any(item.unresolved_facts for item in presentation.visible)
+
+    class ForbiddenServiceSpy:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, *args, **kwargs) -> None:
+            self.calls += 1
+
+    forbidden = {
+        name: ForbiddenServiceSpy()
+        for name in ("gemini", "plan", "resume", "cover_letter", "docx", "pdf", "export")
+    }
+    prepared = experience.prepare_tailoring(first_feed.items[0].job_id, profile.id)
+    assert prepared.title == presentation.visible[0].title
+    assert prepared.description
+    assert prepared.official_url
+    assert not any(spy.calls for spy in forbidden.values())
+    assert not hasattr(prepared, "plan")
+    assert not hasattr(prepared, "resume")
+    assert not hasattr(prepared, "cover_letter")
+
+    app.dependency_overrides[get_job_discovery_services] = lambda: services
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/job-discovery/feeds/tailored/refresh",
+            json={"user_id": "local-user", "profile_id": profile.id},
+        )
+        regular = client.get("/job-discovery/feeds/tailored?user_id=local-user")
+        excluded = client.get("/job-discovery/feeds/tailored/excluded?user_id=local-user")
+        wrong_profile = client.post(
+            "/job-discovery/feeds/tailored/refresh",
+            json={"user_id": "local-user", "profile_id": "other-profile"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["feed_kind"] == FeedKind.TAILORED.value
+    assert response.json()["partial_success"] is True
+    assert all(item["profile_id"] == profile.id for item in response.json()["items"])
+    assert regular.status_code == 200
+    assert all(
+        item["visibility"] == RecommendationVisibility.VISIBLE.value
+        for item in regular.json()["items"]
+    )
+    assert excluded.status_code == 200
+    assert excluded.json()["items"]
+    assert all(
+        item["visibility"] == RecommendationVisibility.EXCLUDED.value
+        for item in excluded.json()["items"]
+    )
+    assert wrong_profile.status_code == 404

@@ -8,8 +8,14 @@ from resume_tailor.domain.job_discovery.deduplication import deduplicate_jobs
 from resume_tailor.domain.job_discovery.evaluation import (
     InternalDiagnostics,
     JobEvaluation,
+    JobEvaluator,
     ProvisionalAssessment,
     RoleRelevanceAssessment,
+)
+from resume_tailor.domain.job_discovery.evidence import (
+    EvidenceLedger,
+    EvidenceQuality,
+    canonical_requirement_set,
 )
 from resume_tailor.domain.job_discovery.feeds import rank_feed_candidates
 from resume_tailor.domain.job_discovery.models import (
@@ -17,20 +23,31 @@ from resume_tailor.domain.job_discovery.models import (
     EligibilityAssessment,
     EligibilityStatus,
     FitGrade,
+    JobLevel,
+    JobRequirement,
+    JobRequirementSignals,
+    JobSearchPreferences,
+    NormalizedLocation,
+    ProfileCapabilityEvidence,
+    ProfileCapabilityIndex,
+    RequirementCategory,
+    RequirementImportance,
     SourceJobRecord,
     SupportedJobSource,
     VerificationConfidence,
     WorkArrangement,
+    WorkArrangementPreferenceMode,
 )
 from resume_tailor.domain.job_discovery.normalization import normalize_job_record
 from resume_tailor.domain.job_discovery.providers import JobSourcePage, ProviderCapabilities
-from resume_tailor.domain.job_discovery.queries import ExploreJobQuery, FeedKind
+from resume_tailor.domain.job_discovery.queries import ExploreJobQuery, FeedKind, TailoredJobQuery
 from resume_tailor.domain.job_discovery.requirements import RequirementExtractor
 from resume_tailor.domain.job_discovery.source_lifecycle import (
     SourceLifecycleOutcome,
     SourceRuntimeState,
     fingerprint_content,
 )
+from resume_tailor.domain.models import RoleFamily
 
 NOW = datetime(2026, 7, 30, 12, tzinfo=UTC)
 
@@ -134,6 +151,227 @@ def test_provider_source_page_and_posting_order_is_canonical() -> None:
         (item.source.source_id, item.record.external_job_id)
         for item in outcome.records
     ] == [("source-a", "1"), ("source-a", "2"), ("source-b", "1"), ("source-b", "2")]
+
+
+def test_multi_page_item_order_and_duplicate_placement_are_canonical() -> None:
+    source = _source("source-a")
+
+    class Connector:
+        def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities:
+            return ProviderCapabilities(
+                connector_type=source.connector_type,
+                supports_title_or_keyword=False,
+                supports_sector=True,
+                supports_location=False,
+                supports_work_arrangement=False,
+                supports_level=False,
+                supports_employment_type=False,
+                supports_posting_date_boundary=False,
+                supports_pagination=True,
+                supports_page_size=True,
+                supports_availability_checks=True,
+            )
+
+        def __init__(self, page_records: list[list[SourceJobRecord]]) -> None:
+            self.page_records = page_records
+
+        def fetch_page(self, source, query, cursor, *, fetched_at):
+            page_index = 0 if cursor.value is None else 1
+            return JobSourcePage(
+                source=source,
+                cursor=cursor,
+                next_cursor=type(cursor)(value="page-2") if page_index == 0 else type(cursor)(),
+                records=self.page_records[page_index],
+                has_more=page_index == 0,
+            )
+
+    def records(order: tuple[str, str, str, str]) -> list[list[SourceJobRecord]]:
+        values = {
+            "first": SourceJobRecord(
+                external_job_id="first",
+                title="Software Engineer",
+                company_name="Example Robotics",
+                description="Build first systems.",
+                official_url="https://boards.greenhouse.io/source-a/jobs/first",
+            ),
+            "shared": SourceJobRecord(
+                external_job_id="shared",
+                title="Software Engineer",
+                company_name="Example Robotics",
+                description="Build shared systems.",
+                official_url="https://boards.greenhouse.io/source-a/jobs/shared",
+                source_payload={"requisition_id": "REQ-SHARED"},
+            ),
+            "second": SourceJobRecord(
+                external_job_id="second",
+                title="Software Engineer",
+                company_name="Example Robotics",
+                description="Build second systems.",
+                official_url="https://boards.greenhouse.io/source-a/jobs/second",
+            ),
+        }
+        first_page = [values[key] for key in order[:2]]
+        second_page = [values[key] for key in order[2:]]
+        return [first_page, second_page]
+
+    def canonical(order: tuple[str, str, str, str]) -> tuple[object, str]:
+        outcome = RetrievalService(
+            sources=[source],
+            connectors={ConnectorType.GREENHOUSE: Connector(records(order))},
+        ).retrieve(ExploreJobQuery(sectors=["Software Engineering"]), fetched_at=NOW)
+        jobs = [
+            normalize_job_record(item.record, source, fetched_at=NOW)
+            for item in outcome.records
+        ]
+        deduplicated = deduplicate_jobs(jobs)
+        return deduplicated, json.dumps(deduplicated.model_dump(mode="json"), sort_keys=True)
+
+    first = canonical(("shared", "first", "second", "shared"))
+    second = canonical(("first", "shared", "shared", "second"))
+
+    # Providers must paginate sequentially, so page order itself is not a legal
+    # input. This exercises the supported multi-page boundary: record order and
+    # duplicate placement may vary within the pages reached by the same cursors.
+    assert first == second
+    assert len(first[0].jobs) == 3
+
+
+def test_requirement_and_evidence_order_permutations_are_canonical() -> None:
+    requirements = [
+        JobRequirement(
+            term="python",
+            category=RequirementCategory.TECHNOLOGY,
+            importance=RequirementImportance.REQUIRED,
+            source_text="Python experience is required.",
+            source_start=20,
+            source_end=26,
+        ),
+        JobRequirement(
+            term="api",
+            category=RequirementCategory.TECHNOLOGY,
+            importance=RequirementImportance.PREFERRED,
+            source_text="API knowledge is preferred.",
+            source_start=0,
+            source_end=3,
+        ),
+    ]
+    profile_evidence = [
+        ProfileCapabilityEvidence(
+            source_type="confirmed_evidence",
+            source_id="evidence-b",
+            source_text="Built Python APIs.",
+            demonstrated=True,
+        ),
+        ProfileCapabilityEvidence(
+            source_type="confirmed_evidence",
+            source_id="evidence-a",
+            source_text="Built Python APIs.",
+            demonstrated=True,
+        ),
+    ]
+
+    canonical_a = canonical_requirement_set(requirements)
+    canonical_b = canonical_requirement_set(list(reversed(requirements)))
+    ledger_a = EvidenceLedger.allocate(
+        canonical_a,
+        ProfileCapabilityIndex(terms={"python": profile_evidence, "api": profile_evidence}),
+    )
+    ledger_b = EvidenceLedger.allocate(
+        canonical_b,
+        ProfileCapabilityIndex(
+            terms={
+                "python": list(reversed(profile_evidence)),
+                "api": list(reversed(profile_evidence)),
+            }
+        ),
+    )
+
+    assert canonical_a == canonical_b
+    assert ledger_a.model_dump(mode="json") == ledger_b.model_dump(mode="json")
+    assert ledger_a.allocations[0].evidence_id == "evidence-a"
+    assert ledger_a.matches[0].evidence_quality is EvidenceQuality.DEMONSTRATED
+
+    evaluation_preferences = JobSearchPreferences(
+        user_id="user-1",
+        profile_id="profile-1",
+        version=1,
+        role_family_priority=[RoleFamily.SOFTWARE_DATA_ENGINEERING],
+        target_titles=["Software Engineer"],
+        related_title_variants=[],
+        technical_themes=["python"],
+        career_interests=[],
+        job_levels=[],
+        locations=[],
+        work_arrangement=WorkArrangement.UNKNOWN,
+        preferred_companies=[],
+        created_at=NOW,
+    )
+    job = _job("source-a", "evaluation").model_copy(
+        update={"requirements": JobRequirementSignals(requirements=requirements)}
+    )
+    evaluation_a = JobEvaluator().evaluate(
+        job,
+        evaluation_preferences,
+        ProfileCapabilityIndex(terms={"python": profile_evidence, "api": profile_evidence}),
+        as_of=NOW,
+    )
+    evaluation_b = JobEvaluator().evaluate(
+        job.model_copy(
+            update={
+                "requirements": JobRequirementSignals(
+                    requirements=list(reversed(requirements))
+                )
+            }
+        ),
+        evaluation_preferences,
+        ProfileCapabilityIndex(
+            terms={
+                "python": list(reversed(profile_evidence)),
+                "api": list(reversed(profile_evidence)),
+            }
+        ),
+        as_of=NOW,
+    )
+    assert evaluation_a.model_dump(mode="json") == evaluation_b.model_dump(mode="json")
+
+
+def test_preference_order_permutations_produce_one_tailored_query() -> None:
+    def preferences(
+        titles: list[str], locations: list[str], preferred_companies: list[str]
+    ) -> JobSearchPreferences:
+        return JobSearchPreferences(
+            user_id="user-1",
+            profile_id="profile-1",
+            version=1,
+            role_family_priority=[RoleFamily.SOFTWARE_DATA_ENGINEERING],
+            target_titles=titles,
+            related_title_variants=[],
+            technical_themes=["python", "sql"],
+            career_interests=["robotics", "software"],
+            job_levels=[JobLevel.MID],
+            locations=[NormalizedLocation(raw=value) for value in locations],
+            work_arrangement=WorkArrangement.REMOTE,
+            work_arrangement_mode=WorkArrangementPreferenceMode.PREFERRED,
+            preferred_companies=preferred_companies,
+            created_at=NOW,
+        )
+
+    first = TailoredJobQuery(
+        preferences=preferences(
+            ["Software Engineer", "Backend Engineer"],
+            ["Toronto", "Montreal"],
+            ["Example Robotics", "Acme Systems"],
+        )
+    )
+    second = TailoredJobQuery(
+        preferences=preferences(
+            ["Software Engineer", "Backend Engineer"],
+            ["Montreal", "Toronto"],
+            ["Acme Systems", "Example Robotics"],
+        )
+    )
+
+    assert first.to_provider_query() == second.to_provider_query()
 
 
 def test_alias_and_canonical_serialization_is_input_order_independent() -> None:
