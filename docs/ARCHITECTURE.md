@@ -262,3 +262,71 @@ explicit Figma color tokens, which produced repeated visual rework. The
 improved practice is to inspect the frames directly, extract concrete values,
 centralize Jobs-scoped tokens, preserve dark/light behavior, compare the real
 browser result, and never claim fidelity from code or CSS-string tests alone.
+
+## Planned frontend architecture — Precision Workbench
+
+This section describes an approved frontend target whose implementation is
+pending. It does not replace the current frontend architecture above.
+
+### Current state
+
+The Streamlit composition in frontend/app.py currently constructs services,
+bootstraps profile state, renders shared navigation, dispatches the dedicated
+Jobs route, and still contains most Master Profile, resume-tailoring, and
+cover-letter delivery. Jobs is already split across jobs_page.py,
+job_feed_view.py, job_preferences_view.py, saved_jobs_view.py, jobs_styles.py,
+and app_shell.py. Jobs behavior remains the accepted frontend baseline.
+
+### Intended module boundaries
+
+| Boundary | Intended responsibility |
+| --- | --- |
+| app.py | Composition root and route dispatcher |
+| app_shell.py and app_shell_styles.py | Desktop/mobile navigation, active-profile context, pending route intent |
+| design_tokens.py and shared_components.py | Scoped semantic tokens and intentional shared Streamlit presentation |
+| profile_page.py, profile_editor_view.py, profile_import_view.py | Career Profile overview, focused editor, import, advanced area |
+| resume_studio_page.py and resume_*_view.py | Job context, strategy, evidence, review, and export stages |
+| cover_letters_page.py and cover_letter_*_view.py | Setup, review, claim decision, and export |
+| document_canvas.py | Structured review surface and optional inspector |
+| Existing Jobs modules | Jobs presentation through the JobsExperienceService facade |
+
+These names are intended module boundaries, not implemented modules or a rigid
+requirement to create every file exactly as named.
+
+### Authority and state rules
+
+- app.py will construct dependencies and pass them explicitly. Page modules
+  will not instantiate repositories, duplicate application policy, or
+  reimplement domain decisions.
+- Application services, domain models, ports, and repositories retain current
+  authority. The frontend remains a delivery layer.
+- MasterProfileRepository remains profile-persistence authority; current
+  validation and evidence truthfulness rules remain unchanged.
+- Tailoring plans, generated résumés, and cover letters remain derived session
+  state. Existing deterministic invalidation for profile or posting changes is
+  retained; page-local state must reset from the same inputs.
+- Document canvases are review surfaces. ResumeRenderer, CoverLetterRenderer,
+  and exact page-count tooling remain export authority.
+- Jobs retains the JobsExperienceService boundary, backend-owned order,
+  semantic fit/eligibility/provisional behavior, immutable snapshots, and safe
+  tailoring handoff.
+
+### Presentation and acceptance rules
+
+The planned shell is responsive: a persistent desktop sidebar with active
+profile context and optional inspector, plus four-item native mobile navigation
+and one-column detail/editing surfaces. Semantic CSS variables will be scoped
+to stable keyed Streamlit containers and mapped through available Streamlit
+theme variables or another verified stable browser mechanism. This does not
+claim a stable public Python API for resolving the active Streamlit theme.
+
+Native Streamlit controls remain preferred for interaction; semantic HTML may
+support non-interactive presentation only. Selector assumptions are not
+authoritative until checked in a real browser. Unit and AppTest checks prove
+state and semantic behavior, not visual fidelity. Browser evidence remains
+required for physical dimensions, hit targets, selected-hover/focus states,
+mobile overflow, document canvases, and dark/light parity.
+
+The target, Figma authority, and behavior-preservation contract are documented
+in docs/design/PRECISION_WORKBENCH_UI_REDESIGN.md. The execution sequence is in
+docs/engineering/PRECISION_WORKBENCH_IMPLEMENTATION_PLAN.md.

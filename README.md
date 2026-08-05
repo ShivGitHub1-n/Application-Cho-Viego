@@ -6,6 +6,14 @@ Resume Tailor is an evidence-backed AI platform for tailoring resumes to specifi
 
 Vertical-slice stage. The repository includes deterministic optimization, evidence-bound review, managed DOCX/PDF rendering, optional Gemini structured-output assistance, FastAPI endpoints, Streamlit MVP UI, and focused regression tests.
 
+## Approved frontend redesign
+
+The Precision Workbench full-product UI redesign is approved as a design and
+implementation plan. Production implementation is pending; the current
+Streamlit routes, labels, and launch instructions remain current. The approved
+target and preservation boundaries are recorded in
+[Precision Workbench UI redesign](docs/design/PRECISION_WORKBENCH_UI_REDESIGN.md).
+
 ## Quick start
 
 1. Install Python 3.11 or newer.
@@ -85,6 +93,8 @@ Batch 4.
 - [Known issues and frozen layout scope](KNOWN_ISSUES.md)
 - [AI guidelines](docs/AI_GUIDELINES.md)
 - [Contributing](docs/CONTRIBUTING.md)
+- [Precision Workbench UI redesign (approved; implementation pending)](docs/design/PRECISION_WORKBENCH_UI_REDESIGN.md)
+- [Precision Workbench implementation plan](docs/engineering/PRECISION_WORKBENCH_IMPLEMENTATION_PLAN.md)
 
 Batch 3.5 adds the approved static-first Rocket Lab first-party path with
 bounded employer index/detail retrieval, JSON-LD plus constrained HTML
