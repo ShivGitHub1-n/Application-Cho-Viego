@@ -160,6 +160,7 @@ def _render_card(
                 f"{item.location_label} · {item.work_arrangement.value.title()} · "
                 f"{item.posting_age_label}"
             )
+            streamlit_module.caption(f"{item.first_seen_label} · {item.checked_label}")
         with grade:
             streamlit_module.markdown(fit_grade_meter_markup(item.grade), unsafe_allow_html=True)
         status, action = streamlit_module.columns([2, 1], vertical_alignment="bottom")
@@ -250,6 +251,7 @@ def _render_detail(
             )
         )
         streamlit_module.caption(job_metadata)
+        streamlit_module.caption(f"{item.first_seen_label} · {item.checked_label}")
         fit, status = streamlit_module.columns([1, 1], gap="medium")
         with fit:
             streamlit_module.markdown(fit_grade_meter_markup(item.grade), unsafe_allow_html=True)

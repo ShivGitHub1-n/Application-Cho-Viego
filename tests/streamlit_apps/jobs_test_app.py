@@ -73,6 +73,8 @@ class OfflineRecommendation:
     saved: bool
     primary_role_family: str
     visibility: RecommendationVisibility
+    first_seen_label: str = "First seen unknown"
+    checked_label: str = "Not checked recently"
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,7 @@ class OfflineJobsExperience:
     def __init__(self, scenario: str = "visible-grades") -> None:
         self.scenario = scenario
         self.profile = OfflineProfile("profile-1", "Avery Engineer")
+        self.other_profile = OfflineProfile("profile-2", "Second Engineer")
         self.visible = [
             self._recommendation(
                 "excellent-1", FitGrade.EXCELLENT, EligibilityStatus.ELIGIBLE, False
@@ -171,7 +174,9 @@ class OfflineJobsExperience:
     def list_reviewed_profiles(self):
         if self.scenario == "no-reviewed-profile":
             return type("Profiles", (), {"profiles": [], "warning": None})()
-        return type("Profiles", (), {"profiles": [self.profile], "warning": None})()
+        return type(
+            "Profiles", (), {"profiles": [self.profile, self.other_profile], "warning": None}
+        )()
 
     def get_preferences(self, profile_id: str):
         if self.scenario in {"no-confirmed-preferences", "preference-suggestion"}:
@@ -216,7 +221,10 @@ class OfflineJobsExperience:
     def confirm_preferences(self, preferences: JobSearchPreferences) -> JobSearchPreferences:
         return preferences
 
-    def load_feed(self, profile_id: str, feed_kind: FeedKind) -> OfflineFeed:
+    def load_feed(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> OfflineFeed:
+        del sector
         warnings = (
             ["One approved source returned a partial response."]
             if self.scenario == "partial-source-warning"
@@ -245,7 +253,10 @@ class OfflineJobsExperience:
             datetime(2026, 7, 28, tzinfo=UTC),
         )
 
-    def load_excluded(self, profile_id: str, feed_kind: FeedKind) -> list[OfflineRecommendation]:
+    def load_excluded(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> list[OfflineRecommendation]:
+        del sector
         return self.excluded
 
     def refresh_tailored(self, profile_id: str) -> OfflineRefresh:
@@ -257,8 +268,9 @@ class OfflineJobsExperience:
         return OfflineRefresh(feed, OfflineRun(feed.status))
 
     def get_job_detail(
-        self, profile_id: str, feed_kind: FeedKind, job_id: str
+        self, profile_id: str, feed_kind: FeedKind, job_id: str, *, sector: str | None = None
     ) -> OfflineDetail | None:
+        del sector
         for item in [*self.visible, *self.excluded]:
             if item.job_id == job_id:
                 return OfflineDetail(
@@ -358,6 +370,7 @@ def render_offline_scenario() -> None:
     )
 
 
+st.session_state.setdefault("app_active_page", "Jobs")
 render_application_shell(
     st,
     active_profile_label="Avery Engineer",

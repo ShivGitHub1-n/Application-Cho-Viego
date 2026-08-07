@@ -138,6 +138,15 @@ class SQLiteJobSearchPreferencesRepository(
 class SQLiteDiscoveredJobRepository(_SQLiteJobDiscoveryRepository, DiscoveredJobRepository):
     def upsert(self, job: DiscoveredJob) -> None:
         validated = _validate_model(DiscoveredJob, job)
+        existing = self.get(validated.id)
+        if existing is None:
+            validated = validated.model_copy(update={"first_seen_at": validated.fetched_at})
+        elif existing.first_seen_at is not None:
+            validated = validated.model_copy(
+                update={
+                    "first_seen_at": min(existing.first_seen_at, validated.fetched_at),
+                }
+            )
         payload_json = _dump_model(validated)
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")

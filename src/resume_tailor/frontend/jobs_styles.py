@@ -1,91 +1,7 @@
-"""Scoped visual tokens and small CSS enhancements for the Jobs workspace."""
+"""Scoped Precision Workbench styling for the accepted Jobs workspace."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class _JobsPalette:
-    canvas: str
-    surface: str
-    surface_secondary: str
-    surface_hover: str
-    card_selected: str
-    border: str
-    border_hover: str
-    accent: str
-    selected_label: str
-    text: str
-    text_secondary: str
-    text_muted: str
-    fit_inactive: str
-    warning_surface: str
-    warning_text: str
-    selected_glow: str
-    eligibility_eligible: str
-    eligibility_unknown: str
-    eligibility_ineligible: str
-
-
-_DARK_JOBS_PALETTE = _JobsPalette(
-    canvas="#0E1117",
-    surface="#171B23",
-    surface_secondary="#262730",
-    surface_hover="#20242D",
-    card_selected="#2B171B",
-    border="#464A54",
-    border_hover="#555A65",
-    accent="#FF2B2B",
-    selected_label="#FF7373",
-    text="#FAFAFA",
-    text_secondary="#D7D9E0",
-    text_muted="#A6ABB5",
-    fit_inactive="#555A65",
-    warning_surface="#382A12",
-    warning_text="#FFBD45",
-    selected_glow="rgba(255, 43, 43, 0.28)",
-    eligibility_eligible="#5CE488",
-    eligibility_unknown="#FFBD45",
-    eligibility_ineligible="#FF2B2B",
-)
-
-_LIGHT_JOBS_PALETTE = _JobsPalette(
-    canvas="#FFFFFF",
-    surface="#FFFFFF",
-    surface_secondary="#F0F2F6",
-    surface_hover="#F8F9FB",
-    card_selected="#FFF8F8",
-    border="#D6D9E0",
-    border_hover="#B8BDC8",
-    accent="#FF4B4B",
-    selected_label="#B42323",
-    text="#262730",
-    text_secondary="#5F626A",
-    text_muted="#6B6E77",
-    fit_inactive="#D9DCE3",
-    warning_surface="#FFF7E6",
-    warning_text="#7A4B00",
-    selected_glow="rgba(255, 75, 75, 0.22)",
-    eligibility_eligible="#2E7D32",
-    eligibility_unknown="#A06000",
-    eligibility_ineligible="#FF4B4B",
-)
-
-
-def _palette_for(theme_type: str | None) -> _JobsPalette:
-    return _LIGHT_JOBS_PALETTE if theme_type == "light" else _DARK_JOBS_PALETTE
-
-
-def jobs_css(theme_type: str | None = None) -> str:
-    """Return Figma-informed CSS scoped to explicitly keyed Jobs containers.
-
-    Streamlit exposes ``st.context.theme.type`` on the server, so callers pass
-    the active theme during a render. The fallback is dark because the primary
-    supported application theme is dark; a light client rerun passes ``light``.
-    """
-
-    palette = _palette_for(theme_type)
+def jobs_css() -> str:
+    """Return CSS scoped to Jobs and mapped only to shared semantic tokens."""
     card = '.st-key-jobs-page [data-testid="stVerticalBlock"][class*="st-key-jobs-card-"]'
     action_container = '[data-testid="stElementContainer"][class*="st-key-jobs-card-action-"]'
     saved_card = (
@@ -109,25 +25,25 @@ def jobs_css(theme_type: str | None = None) -> str:
     return f"""
 <style>
 .st-key-jobs-page {{
-  --jobs-canvas: {palette.canvas};
-  --jobs-surface: {palette.surface};
-  --jobs-surface-secondary: {palette.surface_secondary};
-  --jobs-surface-hover: {palette.surface_hover};
-  --jobs-card-selected: {palette.card_selected};
-  --jobs-border: {palette.border};
-  --jobs-border-hover: {palette.border_hover};
-  --jobs-accent: {palette.accent};
-  --jobs-selected-label: {palette.selected_label};
-  --jobs-text: {palette.text};
-  --jobs-text-secondary: {palette.text_secondary};
-  --jobs-text-muted: {palette.text_muted};
-  --jobs-fit-inactive: {palette.fit_inactive};
-  --jobs-warning-surface: {palette.warning_surface};
-  --jobs-warning-text: {palette.warning_text};
-  --jobs-selected-glow: {palette.selected_glow};
-  --jobs-eligibility-eligible: {palette.eligibility_eligible};
-  --jobs-eligibility-unknown: {palette.eligibility_unknown};
-  --jobs-eligibility-ineligible: {palette.eligibility_ineligible};
+  --jobs-canvas: var(--pw-canvas);
+  --jobs-surface: var(--pw-surface);
+  --jobs-surface-secondary: var(--pw-surface-raised);
+  --jobs-surface-hover: var(--pw-surface-hover);
+  --jobs-card-selected: color-mix(in srgb, var(--pw-state-info) 14%, var(--pw-surface));
+  --jobs-border: var(--pw-border);
+  --jobs-border-hover: var(--pw-border-strong);
+  --jobs-accent: var(--pw-state-info);
+  --jobs-selected-label: var(--pw-state-info);
+  --jobs-text: var(--pw-text);
+  --jobs-text-secondary: var(--pw-text-muted);
+  --jobs-text-muted: var(--pw-text-subtle);
+  --jobs-fit-inactive: var(--pw-border-strong);
+  --jobs-warning-surface: color-mix(in srgb, var(--pw-state-review) 12%, var(--pw-surface));
+  --jobs-warning-text: var(--pw-state-review);
+  --jobs-selected-glow: transparent;
+  --jobs-eligibility-eligible: var(--pw-state-positive);
+  --jobs-eligibility-unknown: var(--pw-state-review);
+  --jobs-eligibility-ineligible: var(--pw-state-critical);
   margin-inline: auto;
   max-width: 75rem;
 }}
@@ -307,12 +223,12 @@ def jobs_css(theme_type: str | None = None) -> str:
 {card}:has(.jobs-card-selected-marker) {{
   background: var(--jobs-card-selected) !important;
   border-color: var(--jobs-accent) !important;
-  box-shadow: 0 0 0 1px var(--jobs-accent), 0 0 14px var(--jobs-selected-glow) !important;
+  box-shadow: 0 0 0 1px var(--jobs-accent) !important;
 }}
 {card}:has(.jobs-card-selected-marker):has(button:hover) {{
   background: var(--jobs-card-selected) !important;
   border-color: var(--jobs-accent) !important;
-  box-shadow: 0 0 0 1px var(--jobs-accent), 0 0 17px var(--jobs-selected-glow) !important;
+  box-shadow: 0 0 0 1px var(--jobs-accent) !important;
 }}
 {card}:has(button:focus-visible) {{
   outline: 2px solid var(--jobs-accent);
@@ -334,34 +250,21 @@ def jobs_css(theme_type: str | None = None) -> str:
 }}
 {card} > {action_container} {{
   inset: 0;
-  height: 100%;
   margin: 0;
-  padding: 0;
   position: absolute;
-  width: 100%;
-  z-index: 2;
+  z-index: 1;
 }}
 {card} > {action_container} [data-testid="stButton"] {{
   height: 100%;
-  margin: 0;
   width: 100%;
 }}
 {card} > {action_container} [data-testid="stButton"] > button {{
   background: transparent !important;
   border: 0 !important;
-  box-shadow: none !important;
-  color: transparent !important;
-  cursor: pointer;
   height: 100%;
+  min-height: 100%;
   opacity: 0;
-  padding: 0;
   width: 100%;
-}}
-{card} > {action_container} [data-testid="stButton"] > button:hover {{
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: transparent !important;
 }}
 
 {saved_card} {{

@@ -80,6 +80,10 @@ class RecommendationView(BaseModel):
     work_arrangement: WorkArrangement
     posted_at: datetime | None
     posting_age_label: str
+    first_seen_at: datetime | None = None
+    first_seen_label: str = "First seen unknown"
+    checked_at: datetime | None = None
+    checked_label: str = "Not checked recently"
     grade: FitGrade
     eligibility: EligibilityStatus
     provisional: bool
@@ -109,6 +113,11 @@ class FeedView(BaseModel):
     source_warnings: list[str] = Field(default_factory=list)
     status: str | None = None
     last_refresh_at: datetime | None = None
+    source_count: int = 0
+    retrieved_count: int = 0
+    normalized_count: int = 0
+    scored_count: int = 0
+    returned_count: int = 0
 
 
 class FeedRefreshView(BaseModel):
@@ -176,19 +185,23 @@ class JobsExperienceService:
             raise RuntimeError("Preference confirmation is unavailable.")
         return self._services.confirm_preferences.confirm(preferences)
 
-    def load_feed(self, profile_id: str, feed_kind: FeedKind) -> FeedView:
+    def load_feed(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> FeedView:
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
         details = self._services.feed_queries.get(
-            self._user_id, feed_kind, profile_id=profile_id, excluded_only=False
+            self._user_id, feed_kind, profile_id=profile_id, sector=sector, excluded_only=False
         )
         return self._feed_view(details)
 
-    def load_excluded(self, profile_id: str, feed_kind: FeedKind) -> list[RecommendationView]:
+    def load_excluded(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> list[RecommendationView]:
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
         details = self._services.feed_queries.get(
-            self._user_id, feed_kind, profile_id=profile_id, excluded_only=True
+            self._user_id, feed_kind, profile_id=profile_id, sector=sector, excluded_only=True
         )
         return [self._recommendation_view(item) for item in details.items]
 
@@ -210,12 +223,14 @@ class JobsExperienceService:
             profile_id=profile_id,
             started_at=self._now(),
         )
-        return FeedRefreshView(feed=self.load_feed(profile_id, FeedKind.EXPLORE), run=run)
+        return FeedRefreshView(
+            feed=self.load_feed(profile_id, FeedKind.EXPLORE, sector=sector), run=run
+        )
 
     def get_job_detail(
-        self, profile_id: str, feed_kind: FeedKind, job_id: str
+        self, profile_id: str, feed_kind: FeedKind, job_id: str, *, sector: str | None = None
     ) -> JobDetailView | None:
-        feed = self.load_feed(profile_id, feed_kind)
+        feed = self.load_feed(profile_id, feed_kind, sector=sector)
         recommendation = next((item for item in feed.visible if item.job_id == job_id), None)
         if recommendation is None:
             return None
@@ -267,6 +282,11 @@ class JobsExperienceService:
             source_warnings=list(dict.fromkeys(warnings)),
             status=run.status.value if run else None,
             last_refresh_at=run.completed_at if run else None,
+            source_count=run.source_count if run else 0,
+            retrieved_count=run.retrieved_count if run else 0,
+            normalized_count=run.normalized_count if run else 0,
+            scored_count=run.scored_count if run else 0,
+            returned_count=run.returned_count if run else 0,
         )
 
     def _recommendation_view(self, recommendation: JobRecommendation) -> RecommendationView:
@@ -286,6 +306,11 @@ def _recommendation_view(
     now: datetime,
 ) -> RecommendationView:
     posted_at = job.posted_at if job else None
+    provenance = job.source_provenance if job else []
+    first_seen_at = getattr(job, "first_seen_at", None) if job else None
+    if first_seen_at is None:
+        first_seen_at = min((item.fetched_at for item in provenance), default=None)
+    checked_at = job.fetched_at if job else None
     location = job.location.raw if job else "Location unavailable"
     company = job.company_name if job else "Company unavailable"
     source_company = job.source.company_name if job else company
@@ -306,6 +331,10 @@ def _recommendation_view(
         work_arrangement=work_arrangement,
         posted_at=posted_at,
         posting_age_label=_posting_age(posted_at, now),
+        first_seen_at=first_seen_at,
+        first_seen_label=_timestamp_label("First seen", first_seen_at, now, "First seen unknown"),
+        checked_at=checked_at,
+        checked_label=_timestamp_label("Checked", checked_at, now, "Not checked recently"),
         grade=grade,
         eligibility=recommendation.eligibility.status,
         provisional=recommendation.provisional,
@@ -345,7 +374,7 @@ def _saved_view(saved: SavedJob) -> SavedJobView:
 
 def _posting_age(posted_at: datetime | None, now: datetime) -> str:
     if posted_at is None:
-        return "Posting date unknown"
+        return "Posted date unknown"
     days = max(0, (now.date() - posted_at.date()).days)
     return "Posted today" if days == 0 else f"Posted {days} days ago"
 
@@ -356,6 +385,19 @@ def _freshness(posted_at: datetime | None, verification: VerificationStatus) -> 
     if posted_at is None:
         return "Freshness unknown"
     return "Posting date available"
+
+
+def _timestamp_label(
+    prefix: str, timestamp: datetime | None, now: datetime, fallback: str
+) -> str:
+    if timestamp is None:
+        return fallback
+    days = max(0, (now.date() - timestamp.date()).days)
+    if days == 0:
+        return f"{prefix} today"
+    if days == 1:
+        return f"{prefix} 1 day ago"
+    return f"{prefix} {days} days ago"
 
 
 __all__ = [

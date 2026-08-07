@@ -137,6 +137,12 @@ def create_job_discovery_services(
             configured_sources = [*load_source_registry(registry_configuration)]
         else:
             configured_sources = compile_runtime_sources(company_registry)
+    else:
+        # The SQLite source table is the persisted approved-source authority
+        # for installations that do not provide a separate registry path.
+        # Without this fallback the application silently constructs an empty
+        # runtime source set even when approved sources are already stored.
+        configured_sources = source_repository.list_enabled()
     for source in configured_sources:
         if isinstance(source, SupportedJobSource):
             source_repository.save(source)

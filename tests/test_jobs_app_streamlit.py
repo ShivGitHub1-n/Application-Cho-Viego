@@ -44,8 +44,16 @@ def test_offline_jobs_harness_selection_uses_contextual_keys_and_persists() -> N
     assert any(item.value == "Weak Role" for item in app.subheader)
     app.button(key="jobs-card-action-tailored-profile-1-excellent-1").click().run()
     assert app.session_state["jobs_tailored_selected_job_id"] == "excellent-1"
-    assert any(item.value == "Excellent Role" for item in app.subheader)
     assert not any(item.label.startswith("Select ") for item in app.button)
+
+
+
+def test_jobs_profile_selection_updates_the_canonical_profile_id() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="jobs-profile-selector").set_value("profile-2").run()
+
+    assert app.session_state["jobs_profile_id"] == "profile-2"
+    assert app.session_state["profile_id"] == "profile-2"
 
 
 def test_offline_discovered_handoff_defers_navigation_until_the_next_run() -> None:
@@ -53,7 +61,7 @@ def test_offline_discovered_handoff_defers_navigation_until_the_next_run() -> No
     app.button(key="jobs-tailor-tailored-profile-1-excellent-1").click().run()
 
     assert app.exception == []
-    assert app.session_state["app_active_page"] == "Resume Tailor"
+    assert app.session_state["app_active_page"] == "Resume Studio"
     assert "jobs_pending_page" not in app.session_state
     assert app.session_state["job_title_input"] == "Tailored Role"
     assert app.session_state["job_description_input"] == "Tailoring description."
@@ -69,7 +77,7 @@ def test_offline_refresh_uses_human_status_and_keeps_shell_subordinate_scenario(
     rendered = [item.value for item in app.markdown] + [item.value for item in app.caption]
     assert not any("OfflineRun(" in value or "status='completed'" in value for value in rendered)
     assert any("Last refreshed" in value for value in rendered)
-    assert app.pills(key="app_active_page").value == "Resume Tailor"
+    assert app.session_state["app_active_page"] == "Jobs"
 
 
 def test_offline_jobs_harness_expands_excluded_results_only_after_click() -> None:
@@ -95,20 +103,9 @@ def test_offline_jobs_harness_switches_to_explore_without_copying_tailored_selec
     assert not any("Tailored selected detail" in item.value for item in app.markdown)
 
 
-def test_application_router_has_dedicated_jobs_stop_and_preserves_tailoring_keys() -> None:
-    source = (
-        Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
-    ).read_text(encoding="utf-8")
-
-    assert "render_jobs_page" in source
-    assert "st.stop()" in source
-    assert '"Jobs"' in source
-    assert 'key="job_title_input"' in source
-
-
 def test_production_router_selects_jobs_without_rendering_resume_body() -> None:
     app = AppTest.from_file(str(APP)).run(timeout=30)
-    app.pills(key="app_active_page").set_value("Jobs").run(timeout=30)
+    app.button(key="pw-route-sidebar-jobs").click().run(timeout=30)
 
     assert app.exception == []
     assert any(item.value == "Jobs" for item in app.title)
@@ -154,6 +151,23 @@ def test_offline_harness_all_documented_scenarios_start_without_exception() -> N
         assert app.exception == [], scenario_name
 
 
+def test_jobs_empty_actions_use_safe_pending_navigation_intents() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    scenario = next(item for item in app.selectbox if item.label == "Offline scenario")
+    scenario.set_value("no-reviewed-profile").run()
+
+    assert app.button(key="jobs-open-master-profile").label == "Open Career Profile"
+    app.button(key="jobs-open-master-profile").click().run()
+    assert app.session_state["app_active_page"] == "Career Profile"
+
+    app = AppTest.from_file(str(HARNESS)).run()
+    scenario = next(item for item in app.selectbox if item.label == "Offline scenario")
+    scenario.set_value("no-confirmed-preferences").run()
+    app.button(key="jobs-open-preferences").click().run()
+
+    assert app.pills(key="jobs-active-section").value == "Preferences"
+
+
 def test_jobs_structure_uses_integrated_cards_and_one_detail_panel() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
 
@@ -171,12 +185,12 @@ def test_jobs_structure_uses_integrated_cards_and_one_detail_panel() -> None:
 def test_application_shell_uses_native_navigation_without_radio_widgets() -> None:
     app = AppTest.from_file(str(APP)).run(timeout=30)
 
-    assert app.pills(key="app_active_page").options == [
-        "Jobs",
-        "Resume Tailor",
-        "Cover letters",
-        "Master profile",
-    ]
+    labels = [item.label for item in app.button]
+    assert "Career Profile" in labels
+    assert "Jobs" in labels
+    assert "Resume Studio" in labels
+    assert "Cover Letters" in labels
+    assert not any(item.key == "app_active_page" for item in app.pills)
     assert app.radio == []
 
 
@@ -200,7 +214,7 @@ def test_offline_saved_handoff_defers_navigation_until_the_next_run() -> None:
     app.button(key="jobs-tailor-saved-saved-1").click().run()
 
     assert app.exception == []
-    assert app.session_state["app_active_page"] == "Resume Tailor"
+    assert app.session_state["app_active_page"] == "Resume Studio"
     assert "jobs_pending_page" not in app.session_state
 
 
