@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import MutableMapping
 from typing import Any, cast
 
@@ -14,7 +15,7 @@ from resume_tailor.frontend.cover_letters_page import (
     CoverLettersDependencies,
     render_cover_letters_page,
 )
-from resume_tailor.frontend.jobs_page import render_jobs_page
+from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
 from resume_tailor.frontend.profile_page import ProfilePageDependencies, render_profile_page
 from resume_tailor.frontend.resume_studio_page import (
     ResumeStudioDependencies,
@@ -139,8 +140,17 @@ def _render_application() -> None:
             ),
         )
     elif active_route is AppRoute.JOBS:
-        services = create_job_discovery_services(Settings())
-        render_jobs_page(create_jobs_experience(profile_repository, services=services))
+        services = None
+        try:
+            services = create_job_discovery_services(Settings())
+            render_jobs_page(
+                create_jobs_experience(profile_repository, services=services)
+            )
+        except sqlite3.OperationalError:
+            render_jobs_unavailable(st)
+        finally:
+            if services is not None:
+                services.close()
     elif active_route is AppRoute.RESUME_STUDIO:
         render_resume_studio_page(
             st,

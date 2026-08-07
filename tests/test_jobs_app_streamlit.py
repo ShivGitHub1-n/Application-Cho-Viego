@@ -47,6 +47,14 @@ def test_offline_jobs_harness_selection_uses_contextual_keys_and_persists() -> N
     assert not any(item.label.startswith("Select ") for item in app.button)
 
 
+def test_jobs_database_unavailable_is_presented_without_a_traceback() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="offline-scenario-selector").set_value("database-unavailable").run()
+
+    assert app.exception == []
+    assert any(item.value == "Jobs is temporarily unavailable" for item in app.subheader)
+    assert any(item.label == "Retry Jobs" for item in app.button)
+
 
 def test_jobs_profile_selection_updates_the_canonical_profile_id() -> None:
     app = AppTest.from_file(str(HARNESS)).run()

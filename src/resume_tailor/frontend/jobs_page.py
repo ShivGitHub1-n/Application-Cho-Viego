@@ -316,6 +316,18 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
     _render_feed(experience, profile_id, FeedKind.EXPLORE, feed, streamlit_module)
 
 
+def render_jobs_unavailable(streamlit_module: Any = st) -> None:
+    """Render a controlled storage-unavailable boundary for Jobs."""
+
+    with streamlit_module.container(border=True, key="jobs-database-unavailable"):
+        streamlit_module.subheader("Jobs is temporarily unavailable")
+        streamlit_module.write(
+            "The local Jobs database is busy or unavailable. Retry after the current "
+            "workspace run has finished."
+        )
+        if streamlit_module.button("Retry Jobs", key="jobs-retry-database"):
+            streamlit_module.rerun()
+
 
 def _render_feed(
     experience: JobsPageExperience,

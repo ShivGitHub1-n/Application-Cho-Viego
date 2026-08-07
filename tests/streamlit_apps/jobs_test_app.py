@@ -21,7 +21,7 @@ from resume_tailor.domain.job_discovery.models import (
 from resume_tailor.domain.job_discovery.queries import FeedKind
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.frontend.app_shell import render_application_shell
-from resume_tailor.frontend.jobs_page import render_jobs_page
+from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
 
 st.set_page_config(page_title="Jobs visual harness", layout="wide")
 
@@ -38,6 +38,7 @@ SCENARIOS = (
     "preference-suggestion",
     "tailoring-handoff",
     "long-content",
+    "database-unavailable",
 )
 
 
@@ -377,4 +378,7 @@ render_application_shell(
     active_profile_id="profile-1",
     development_ui=render_offline_scenario,
 )
-render_jobs_page(OfflineJobsExperience(scenario_holder["value"]))
+if scenario_holder["value"] == "database-unavailable":
+    render_jobs_unavailable(st)
+else:
+    render_jobs_page(OfflineJobsExperience(scenario_holder["value"]))
