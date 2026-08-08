@@ -47,7 +47,11 @@ def test_fit_meter_keeps_grade_independent_from_eligibility_and_provisional() ->
 def test_tailoring_handoff_sets_existing_inputs_and_only_invalidates_derived_state() -> None:
     state: dict[str, object] = {
         "profile_id": "profile-old",
+        "profile": type("Profile", (), {"id": "profile-old"})(),
         "job_description_input": "old description",
+        "_resume_studio_job_title_widget": "old title widget",
+        "_resume_studio_job_description_widget": "old description widget",
+        "resume_studio_stage": "Export",
         "cover_recipient_name": "Keep this",
         "plan": "stale plan",
         "resume": "stale resume",
@@ -69,7 +73,12 @@ def test_tailoring_handoff_sets_existing_inputs_and_only_invalidates_derived_sta
     assert state["job_description_input"] == "Build reliable firmware."
     assert "plan" not in state
     assert "resume" not in state
+    assert "profile" not in state
     assert state["cover_recipient_name"] == "Keep this"
+    assert state["app_pending_page"] == "Resume Studio"
+    assert "_resume_studio_job_title_widget" not in state
+    assert "_resume_studio_job_description_widget" not in state
+    assert state["resume_studio_pending_stage"] == "Job context"
 
 
 def test_jobs_css_is_limited_to_scoped_jobs_enhancements() -> None:
@@ -132,7 +141,7 @@ def test_jobs_css_targets_the_visible_selected_card_container() -> None:
     assert "var(--jobs-selected-glow)" in css
 
 
-def test_jobs_css_sizes_the_native_card_action_dom_chain() -> None:
+def test_jobs_css_keeps_the_native_card_action_as_a_full_card_focusable_target() -> None:
     css = jobs_css()
 
     card = '[data-testid="stVerticalBlock"][class*="st-key-jobs-card-"]'
@@ -144,10 +153,9 @@ def test_jobs_css_sizes_the_native_card_action_dom_chain() -> None:
     assert "inset: 0;" in css
     assert "position: absolute;" in css
     assert "width: 100%;" in css
-    assert "height: 100%;" in css
     assert f'{card} > {action_container} [data-testid="stButton"] {{' in css
     assert f'{card} > {action_container} [data-testid="stButton"] > button {{' in css
-    assert "cursor: pointer;" in css
+    assert "height: 100%;" in css
     assert "opacity: 0;" in css
     assert f"{card}:has(button:focus-visible)" in css
     assert "pointer-events: none" not in css
@@ -170,31 +178,27 @@ def test_jobs_css_covers_the_keyed_visual_surfaces_and_responsive_layout() -> No
     assert "body" not in css
 
 
-def test_jobs_css_uses_scoped_figma_tokens_and_selected_state_precedence() -> None:
-    dark = jobs_css("dark")
-    light = jobs_css("light")
+def test_jobs_css_uses_shared_semantic_tokens_and_selected_state_precedence() -> None:
+    css = jobs_css()
 
-    assert ".st-key-jobs-page {" in dark
-    assert "--jobs-surface: #171B23;" in dark
-    assert "--jobs-card-selected: #2B171B;" in dark
-    assert "--jobs-accent: #FF2B2B;" in dark
-    assert "--jobs-fit-inactive: #555A65;" in dark
-    assert ".jobs-fit-bars { display: inline-flex; gap: .375rem; }" in dark
-    assert "--jobs-surface: #FFFFFF;" in light
-    assert "--jobs-card-selected: #FFF8F8;" in light
-    assert "--jobs-accent: #FF4B4B;" in light
-    assert "--jobs-fit-inactive: #D9DCE3;" in light
+    assert ".st-key-jobs-page {" in css
+    assert "--jobs-surface: var(--pw-surface);" in css
+    assert "--jobs-card-selected: color-mix(in srgb, var(--pw-state-info)" in css
+    assert "--jobs-accent: var(--pw-state-info);" in css
+    assert "--jobs-fit-inactive: var(--pw-border-strong);" in css
+    assert ".jobs-fit-bars { display: inline-flex; gap: .375rem; }" in css
+    assert "#FF2B2B" not in css
+    assert "#FF4B4B" not in css
 
     card = '[data-testid="stVerticalBlock"][class*="st-key-jobs-card-"]'
     selected = f"{card}:has(.jobs-card-selected-marker)"
     selected_hover = f"{selected}:has(button:hover)"
-    assert selected in dark
-    assert selected_hover in dark
-    assert dark.index(selected_hover) > dark.index(selected)
-    assert "background: var(--jobs-card-selected) !important;" in dark
-    assert "border-color: var(--jobs-accent) !important;" in dark
-    assert "box-shadow:" in dark
-    assert "body {" not in dark
+    assert selected in css
+    assert selected_hover in css
+    assert css.index(selected_hover) > css.index(selected)
+    assert "background: var(--jobs-card-selected) !important;" in css
+    assert "border-color: var(--jobs-accent) !important;" in css
+    assert "body {" not in css
 
 
 def test_eligibility_indicator_uses_shared_semantic_markup() -> None:
@@ -214,27 +218,23 @@ def test_eligibility_indicator_uses_shared_semantic_markup() -> None:
 
 
 def test_jobs_css_defines_navigation_precedence_and_eligibility_tokens() -> None:
-    dark = jobs_css("dark")
-    light = jobs_css("light")
+    css = jobs_css()
 
-    assert "--jobs-eligibility-eligible: #5CE488;" in dark
-    assert "--jobs-eligibility-unknown: #FFBD45;" in dark
-    assert "--jobs-eligibility-ineligible: #FF2B2B;" in dark
-    assert "--jobs-eligibility-eligible: #2E7D32;" in light
-    assert "--jobs-eligibility-unknown: #A06000;" in light
-    assert "--jobs-eligibility-ineligible: #FF4B4B;" in light
-    assert ".jobs-eligibility-dot" in dark
-    assert "width: 7px;" in dark
-    assert "height: 7px;" in dark
+    assert "--jobs-eligibility-eligible: var(--pw-state-positive);" in css
+    assert "--jobs-eligibility-unknown: var(--pw-state-review);" in css
+    assert "--jobs-eligibility-ineligible: var(--pw-state-critical);" in css
+    assert ".jobs-eligibility-dot" in css
+    assert "width: 7px;" in css
+    assert "height: 7px;" in css
 
     inactive_hover = '.st-key-jobs-section-nav [data-variant="pills"]:hover'
     active = '.st-key-jobs-section-nav [data-variant="pills"][data-selected]'
     active_hover = active + ":hover"
-    assert inactive_hover in dark
-    assert active in dark
-    assert active_hover in dark
-    assert "display: flex;" in dark
-    assert "flex: 0 0 auto;" in dark
-    assert "gap: 1.25rem;" in dark
-    assert dark.index(active) < dark.index(active_hover)
-    assert "background: transparent !important;" in dark[dark.index(active_hover) :]
+    assert inactive_hover in css
+    assert active in css
+    assert active_hover in css
+    assert "display: flex;" in css
+    assert "flex: 0 0 auto;" in css
+    assert "gap: 1.25rem;" in css
+    assert css.index(active) < css.index(active_hover)
+    assert "background: transparent !important;" in css[css.index(active_hover) :]

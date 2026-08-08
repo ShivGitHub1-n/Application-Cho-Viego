@@ -19,7 +19,9 @@
 ## Phase 3 — Frontend
 
 - Add profile/template uploads, job input, reasoning review, and downloads.
-- Preserve the API as the product boundary so Streamlit can later be replaced by React/Next.js.
+- Preserve the API as the product boundary while retaining Streamlit for the
+  approved Precision Workbench redesign. A React, Next.js, or Tailwind rewrite
+  is not part of the current roadmap.
 
 ## Phase 4 — Company Intelligence
 
@@ -74,17 +76,18 @@
   the populated harness and real application. Batch 4 is merged in the current
   baseline; its manual evidence remains the visual baseline for later changes.
 
-### Batch 5 - final Jobs hardening
+### Batch 5 — final Jobs hardening
 
-- Verify retrieval, persistence, migrations, saved snapshots, API delivery,
+- Verified retrieval, persistence, migrations, saved snapshots, API delivery,
   Streamlit delivery, source/security boundaries, and historical compatibility
-  with explicit offline tests.
-- Enforce deterministic source, identity, feed, serialization, and refresh
+  through explicit offline verification.
+- Enforced deterministic source, identity, feed, serialization, and refresh
   behavior across supported hash seeds.
-- Record actual validation and manual evidence without claiming a locked
-  benchmark result or new browser evidence.
-- Batch 5 adds no new Jobs product feature. The next step is a separate
-  independent review-only pass.
+- Recorded actual validation and manual-evidence boundaries without claiming a
+  locked benchmark result or unsupported new browser evidence.
+- Added no new Jobs product feature. Batch 5 is complete and merged; the
+  separate independent review-only pass was completed and approved with zero
+  blocking findings.
 
 ## Phase 7 — Application Management
 
@@ -117,6 +120,32 @@ enforces audited extraction profiles, and counts actual browser action attempts.
 The real local browser gate was externally verified with Playwright `1.55.0`
 and managed Chromium `140.0.7339.16` (build v1187): three integration tests
 passed. Implementation is complete and merged in the current baseline. Its
-provider, first-party, lifecycle, and source-health contracts are covered by
-the Batch 5 offline hardening pass; a separate independent review remains the
-next gate.
+provider, first-party, lifecycle, and source-health contracts were covered by
+the completed Batch 5 offline hardening pass. The subsequent independent review
+was completed and approved with zero blocking findings; no further Jobs review
+gate remains pending in this roadmap entry.
+
+## Approved Precision Workbench frontend redesign — implementation pending
+
+The Figma design phase and implementation planning are complete. Precision
+Workbench is the selected full-product Streamlit direction. This roadmap entry
+records an approved target, not a production frontend implementation.
+
+- Target navigation: Career Profile, Jobs, Resume Studio, and Cover Letters.
+  Career Profile is the intended default destination; no dashboard is planned.
+- The current dedicated Jobs workspace remains implemented and historically
+  accepted. The current Profile, résumé-tailoring, and Cover Letter delivery
+  remain largely concentrated in frontend/app.py until planned implementation
+  work occurs.
+- The internal implementation sequence is: shared foundations; Career Profile;
+  Resume Studio; Cover Letters; Jobs integration; and cross-page hardening.
+  These are reviewable commit boundaries within one project, not separate
+  product branches or mandatory pull requests.
+- The target will preserve evidence authority, application services, renderer
+  authority, exact export gates, and accepted Jobs behavior.
+- Streamlit remains the planned frontend. A React, Next.js, or Tailwind rewrite
+  is not part of the current roadmap.
+
+The approved target is documented in
+docs/design/PRECISION_WORKBENCH_UI_REDESIGN.md. The implementation sequence is
+documented in docs/engineering/PRECISION_WORKBENCH_IMPLEMENTATION_PLAN.md.

@@ -24,8 +24,12 @@ class JobsPageExperience(Protocol):
     def get_preferences(self, profile_id: str) -> Any: ...
     def suggest_preferences(self, profile_id: str) -> Any: ...
     def confirm_preferences(self, preferences: Any) -> Any: ...
-    def load_feed(self, profile_id: str, feed_kind: FeedKind) -> FeedView: ...
-    def load_excluded(self, profile_id: str, feed_kind: FeedKind) -> Any: ...
+    def load_feed(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> FeedView: ...
+    def load_excluded(
+        self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
+    ) -> Any: ...
     def refresh_tailored(self, profile_id: str) -> Any: ...
     def refresh_explore(self, profile_id: str, sector: str) -> Any: ...
     def get_job_detail(self, profile_id: str, feed_kind: FeedKind, job_id: str) -> Any: ...
@@ -49,11 +53,17 @@ def apply_tailoring_handoff(
     from resume_tailor.application.workflow_state import invalidate_derived_workflow
 
     invalidate_derived_workflow(state)
+    current_profile = state.get("profile")
+    if getattr(current_profile, "id", None) != handoff.profile_id:
+        state.pop("profile", None)
     state["profile_id"] = handoff.profile_id
     state["profile_id_input"] = handoff.profile_id
     state["job_title_input"] = handoff.title
     state["job_description_input"] = handoff.description
-    state["jobs_pending_page"] = "Resume Tailor"
+    state.pop("_resume_studio_job_title_widget", None)
+    state.pop("_resume_studio_job_description_widget", None)
+    state["resume_studio_pending_stage"] = "Job context"
+    state["app_pending_page"] = "Resume Studio"
     state["pending_tailoring_handoff"] = handoff
 
 
@@ -62,7 +72,7 @@ def render_jobs_page(
     *,
     streamlit_module: Any = st,
 ) -> None:
-    streamlit_module.markdown(jobs_css(_jobs_theme_type(streamlit_module)), unsafe_allow_html=True)
+    streamlit_module.markdown(jobs_css(), unsafe_allow_html=True)
     with streamlit_module.container(key="jobs-page"):
         streamlit_module.title("Jobs")
         streamlit_module.caption(
@@ -80,8 +90,8 @@ def render_jobs_page(
                 _render_empty_state(
                     streamlit_module,
                     "A reviewed profile is required",
-                    "Review and save a profile in Master profile before discovering jobs.",
-                    action_label="Open Master profile",
+                    "Review and save a profile in Career Profile before discovering jobs.",
+                    action_label="Open Career Profile",
                     action_key="jobs-open-master-profile",
                 )
                 return
@@ -105,6 +115,7 @@ def render_jobs_page(
                 if previous_profile != selected_profile:
                     _clear_profile_state(streamlit_module.session_state)
                 streamlit_module.session_state["jobs_profile_id"] = selected_profile
+                streamlit_module.session_state["profile_id"] = selected_profile
                 preferences = experience.get_preferences(selected_profile)
                 with spacer_col:
                     streamlit_module.empty()
@@ -127,11 +138,14 @@ def render_jobs_page(
                 "Saved",
                 "Preferences",
             ]
-            current_section = streamlit_module.session_state.get(
+            pending_section = streamlit_module.session_state.pop("jobs_pending_section", None)
+            current_section = pending_section or streamlit_module.session_state.get(
                 "jobs-active-section", section_options[0]
             )
             if current_section not in section_options:
                 current_section = section_options[0]
+            if pending_section in section_options:
+                streamlit_module.session_state["jobs-active-section"] = current_section
             section = streamlit_module.pills(
                 "Jobs section",
                 section_options,
@@ -251,14 +265,45 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
         streamlit_module.session_state.pop("jobs_explore_excluded_expanded", None)
     streamlit_module.session_state["jobs_selected_explore_sector"] = sector
     try:
-        feed = experience.load_feed(profile_id, FeedKind.EXPLORE)
-    except Exception:
+        feed = experience.load_feed(profile_id, FeedKind.EXPLORE, sector=sector)
+    except Exception as error:
         _render_empty_state(
             streamlit_module,
-            "No Explore roles have been loaded for this sector",
-            "Refresh this sector to retrieve approved postings without changing your "
-            "Tailored feed.",
-            action_label="Refresh Explore roles",
+            "Explore feed could not be read",
+            f"The persisted feed for {sector} could not be read: {error}",
+            action_label=None,
+            action_key="jobs-refresh-explore-empty",
+        )
+
+    if not feed.visible and feed.status == "no_sources_configured":
+        _render_empty_state(
+            streamlit_module,
+            "No approved sources configured",
+            "Configure or restore an approved source before refreshing this sector.",
+            action_label=None,
+            action_key="jobs-refresh-explore-empty",
+        )
+        return
+    if not feed.visible and feed.status == "failed_all_sources":
+        _render_empty_state(
+            streamlit_module,
+            "All approved sources failed",
+            "No new sector roles were retrieved. Previously persisted results remain unchanged.",
+            action_label=None,
+            action_key="jobs-refresh-explore-empty",
+        )
+        return
+    if not feed.visible and feed.status in {"completed", "completed_with_warnings"}:
+        message = (
+            "Approved sources returned no records for this sector."
+            if getattr(feed, "retrieved_count", 0) == 0
+            else "No sector roles matched the approved retrieval boundary."
+        )
+        _render_empty_state(
+            streamlit_module,
+            "Explore returned no roles",
+            message,
+            action_label=None,
             action_key="jobs-refresh-explore-empty",
         )
         return
@@ -269,6 +314,19 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
     )
     _render_sort_note(streamlit_module, "Newest postings first; fit breaks ties")
     _render_feed(experience, profile_id, FeedKind.EXPLORE, feed, streamlit_module)
+
+
+def render_jobs_unavailable(streamlit_module: Any = st) -> None:
+    """Render a controlled storage-unavailable boundary for Jobs."""
+
+    with streamlit_module.container(border=True, key="jobs-database-unavailable"):
+        streamlit_module.subheader("Jobs is temporarily unavailable")
+        streamlit_module.write(
+            "The local Jobs database is busy or unavailable. Retry after the current "
+            "workspace run has finished."
+        )
+        if streamlit_module.button("Retry Jobs", key="jobs-retry-database"):
+            streamlit_module.rerun()
 
 
 def _render_feed(
@@ -294,7 +352,9 @@ def _render_feed(
     if feed_kind is FeedKind.EXPLORE:
         sector = streamlit_module.session_state.get("jobs_selected_explore_sector", "")
         selection_scope = f"{selection_scope}-{_safe_key(str(sector))}"
-    excluded = experience.load_excluded(profile_id, feed_kind) if expanded else []
+    else:
+        sector = None
+    excluded = experience.load_excluded(profile_id, feed_kind, sector=sector) if expanded else []
     if not feed.visible:
         streamlit_module.session_state.pop(selected_key, None)
     if feed.status:
@@ -313,7 +373,9 @@ def _render_feed(
     def toggle_excluded() -> list[Any] | None:
         expanded_now = not expanded
         streamlit_module.session_state[expanded_key] = expanded_now
-        return experience.load_excluded(profile_id, feed_kind) if expanded_now else []
+        if expanded_now:
+            return experience.load_excluded(profile_id, feed_kind, sector=sector)
+        return []
 
     with streamlit_module.container(key="jobs-feed-layout"):
         render_feed(
@@ -327,7 +389,9 @@ def _render_feed(
             ),
             on_save=experience.save_job,
             on_tailor=lambda job_id: _tailor(experience, profile_id, job_id, streamlit_module),
-            get_detail=lambda job_id: experience.get_job_detail(profile_id, feed_kind, job_id),
+            get_detail=lambda job_id: experience.get_job_detail(
+                profile_id, feed_kind, job_id, sector=sector
+            ),
             expanded_excluded=expanded,
             excluded=excluded,
             on_toggle_excluded=toggle_excluded,
@@ -339,7 +403,7 @@ def _tailor(
 ) -> None:
     handoff = experience.prepare_tailoring(job_id, profile_id)
     apply_tailoring_handoff(streamlit_module.session_state, handoff)
-    streamlit_module.success("Tailoring inputs prepared. Resume Tailor is ready for review.")
+    streamlit_module.success("Tailoring inputs prepared. Resume Studio is ready for review.")
     if hasattr(streamlit_module, "rerun"):
         streamlit_module.rerun()
 
@@ -398,7 +462,13 @@ def _render_empty_state(
         streamlit_module.subheader(title)
         streamlit_module.write(message)
         if action_label:
-            streamlit_module.button(action_label, key=action_key, type="primary")
+            if streamlit_module.button(action_label, key=action_key, type="primary"):
+                if action_key == "jobs-open-master-profile":
+                    streamlit_module.session_state["app_pending_page"] = "Career Profile"
+                    streamlit_module.rerun()
+                if action_key == "jobs-open-preferences":
+                    streamlit_module.session_state["jobs_pending_section"] = "Preferences"
+                    streamlit_module.rerun()
 
 
 def _render_list_section(
@@ -424,17 +494,6 @@ def _format_refresh(value: Any) -> str:
     if isinstance(value, str):
         return escape(value.replace("_", " ").capitalize())
     return "Completed"
-
-
-def _jobs_theme_type(streamlit_module: Any) -> str | None:
-    """Read Streamlit's documented active theme without coupling UI state to CSS."""
-
-    try:
-        theme = streamlit_module.context.theme
-    except AttributeError:
-        return None
-    theme_type = getattr(theme, "type", None)
-    return theme_type if theme_type in {"dark", "light"} else None
 
 
 def _refresh_copy(value: Any) -> str:
