@@ -43,6 +43,10 @@ POSTING_FIXTURE = (
 )
 
 
+def _navigate(app: AppTest, route: str) -> AppTest:
+    return app.button(key=f"pw-route-sidebar-{route}").click().run()
+
+
 class _UnavailablePaginationProvider:
     def __init__(self) -> None:
         self.calls = 0
@@ -174,9 +178,10 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     profile = MasterProfile.model_validate_json(PROFILE_FIXTURE.read_text(encoding="utf-8"))
     dependencies.create_profile_repository(Settings()).save(profile)
 
-    app = AppTest.from_file(str(ROOT / "src" / "resume_tailor" / "frontend" / "app.py")).run()
+    app = AppTest.from_file(str(ROOT / "src" / "resume_tailor" / "frontend" / "app.py"))
+    app.session_state["profile_id"] = profile.id
+    app.run()
     for key in (
-        "profile",
         "posting",
         "plan",
         "generated_resume_artifact",
@@ -184,31 +189,28 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     ):
         assert key not in app.session_state
 
-    app.radio(key="navigation_selection").set_value("Profile").run()
-    app.text_input(key="profile_id_input").input(profile.id).run()
-    next(button for button in app.button if button.label == "Load saved profile").click().run()
-
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_input(key="job_title_input").input("Mechatronics Integration Engineer")
-    app.text_area(key="job_description_input").input(POSTING_FIXTURE.read_text(encoding="utf-8"))
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run(timeout=30)
+    _navigate(app, "resume_studio")
+    app.text_input(key="_resume_studio_job_title_widget").input(
+        "Mechatronics Integration Engineer"
+    ).run()
+    app.text_area(key="_resume_studio_job_description_widget").input(
+        POSTING_FIXTURE.read_text(encoding="utf-8")
+    ).run()
+    app.button(key="resume-create-strategy").click().run(timeout=30)
 
     posting = app.session_state["posting"]
     posting_fingerprint = content_fingerprint(posting)
     assert app.session_state["workflow_posting_fingerprint"] == posting_fingerprint
     assert content_fingerprint(app.session_state["plan"].posting) == posting_fingerprint
 
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
-        timeout=60
-    )
+    app.button(key="resume-to-evidence").click().run()
+    app.button(key="resume-build-document").click().run(timeout=60)
     resume_artifact = app.session_state["generated_resume_artifact"]
     assert resume_artifact.fingerprint_inputs.normalized_posting_fingerprint == (
         posting_fingerprint
     )
 
-    app.radio(key="navigation_selection").set_value("Cover Letter").run()
+    _navigate(app, "cover_letters")
     optional_text_inputs = [
         item
         for item in app.text_input
@@ -441,13 +443,12 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     assert research_fetcher.calls == 0
     assert not provider_constructions
 
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_area(key="job_description_input").input(
+    _navigate(app, "resume_studio")
+    app.pills(key="_resume_studio_stage_widget").set_value("Job context").run()
+    app.text_area(key="_resume_studio_job_description_widget").input(
         POSTING_FIXTURE.read_text(encoding="utf-8")
         + "\n- Validate one additional hardware interface."
-    )
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run(timeout=30)
+    ).run()
+    app.button(key="resume-create-strategy").click().run(timeout=30)
     assert content_fingerprint(app.session_state["posting"]) != posting_fingerprint
     assert COVER_LETTER_ARTIFACT_KEY not in app.session_state

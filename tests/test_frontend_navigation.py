@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
 from resume_tailor.application.profile_editor import empty_profile_editor_state
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.models import MasterProfile
+from resume_tailor.frontend.routes import ROUTE_OPTIONS, AppRoute
 from resume_tailor.frontend.state import (
-    NAVIGATION_ITEMS,
     initialize_frontend_state,
     navigate_to,
     populate_profile_editor_state,
@@ -31,6 +30,8 @@ def _app_path() -> Path:
 
 
 def _configure_app_dependencies(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("APPLICATION_VIEGO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("JOB_DISCOVERY_ENABLED", "false")
     repository = SQLiteMasterProfileRepository(tmp_path / "frontend.sqlite3")
     service = TailorResumeService(
         DeterministicResumeOptimizer(),
@@ -38,11 +39,10 @@ def _configure_app_dependencies(monkeypatch, tmp_path: Path) -> None:
     )
     monkeypatch.setattr(dependencies, "create_profile_repository", lambda: repository)
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
-    monkeypatch.setattr(
-        dependencies,
-        "create_job_discovery_services",
-        lambda _settings: SimpleNamespace(save=None, check_saved_availability=None),
-    )
+
+
+def _navigate(app: AppTest, route: AppRoute) -> AppTest:
+    return app.button(key=f"pw-route-sidebar-{route.name.lower()}").click().run()
 
 
 def test_navigation_preserves_unrelated_session_state() -> None:
@@ -100,9 +100,9 @@ def test_every_major_workflow_is_reachable_and_state_survives(
     app = AppTest.from_file(str(_app_path())).run()
     app.session_state["navigation-survival-sentinel"] = "preserved"
 
-    for page in NAVIGATION_ITEMS:
-        app.radio(key="navigation_selection").set_value(page).run()
-        assert app.session_state["active_page"] == page
+    for route in ROUTE_OPTIONS:
+        _navigate(app, route)
+        assert app.session_state["app_active_page"] == route.value
         assert app.session_state["navigation-survival-sentinel"] == "preserved"
         assert not app.exception
 
@@ -114,10 +114,12 @@ def test_job_search_services_initialize_only_on_job_search_page(
     _configure_app_dependencies(monkeypatch, tmp_path)
     calls = 0
 
+    create_services = dependencies.create_job_discovery_services
+
     def tracked_job_discovery_initialization(_settings):
         nonlocal calls
         calls += 1
-        return SimpleNamespace(save=None, check_saved_availability=None)
+        return create_services(_settings, legacy_repository_root=tmp_path / "no-legacy")
 
     monkeypatch.setattr(
         dependencies,
@@ -126,15 +128,13 @@ def test_job_search_services_initialize_only_on_job_search_page(
     )
     app = AppTest.from_file(str(_app_path())).run()
 
-    for page in (
-        "Home / Workspace",
-        "Profile",
-        "Tailor Resume",
-        "Cover Letter",
-        "Settings / Diagnostics",
-        "Job Search",
+    for route in (
+        AppRoute.CAREER_PROFILE,
+        AppRoute.RESUME_STUDIO,
+        AppRoute.COVER_LETTERS,
+        AppRoute.JOBS,
     ):
-        app.radio(key="navigation_selection").set_value(page).run()
+        _navigate(app, route)
         assert not app.exception
 
     assert calls == 1
@@ -149,10 +149,9 @@ def test_default_startup_needs_no_gemini_credentials(
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
     app = AppTest.from_file(str(_app_path())).run()
-    app.radio(key="navigation_selection").set_value("Settings / Diagnostics").run()
 
     assert not app.exception
-    assert any("Gemini role classification: Disabled" in element.value for element in app.markdown)
+    assert app.session_state["app_active_page"] == AppRoute.CAREER_PROFILE.value
 
 
 def test_job_search_initialization_with_profile_does_not_call_sources(
@@ -175,6 +174,22 @@ def test_job_search_initialization_with_profile_does_not_call_sources(
     monkeypatch.setattr(dependencies, "create_profile_repository", lambda: repository)
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
 
+    create_services = dependencies.create_job_discovery_services
+    monkeypatch.setattr(
+        dependencies,
+        "create_job_discovery_services",
+        lambda _settings: create_services(
+            _settings.model_copy(
+                update={
+                    "app_data_directory": tmp_path,
+                    "job_discovery_enabled": False,
+                    "job_discovery_source_registry_path": None,
+                }
+            ),
+            legacy_repository_root=tmp_path / "no-legacy",
+        ),
+    )
+
     def unexpected_source_call(*args, **kwargs):
         raise AssertionError("A job source was called during page initialization.")
 
@@ -184,7 +199,6 @@ def test_job_search_initialization_with_profile_does_not_call_sources(
     monkeypatch.setattr(LeverConnector, "check", unexpected_source_call)
 
     app = AppTest.from_file(str(_app_path())).run()
-    app.radio(key="navigation_selection").set_value("Job Search").run()
+    _navigate(app, AppRoute.JOBS)
 
     assert not app.exception
-    assert any("No approved job sources are configured" in warning.value for warning in app.warning)

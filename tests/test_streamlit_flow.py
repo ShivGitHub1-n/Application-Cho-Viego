@@ -76,6 +76,18 @@ def _generation_configuration() -> ResumeGenerationConfiguration:
     )
 
 
+def _navigate(app: AppTest, route: str) -> AppTest:
+    return app.button(key=f"pw-route-sidebar-{route}").click().run()
+
+
+def _create_resume_strategy(app: AppTest, title: str, description: str) -> AppTest:
+    _navigate(app, "resume_studio")
+    app.pills(key="_resume_studio_stage_widget").set_value("Job context").run()
+    app.text_input(key="_resume_studio_job_title_widget").input(title).run()
+    app.text_area(key="_resume_studio_job_description_widget").input(description).run()
+    return app.button(key="resume-create-strategy").click().run()
+
+
 def _workflow_state() -> dict[str, object]:
     return {
         "profile": object(),
@@ -239,7 +251,7 @@ def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
     app.session_state["posting"] = posting
     app.session_state["plan"] = plan
 
-    app.radio(key="navigation_selection").set_value("Cover Letter").run()
+    _navigate(app, "cover_letters")
     next(button for button in app.button if button.label == "Generate cover letter").click().run()
 
     artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
@@ -260,12 +272,12 @@ def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
 
 def test_failed_cover_letter_rebuild_preserves_prior_valid_artifact() -> None:
     profile, posting, plan = cover_letter_case()
-    valid = CoverLetterService(
-        renderer=ControlledCoverLetterRenderer([0.94])
-    ).generate_artifact(profile, posting, plan)
-    failed = CoverLetterService(
-        renderer=ControlledCoverLetterRenderer([0.50])
-    ).generate_artifact(profile, posting, plan)
+    valid = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.94])).generate_artifact(
+        profile, posting, plan
+    )
+    failed = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.50])).generate_artifact(
+        profile, posting, plan
+    )
 
     stored, committed = _artifact_after_build(valid, failed)
 
@@ -326,36 +338,28 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
     }
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.radio(key="navigation_selection").set_value("Profile").run()
-    app.text_input(key="profile_id_input").input("streamlit-profile").run()
-    app.text_area(key="profile_editor_raw_json").input(json.dumps(profile))
-    next(
-        button for button in app.button if button.label == "Validate and save raw JSON"
-    ).click().run()
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_area(key="job_description_input").input(
-        "Develop STM32 firmware and validate SPI hardware interfaces."
-    )
-    app.text_input(key="job_title_input").input("Embedded Firmware Intern")
+    app.session_state["profile"] = MasterProfile.model_validate(profile)
+    app.session_state["profile_id"] = "streamlit-profile"
     app.session_state["resume"] = "stale-generated-resume"
     app.session_state["generated_content_reviewed"] = True
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run()
+    _create_resume_strategy(
+        app,
+        "Embedded Firmware Intern",
+        "Develop STM32 firmware and validate SPI hardware interfaces.",
+    )
 
     assert app.session_state["plan"].selected_claim_ids == ["streamlit-evidence-2"]
     assert "resume" not in app.session_state
     assert app.session_state["generated_content_reviewed"] is False
 
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
-        timeout=10
-    )
+    app.button(key="resume-to-evidence").click().run()
+    app.button(key="resume-build-document").click().run(timeout=10)
 
     assert app.session_state["resume"].experience_bullets["streamlit-entry"][0].text == (
         "Validated SPI hardware sensor interfaces."
     )
     assert app.session_state["generated_content_reviewed"] is False
-    assert any("Generated resume review" in element.value for element in app.subheader)
+    assert any("Résumé review canvas" in element.value for element in app.markdown)
     assert app.session_state["generated_resume_artifact"].docx_bytes
 
 
@@ -529,12 +533,7 @@ def test_streamlit_uses_persisted_profile_with_pasted_job_description(
 
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_area(key="job_description_input").input("Build firmware.\r\n\r\n- Test systems  ")
-    app.text_input(key="job_title_input").input("Firmware Engineer")
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run()
+    _create_resume_strategy(app, "Firmware Engineer", "Build firmware.\r\n\r\n- Test systems  ")
 
     assert app.session_state["profile"].id == "local-profile"
     assert app.session_state["posting"].description == "Build firmware.\n\n- Test systems"
@@ -578,7 +577,7 @@ def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
     )
     profile = {
         "id": "workflow-profile",
-        "user_id": "candidate-user",
+        "user_id": "local-user",
         "display_name": "Workflow Candidate",
         "experiences": [
             {
@@ -595,28 +594,20 @@ def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
             }
         ],
     }
+    repository.save(MasterProfile.model_validate(profile))
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
-    app = AppTest.from_file(str(app_path)).run()
-
-    app.radio(key="navigation_selection").set_value("Profile").run()
-    app.text_input(key="profile_id_input").input(profile["id"]).run()
-    app.text_area(key="profile_editor_raw_json").input(json.dumps(profile))
-    next(
-        button for button in app.button if button.label == "Validate and save raw JSON"
-    ).click().run()
-    app.radio(key="navigation_selection").set_value("Job Search").run()
+    app = AppTest.from_file(str(app_path))
+    app.session_state["profile_id"] = profile["id"]
+    app.run()
+    _navigate(app, "jobs")
 
     assert repository.get(profile["id"]) is not None
     assert app.session_state["profile_id"] == profile["id"]
     assert app.session_state["job_discovery_profile_id"] == profile["id"]
-    assert any(
-        "No approved job sources are configured" in warning.value
-        for warning in app.warning
-    )
+    app.pills(key="jobs-active-section").set_value("Preferences").run()
+    app.button(key="jobs-suggest-preferences").click().run()
 
-    next(button for button in app.button if button.label == "Suggest preferences").click().run()
-
-    assert app.session_state["job_discovery_suggestion"].profile_id == profile["id"]
+    assert app.session_state["jobs_preference_suggestion"].profile_id == profile["id"]
     assert any(item.label == "Target titles" for item in app.text_area)
 
     with sqlite3.connect(database) as connection:
@@ -626,22 +617,17 @@ def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
         )
         connection.commit()
 
-    app.radio(key="navigation_selection").set_value("Profile").run()
-    app.radio(key="navigation_selection").set_value("Job Search").run()
+    _navigate(app, "career_profile")
+    _navigate(app, "jobs")
 
     assert not app.exception
-    assert "profile" not in app.session_state
-    assert app.session_state["profile_id"] == ""
-    assert "job_discovery_profile_id" not in app.session_state
-    assert not any(button.label == "Suggest preferences" for button in app.button)
+    assert not any(item.key == "jobs-profile-selector" for item in app.selectbox)
     rendered = " ".join(
         [element.value for element in app.warning]
         + [element.value for element in app.info]
         + [element.value for element in app.subheader]
     )
-    assert "Load, create, or import a profile" in rendered
-    assert "Saved jobs" in rendered
-    assert "No approved job sources are configured" in rendered
+    assert "A reviewed profile is required" in rendered
 
 
 def test_streamlit_shows_collapsed_typed_composition_diagnostic(
@@ -675,38 +661,26 @@ def test_streamlit_shows_collapsed_typed_composition_diagnostic(
 
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_input(key="job_title_input").input(posting["title"])
-    app.text_area(key="job_description_input").input(posting["description"])
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run()
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
-        timeout=10
-    )
+    _create_resume_strategy(app, posting["title"], posting["description"])
+    app.button(key="resume-to-evidence").click().run()
+    app.button(key="resume-build-document").click().run(timeout=10)
 
-    assert any(expander.label == "Composition diagnostic" for expander in app.expander)
-    assert any("Selected experiences:" in element.value for element in app.markdown)
-    assert any("overflow rollback" in element.value for element in app.caption)
-    assert any("Termination:" in element.value for element in app.caption)
-    assert any(
-        "Candidates excluded by relevance or redundancy thresholds" in element.value
-        for element in app.markdown
-    )
+    diagnostic = app.session_state["resume"].composition_diagnostic
+    assert diagnostic is not None
+    assert diagnostic.selected_experience_ids
+    assert diagnostic.termination_reason is not None
     artifact_fingerprint = app.session_state["generated_resume_artifact"].artifact_fingerprint
 
-    app.radio(key="navigation_selection").set_value("Settings / Diagnostics").run()
+    _navigate(app, "jobs")
 
     assert (
         app.session_state["generated_resume_artifact"].artifact_fingerprint == artifact_fingerprint
     )
 
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_area(key="job_description_input").input(
-        posting["description"] + "\nChanged material requirement."
+    _create_resume_strategy(
+        app,
+        posting["title"],
+        posting["description"] + "\nChanged material requirement.",
     )
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run()
 
     assert "generated_resume_artifact" not in app.session_state

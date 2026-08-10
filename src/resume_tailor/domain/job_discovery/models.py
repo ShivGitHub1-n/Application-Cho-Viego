@@ -413,6 +413,7 @@ class DiscoveredJob(BaseModel):
     verification_confidence: VerificationConfidence = VerificationConfidence.MEDIUM
     completeness: list[str] = Field(default_factory=list)
     fetched_at: datetime
+    first_seen_at: datetime | None = None
     requisition_id: str | None = None
     normalized_title: str = ""
     normalized_company_name: str = ""
@@ -548,6 +549,9 @@ class JobRecommendation(BaseModel):
     created_at: datetime
     evaluation_policy_version: str | None = None
     feed_kind: FeedKind = FeedKind.TAILORED
+    # Persisted query identity keeps Explore sectors isolated without changing
+    # scoring or the saved-job snapshot authority.
+    explore_sector: str | None = None
     visibility: RecommendationVisibility = RecommendationVisibility.VISIBLE
     unresolved_facts: list[str] = Field(default_factory=list)
     provisional: bool = False

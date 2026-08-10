@@ -254,8 +254,9 @@ snapshot and unavailable saved rows. The UI reports the empty registry exactly
 as `No approved job sources are configured` and does not present it as a
 successful empty search.
 
-The Streamlit shell exposes one selected workflow at a time: Home / Workspace,
-Profile, Tailor Resume, Cover Letter, Job Search, and Settings / Diagnostics.
+The Streamlit Precision Workbench shell exposes one selected workflow at a
+time: Career Profile, Jobs, Resume Studio, and Cover Letters. Career Profile is
+the default route.
 Session state carries reviewed profile and generated-workflow objects across
 navigation. Structured profile controls are primary; raw JSON and long
 diagnostics are collapsed delivery affordances. Job Discovery dependencies are
@@ -280,6 +281,24 @@ Connector behavior is tested primarily with offline Greenhouse and Lever
 fixtures. Live source smoke testing is opt-in, uses the
 `job_source_integration` pytest marker, requires explicit approved source
 configuration, and is never part of ordinary offline test execution.
+
+### Batch 4 Jobs workspace
+
+The dedicated Jobs route is composed from `JobsExperienceService`, a typed
+application-facing façade over the existing profile, preference, feed,
+refresh, saved-job, availability, and handoff services. It returns semantic
+view models without numeric diagnostics or persistence/provider objects. The
+frontend owns section selection, selected-job state, draft preference widgets,
+excluded disclosure state, and applying a prepared tailoring handoff to
+Streamlit session state.
+
+Tailored and Explore state is independent. The façade scopes persisted feed
+reads to the selected profile and preserves repository order; the frontend
+does not re-rank. Saved display uses the immutable posting snapshot. Jobs CSS
+is scoped to Jobs markup and uses Streamlit theme variables for light and dark
+themes. Tailor handoff invalidates only derived workflow state and switches the
+existing application route; it does not invoke Gemini, rendering, or DOCX
+generation.
 
 ## Evolution
 
@@ -367,3 +386,152 @@ source starts after expiry. Static and rendered indexes consume the same
 audited declarative extraction profile; browser action limits count actual
 attempts and stop unchanged bounded load-more DOM. CLI force bypasses cadence
 only.
+
+## Batch 4 Jobs experience boundary
+
+The dedicated Jobs page is a delivery feature over the existing job-discovery
+contracts. The application-facing façade in
+`application/job_discovery/experience.py` assembles typed page data and use
+cases. `profile_queries.py` owns reviewed-profile lookup, and `handoff.py`
+prepares existing tailoring input without generating anything. The frontend
+modules have deliberately narrow responsibilities:
+
+| Module | Responsibility |
+| --- | --- |
+| `frontend/jobs_page.py` | Jobs section orchestration and profile-scoped UI state |
+| `frontend/job_feed_view.py` | Tailored/Explore cards, fit meter, eligibility, detail, and actions |
+| `frontend/job_preferences_view.py` | Preference suggestion, editing, confirmation, and conflict display |
+| `frontend/saved_jobs_view.py` | Immutable saved snapshots, availability, and saved handoffs |
+| `frontend/jobs_styles.py` | Jobs-scoped visual tokens and stable DOM selectors |
+| `frontend/app_shell.py` | Shared application navigation and profile shell |
+
+The façade owns repository/service access and DTO assembly. The frontend owns
+layout, native Streamlit widget interaction, selected-job state, draft widget
+state, and the deferred navigation intent used by the shared router. Tailored
+and Explore selection state is independent and keyed by feed context, profile,
+sector where relevant, visibility, and stable job identity. Saved snapshots are
+displayed as immutable posting snapshots; availability metadata may change
+without rewriting the snapshot.
+
+`tests/streamlit_apps/jobs_test_app.py` injects deterministic façade data into
+the same production Jobs frontend for populated interaction and visual checks.
+The real `frontend/app.py` uses persisted profiles, preferences, feeds, and
+saved jobs and may correctly show an empty feed until a refresh has persisted
+recommendations. Both paths are required acceptance surfaces; neither replaces
+the other.
+
+The frontend preserves backend-owned Tailored and Explore ordering and does not
+re-evaluate eligibility, fit, or sort order. The normal UI renders semantic
+grades, evidence, gaps, unresolved facts, verification, freshness, eligibility,
+and provisional state without numeric fit scores. Tailor resume is an
+application-boundary handoff only: it pre-fills the existing workflow and does
+not call Gemini, generate a plan, render, export, or create a cover letter.
+
+## Streamlit implementation lessons
+
+Widget-owned session-state keys cannot be mutated after the corresponding
+widget is instantiated. The Jobs router consumes `jobs_pending_page` before
+creating the `app_active_page` widget; this fixed the `StreamlitAPIException`
+caused by changing `app_active_page` after `st.pills` creation. Selection keys
+must be context-safe, and Tailored and Explore must not share a selected-job
+key.
+
+The full-card action remains a native Streamlit button. Its keyed
+`stElementContainer`, intermediate `stButton` wrapper, and native button are
+all sized to the card; a selector targets the actual visible
+`stVerticalBlock` card rather than merely a marker child. Selector existence in
+source is not proof of a rendered match. Selected, hover, and focus precedence
+is explicit, with selected-hover preserving the selected surface, border, and
+glow. Stable keyed containers and documented data-test IDs are preferred over
+generated class hashes. Interaction remains native and accessible; JavaScript,
+React, Tailwind, Node, npm, and custom components are not part of this boundary.
+
+## Figma and visual implementation rules
+
+Figma is the source of truth for Jobs hierarchy, spacing, component
+proportions, colors, selected state, navigation treatment, fit bars,
+eligibility indicators, and responsive composition. It is not permission to
+copy generated React, install Tailwind, replace Streamlit with fake HTML or
+JavaScript, or build a static canvas. The six current references are:
+
+- [Primary dark desktop](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-3)
+- [Dark components](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-117)
+- [Dark mobile](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=16-174)
+- [Light desktop](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=8-2)
+- [Light components](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=9-2)
+- [Light mobile](https://www.figma.com/design/a7UeLCf07LY1VlIJCeVlg1?node-id=10-2)
+
+Early implementation attempts described Figma vaguely while also forbidding
+explicit Figma color tokens, which produced repeated visual rework. The
+improved practice is to inspect the frames directly, extract concrete values,
+centralize Jobs-scoped tokens, preserve dark/light behavior, compare the real
+browser result, and never claim fidelity from code or CSS-string tests alone.
+
+## Frontend architecture — Precision Workbench
+
+This section describes the implemented frontend structure. Browser-level visual
+validation remains a manual release gate.
+
+### Current state
+
+The Streamlit composition in frontend/app.py constructs and caches the resume
+and profile dependencies, bootstraps profile state, renders shared navigation,
+and dispatches focused Career Profile, Jobs, Resume Studio, and Cover Letters
+page modules. Jobs dependencies are scoped to the Jobs route. The staged resume
+page delegates immutable artifact generation and exact-byte download to the
+accepted resume workflow; the cover-letter page delegates its production
+artifact lifecycle to the accepted evidence-backed cover-letter view.
+
+### Intended module boundaries
+
+| Boundary | Intended responsibility |
+| --- | --- |
+| app.py | Composition root and route dispatcher |
+| app_shell.py and app_shell_styles.py | Desktop/mobile navigation, active-profile context, pending route intent |
+| design_tokens.py and shared_components.py | Scoped semantic tokens and intentional shared Streamlit presentation |
+| profile_page.py, profile_editor_view.py, profile_import_view.py | Career Profile overview, focused editor, import, advanced area |
+| resume_studio_page.py and resume_*_view.py | Job context, strategy, evidence, review, and export stages |
+| cover_letters_page.py and cover_letter_*_view.py | Setup, review, claim decision, and export |
+| document_canvas.py | Structured review surface and optional inspector |
+| Existing Jobs modules | Jobs presentation through the JobsExperienceService facade |
+
+These modules are the current delivery boundaries; additional view modules may
+be extracted without moving application or domain policy into the frontend.
+
+### Authority and state rules
+
+- app.py will construct dependencies and pass them explicitly. Page modules
+  will not instantiate repositories, duplicate application policy, or
+  reimplement domain decisions.
+- Application services, domain models, ports, and repositories retain current
+  authority. The frontend remains a delivery layer.
+- MasterProfileRepository remains profile-persistence authority; current
+  validation and evidence truthfulness rules remain unchanged.
+- Tailoring plans, generated résumés, and cover letters remain derived session
+  state. Existing deterministic invalidation for profile or posting changes is
+  retained; page-local state must reset from the same inputs.
+- Document canvases are review surfaces. ResumeRenderer, CoverLetterRenderer,
+  and exact page-count tooling remain export authority.
+- Jobs retains the JobsExperienceService boundary, backend-owned order,
+  semantic fit/eligibility/provisional behavior, immutable snapshots, and safe
+  tailoring handoff.
+
+### Presentation and acceptance rules
+
+The planned shell is responsive: a persistent desktop sidebar with active
+profile context and optional inspector, plus four-item native mobile navigation
+and one-column detail/editing surfaces. Semantic CSS variables will be scoped
+to stable keyed Streamlit containers and mapped through available Streamlit
+theme variables or another verified stable browser mechanism. This does not
+claim a stable public Python API for resolving the active Streamlit theme.
+
+Native Streamlit controls remain preferred for interaction; semantic HTML may
+support non-interactive presentation only. Selector assumptions are not
+authoritative until checked in a real browser. Unit and AppTest checks prove
+state and semantic behavior, not visual fidelity. Browser evidence remains
+required for physical dimensions, hit targets, selected-hover/focus states,
+mobile overflow, document canvases, and dark/light parity.
+
+The target, Figma authority, and behavior-preservation contract are documented
+in docs/design/PRECISION_WORKBENCH_UI_REDESIGN.md. The execution sequence is in
+docs/engineering/PRECISION_WORKBENCH_IMPLEMENTATION_PLAN.md.

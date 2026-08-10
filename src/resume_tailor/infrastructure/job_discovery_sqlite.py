@@ -24,6 +24,8 @@ from resume_tailor.domain.job_discovery.source_lifecycle import (
 )
 from resume_tailor.infrastructure.job_discovery_migrations import (
     SCHEMA_VERSION,
+    SQLITE_BUSY_TIMEOUT_MS,
+    SQLITE_TIMEOUT_SECONDS,
     initialize_job_discovery_database,
 )
 from resume_tailor.ports.job_discovery import (
@@ -59,7 +61,9 @@ class _SQLiteJobDiscoveryRepository:
             initialize_job_discovery_database(self._database_path)
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._database_path)
+        connection = sqlite3.connect(self._database_path, timeout=SQLITE_TIMEOUT_SECONDS)
+        connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+        return connection
 
 
 class SQLiteJobSearchPreferencesRepository(
@@ -138,6 +142,15 @@ class SQLiteJobSearchPreferencesRepository(
 class SQLiteDiscoveredJobRepository(_SQLiteJobDiscoveryRepository, DiscoveredJobRepository):
     def upsert(self, job: DiscoveredJob) -> None:
         validated = _validate_model(DiscoveredJob, job)
+        existing = self.get(validated.id)
+        if existing is None:
+            validated = validated.model_copy(update={"first_seen_at": validated.fetched_at})
+        elif existing.first_seen_at is not None:
+            validated = validated.model_copy(
+                update={
+                    "first_seen_at": min(existing.first_seen_at, validated.fetched_at),
+                }
+            )
         payload_json = _dump_model(validated)
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")

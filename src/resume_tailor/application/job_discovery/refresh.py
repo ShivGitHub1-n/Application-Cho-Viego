@@ -372,6 +372,7 @@ class RefreshJobDiscoveryService:
             assessed=assessed,
             feed_kind=feed_kind,
             created_at=started_at,
+            explore_sector=(query.sectors[0] if isinstance(query, ExploreJobQuery) else None),
         )
         recommendations = assembly.recommendations
         aliases = [_identity_alias(job, started_at) for job in deduplicated.jobs]

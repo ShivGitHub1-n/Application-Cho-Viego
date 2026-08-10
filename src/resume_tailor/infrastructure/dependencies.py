@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -13,6 +13,7 @@ from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.generated_artifact import ResumeGenerationConfiguration
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.job_discovery.confirmation import ConfirmJobSearchPreferencesService
+from resume_tailor.application.job_discovery.handoff import PrepareTailoringHandoffService
 from resume_tailor.application.job_discovery.preferences import SuggestJobSearchPreferencesService
 from resume_tailor.application.job_discovery.queries import (
     GetCurrentJobSearchPreferencesService,
@@ -61,6 +62,9 @@ from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitE
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
+from resume_tailor.infrastructure.job_discovery_migrations import (
+    initialize_job_discovery_database,
+)
 from resume_tailor.infrastructure.job_discovery_sqlite import (
     SQLiteAtomicJobDiscoveryPersistence,
     SQLiteDiscoveredJobRepository,
@@ -252,13 +256,17 @@ def create_job_discovery_services(
         resolved_settings.app_data_directory,
         resolved_settings.profile_store_filename,
     )
+    # Initialize the shared Job Discovery schema once at the composition
+    # boundary. Repository constructors below must not repeat migrations on
+    # every Streamlit rerun.
+    initialize_job_discovery_database(database)
     profiles = SQLiteMasterProfileRepository(database)
-    preference_repository = SQLiteJobSearchPreferencesRepository(database)
-    job_repository = SQLiteDiscoveredJobRepository(database)
-    recommendation_repository = SQLiteJobRecommendationRepository(database)
-    run_repository = SQLiteDiscoveryRunRepository(database)
-    saved_job_repository = SQLiteSavedJobRepository(database)
-    source_repository = SQLiteSupportedJobSourceRepository(database)
+    preference_repository = SQLiteJobSearchPreferencesRepository(database, initialize=False)
+    job_repository = SQLiteDiscoveredJobRepository(database, initialize=False)
+    recommendation_repository = SQLiteJobRecommendationRepository(database, initialize=False)
+    run_repository = SQLiteDiscoveryRunRepository(database, initialize=False)
+    saved_job_repository = SQLiteSavedJobRepository(database, initialize=False)
+    source_repository = SQLiteSupportedJobSourceRepository(database, initialize=False)
     profiles.set_migration_report(
         migrate_legacy_application_database(
             _legacy_database(
@@ -269,8 +277,8 @@ def create_job_discovery_services(
             database,
         )
     )
-    atomic_persistence = SQLiteAtomicJobDiscoveryPersistence(database)
-    alias_repository = SQLiteSourceIdentityAliasRepository(database)
+    atomic_persistence = SQLiteAtomicJobDiscoveryPersistence(database, initialize=False)
+    alias_repository = SQLiteSourceIdentityAliasRepository(database, initialize=False)
 
     registry_configuration = resolved_settings.job_discovery_source_registry_path
     configured_sources: list[SourceDefinition] = []
@@ -283,6 +291,12 @@ def create_job_discovery_services(
             configured_sources = [*load_source_registry(registry_configuration)]
         else:
             configured_sources = compile_runtime_sources(company_registry)
+    else:
+        # The SQLite source table is the persisted approved-source authority
+        # for installations that do not provide a separate registry path.
+        # Without this fallback the application silently constructs an empty
+        # runtime source set even when approved sources are already stored.
+        configured_sources = source_repository.list_enabled()
     for source in configured_sources:
         if isinstance(source, SupportedJobSource):
             source_repository.save(source)
@@ -336,7 +350,7 @@ def create_job_discovery_services(
         ConnectorType.LEVER: lever,
         ConnectorType.FIRST_PARTY: cast(Any, first_party_connectors),
     }
-    runtime_states = SQLiteSourceRuntimeStateRepository(database)
+    runtime_states = SQLiteSourceRuntimeStateRepository(database, initialize=False)
     refresh_service = RefreshJobDiscoveryService(
         profiles=profiles,
         preferences=preference_repository,
@@ -399,6 +413,10 @@ def create_job_discovery_services(
             saved_job_repository,
             cast(Any, configured_source_repository),
             {ConnectorType.GREENHOUSE: greenhouse, ConnectorType.LEVER: lever},
+        ),
+        prepare_handoff=PrepareTailoringHandoffService(
+            job_repository,
+            saved_job_repository,
         ),
         source_health=SourceHealthQueryService(configured_sources, runtime_states),
         source_refresh=source_refresh,

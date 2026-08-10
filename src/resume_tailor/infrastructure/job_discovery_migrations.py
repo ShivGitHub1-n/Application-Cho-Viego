@@ -4,36 +4,60 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from threading import Lock
 
 SCHEMA_VERSION = 3
 LEGACY_SCHEMA_VERSION = 1
 PREVIOUS_SCHEMA_VERSION = 2
+SQLITE_TIMEOUT_SECONDS = 5.0
+SQLITE_BUSY_TIMEOUT_MS = int(SQLITE_TIMEOUT_SECONDS * 1000)
+
+_INITIALIZATION_LOCKS_GUARD = Lock()
+_INITIALIZATION_LOCKS: dict[Path, Lock] = {}
+
+
+def _initialization_lock(database_path: Path) -> Lock:
+    with _INITIALIZATION_LOCKS_GUARD:
+        return _INITIALIZATION_LOCKS.setdefault(database_path, Lock())
 
 
 def initialize_job_discovery_database(database_path: str | Path) -> None:
-    resolved = Path(database_path)
+    resolved = Path(database_path).resolve()
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(resolved)
-    try:
-        connection.execute("BEGIN IMMEDIATE")
-        current = connection.execute("PRAGMA user_version").fetchone()[0]
-        if current == 0:
-            _create_version_two_schema(connection)
-            _migrate_version_two_to_three(connection)
-        elif current == LEGACY_SCHEMA_VERSION:
-            _migrate_version_one_to_two(connection)
-            _migrate_version_two_to_three(connection)
-        elif current == PREVIOUS_SCHEMA_VERSION:
-            _migrate_version_two_to_three(connection)
-        elif current != SCHEMA_VERSION:
-            raise RuntimeError(f"unsupported job-discovery schema version {current}")
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+    with _initialization_lock(resolved):
+        connection = sqlite3.connect(resolved, timeout=SQLITE_TIMEOUT_SECONDS)
+        try:
+            connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+            current = connection.execute("PRAGMA user_version").fetchone()[0]
+            if current == SCHEMA_VERSION:
+                return
+            if current not in (0, LEGACY_SCHEMA_VERSION, PREVIOUS_SCHEMA_VERSION):
+                raise RuntimeError(f"unsupported job-discovery schema version {current}")
+
+            connection.execute("BEGIN IMMEDIATE")
+            # Re-check after acquiring the write lock in case another process
+            # completed the migration while this initializer was waiting.
+            current = connection.execute("PRAGMA user_version").fetchone()[0]
+            if current == SCHEMA_VERSION:
+                connection.commit()
+                return
+            if current == 0:
+                _create_version_two_schema(connection)
+                _migrate_version_two_to_three(connection)
+            elif current == LEGACY_SCHEMA_VERSION:
+                _migrate_version_one_to_two(connection)
+                _migrate_version_two_to_three(connection)
+            elif current == PREVIOUS_SCHEMA_VERSION:
+                _migrate_version_two_to_three(connection)
+            else:
+                raise RuntimeError(f"unsupported job-discovery schema version {current}")
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
 
 def _create_version_two_schema(connection: sqlite3.Connection) -> None:

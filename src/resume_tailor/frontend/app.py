@@ -1,7 +1,10 @@
+"""Streamlit composition root for the converged Precision Workbench."""
+
 from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from collections.abc import MutableMapping
 from hashlib import sha256
 from time import perf_counter
@@ -11,6 +14,7 @@ import streamlit as st
 from pydantic import ValidationError
 
 from resume_tailor.application.generated_artifact import prepare_artifact_download
+from resume_tailor.application.job_discovery.experience import JobsExperienceService
 from resume_tailor.application.job_intake import (
     InvalidJobDescriptionError,
     build_job_posting,
@@ -47,6 +51,7 @@ from resume_tailor.application.workflow_state import (
     GeneratedResumeReviewState,
     get_active_posting,
     has_cover_letter_prerequisites,
+    invalidate_derived_workflow,
     invalidate_posting_derived_workflow,
     invalidate_profile_derived_workflow,
     set_active_opportunity,
@@ -68,16 +73,27 @@ from resume_tailor.domain.profile_completeness import (
     ProfileCompletenessReport,
     validate_master_profile_completeness,
 )
+from resume_tailor.frontend.app_shell import render_application_shell
 from resume_tailor.frontend.cover_letter_view import render_cover_letter_view
+from resume_tailor.frontend.cover_letters_page import (
+    CoverLettersDependencies,
+    render_cover_letters_page,
+)
 from resume_tailor.frontend.job_discovery_view import (
     ApplicationJobDiscoveryDeliveryApi,
     render_job_discovery_view,
 )
+from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
+from resume_tailor.frontend.profile_page import ProfilePageDependencies, render_profile_page
+from resume_tailor.frontend.resume_studio_page import (
+    ResumeStudioDependencies,
+    render_resume_studio_page,
+)
 from resume_tailor.frontend.role_classification_view import (
     build_role_classification_diagnostic_view,
 )
+from resume_tailor.frontend.routes import AppRoute, normalize_route
 from resume_tailor.frontend.state import (
-    NAVIGATION_ITEMS,
     initialize_frontend_state,
     navigate_to,
     populate_profile_editor_state,
@@ -96,6 +112,7 @@ from resume_tailor.infrastructure.profile_repository import (
     SQLiteMasterProfileRepository,
 )
 from resume_tailor.infrastructure.rendering import (
+    ManagedResumeRenderer,
     PageOverflowError,
 )
 from resume_tailor.infrastructure.resume_extraction import (
@@ -191,6 +208,7 @@ def _apply_pending_profile_id_input() -> None:
     pending = st.session_state.pop(_PENDING_PROFILE_ID_INPUT_KEY, None)
     if pending is not None:
         st.session_state["profile_id_input"] = pending
+
 
 _PROGRESS_LABELS = {
     GenerationStage.PROFILE_LOADING: "Loading profile",
@@ -308,9 +326,7 @@ def _build_and_store_resume_artifact(
             )
         else:
             st.session_state.pop("resume_decision_trace", None)
-        st.session_state[GENERATED_RESUME_APPROVED_CLAIMS_KEY] = set(
-            approved_claim_ids
-        )
+        st.session_state[GENERATED_RESUME_APPROVED_CLAIMS_KEY] = set(approved_claim_ids)
         st.session_state[GENERATED_RESUME_GENERATED_APPROVALS_KEY] = (
             approved_claim_ids - _plan_claim_ids(plan)
         )
@@ -426,11 +442,7 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
                 else None
             ),
             f"finish reason: {issue.finish_reason}" if issue.finish_reason else None,
-            (
-                f"candidates: {issue.candidate_count}"
-                if issue.candidate_count is not None
-                else None
-            ),
+            (f"candidates: {issue.candidate_count}" if issue.candidate_count is not None else None),
             (
                 "text present: " + ("yes" if issue.text_present else "no")
                 if issue.text_present is not None
@@ -442,15 +454,12 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
         if issue.top_level_json_keys:
             st.caption("Top-level JSON keys: " + ", ".join(issue.top_level_json_keys))
         if issue.schema_error_field_paths:
-            st.caption(
-                "Schema field paths: " + ", ".join(issue.schema_error_field_paths)
-            )
+            st.caption("Schema field paths: " + ", ".join(issue.schema_error_field_paths))
         if issue.field_violations:
             st.caption(
                 "Provider field violations: "
                 + " · ".join(
-                    f"{item.field_path}: {item.description}"
-                    for item in issue.field_violations
+                    f"{item.field_path}: {item.description}" for item in issue.field_violations
                 )
             )
         if issue.sanitized_detail:
@@ -463,16 +472,12 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
                 f"API: {request_shape.api_version or 'unavailable'} · "
                 f"endpoint: {request_shape.endpoint or 'unavailable'}"
             )
-            st.caption(
-                "Config fields: " + ", ".join(request_shape.config_field_names)
-            )
+            st.caption("Config fields: " + ", ".join(request_shape.config_field_names))
             st.caption(
                 "Request field types: "
                 + ", ".join(
                     f"{name}={field_type}"
-                    for name, field_type in sorted(
-                        request_shape.request_field_types.items()
-                    )
+                    for name, field_type in sorted(request_shape.request_field_types.items())
                 )
             )
             st.caption(
@@ -498,8 +503,7 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
                 )
             if request_shape.compatibility_findings:
                 st.caption(
-                    "Compatibility findings: "
-                    + " · ".join(request_shape.compatibility_findings)
+                    "Compatibility findings: " + " · ".join(request_shape.compatibility_findings)
                 )
     if writing is not None:
         st.caption(
@@ -574,9 +578,7 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
                     )
                 )
                 if variant.target_job_requirements:
-                    st.caption(
-                        "Requirements: " + "; ".join(variant.target_job_requirements)
-                    )
+                    st.caption("Requirements: " + "; ".join(variant.target_job_requirements))
                 reasons = [
                     *variant.improvement_reasons,
                     *variant.validation_reasons,
@@ -591,8 +593,39 @@ def _comma_text(value: list[str]) -> str:
 
 
 def _clear_cover_letter_state() -> None:
-    for key in COVER_LETTER_DERIVED_KEYS:
+    for key in (
+        *COVER_LETTER_DERIVED_KEYS,
+        "cover_letter_claim_decisions",
+        "cover_export_docx",
+        "cover_export_status",
+    ):
         st.session_state.pop(key, None)
+
+
+def create_jobs_experience(
+    profile_repository: Any, *, services: Any | None = None
+) -> JobsExperienceService:
+    """Compose the Jobs facade while retaining canonical application storage."""
+
+    settings = Settings()
+    resolved_services = services or create_job_discovery_services(settings)
+    database = application_database_path(
+        settings.app_data_directory,
+        settings.profile_store_filename,
+    )
+    handoff = resolved_services.prepare_handoff
+    if handoff is None:
+        raise RuntimeError("Tailoring handoff is unavailable.")
+    return JobsExperienceService(
+        profiles=profile_repository,
+        services=resolved_services,
+        jobs=SQLiteDiscoveredJobRepository(database, initialize=False),
+        handoff=handoff,
+    )
+
+
+def _clear_tailoring_state() -> None:
+    invalidate_derived_workflow(cast(MutableMapping[str, object], st.session_state))
 
 
 def _invalidate_job_discovery_profile_state() -> None:
@@ -1542,11 +1575,7 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
                 )
                 st.caption(
                     "Choice changed after validated writing: "
-                    + (
-                        "yes"
-                        if comparison.choice_changed_after_validated_writing
-                        else "no"
-                    )
+                    + ("yes" if comparison.choice_changed_after_validated_writing else "no")
                 )
                 st.write(comparison.selected_reason)
                 if comparison.omitted_reason:
@@ -1606,8 +1635,7 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
             + ("Yes" if diagnostic.additional_evidence_unavailable else "No")
         )
         preferred_reachable = (
-            diagnostic.best_estimated_utilization_ratio
-            >= diagnostic.preferred_density_floor
+            diagnostic.best_estimated_utilization_ratio >= diagnostic.preferred_density_floor
         )
         st.caption(
             "Expansion frontier: "
@@ -1662,9 +1690,7 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
                         f"{selected_variant.intended_length_class.value.replace('_', ' ')} · "
                         f"{selected_variant.validation_status.value.replace('_', ' ')}"
                     )
-                    st.write(
-                        f"Source: {' '.join(selected_variant.original_reviewed_text)}"
-                    )
+                    st.write(f"Source: {' '.join(selected_variant.original_reviewed_text)}")
                     st.write(f"Written: {selected_variant.rewritten_text}")
             if hybrid.rejected_variants:
                 st.write("Rejected generated variants:")
@@ -1680,9 +1706,10 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
             if hybrid.rewrite_diagnostics:
                 st.write("Per-rewrite grounding outcomes:")
                 for outcome in hybrid.rewrite_diagnostics[:12]:
-                    codes = ", ".join(
-                        code.value for code in outcome.validator_rejection_codes
-                    ) or "none"
+                    codes = (
+                        ", ".join(code.value for code in outcome.validator_rejection_codes)
+                        or "none"
+                    )
                     st.caption(
                         f"#{outcome.rewrite_index} · "
                         f"{outcome.provider_contract_mapping_result.value} · "
@@ -2021,36 +2048,26 @@ def _render_tailor_page(service: Any) -> None:
                 wording_dirty=False,
                 rebuild_required=False,
             )
-        if (
-            final_reviewed
-            and current_state is GeneratedResumeReviewState.REBUILT_AWAITING_REVIEW
-        ):
+        if final_reviewed and current_state is GeneratedResumeReviewState.REBUILT_AWAITING_REVIEW:
             _set_generated_resume_state(
                 GeneratedResumeReviewState.REBUILT_APPROVED,
                 wording_dirty=False,
                 rebuild_required=False,
             )
-        elif (
-            not final_reviewed
-            and current_state is GeneratedResumeReviewState.REBUILT_APPROVED
-        ):
+        elif not final_reviewed and current_state is GeneratedResumeReviewState.REBUILT_APPROVED:
             _set_generated_resume_state(
                 GeneratedResumeReviewState.REBUILT_AWAITING_REVIEW,
                 wording_dirty=False,
                 rebuild_required=False,
             )
-    rebuild_required = bool(
-        st.session_state.get(GENERATED_RESUME_REBUILD_REQUIRED_KEY, False)
-    )
+    rebuild_required = bool(st.session_state.get(GENERATED_RESUME_REBUILD_REQUIRED_KEY, False))
     if artifact is not None and rebuild_required:
         st.warning("Approved wording changed. Rebuild once before downloading the artifact.")
         st.button(
             "Rebuild with approved wording",
             type="primary",
             icon=":material/build:",
-            disabled=bool(
-                st.session_state.get(GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY, False)
-            ),
+            disabled=bool(st.session_state.get(GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY, False)),
             on_click=_run_rebuild_callback,
             args=(service, plan, profile, final_approved_ids),
         )
@@ -2071,6 +2088,7 @@ def _render_tailor_page(service: Any) -> None:
             st.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] = (
                 GeneratedResumeReviewState.DOWNLOADED
             )
+
     if artifact is not None:
         download = prepare_artifact_download(
             artifact,
@@ -2082,11 +2100,7 @@ def _render_tailor_page(service: Any) -> None:
             "tailored-resume.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             icon=":material/download:",
-            disabled=(
-                not final_reviewed
-                or not artifact_is_current
-                or rebuild_required
-            ),
+            disabled=(not final_reviewed or not artifact_is_current or rebuild_required),
             on_click=mark_downloaded,
         )
         st.caption(
@@ -2144,11 +2158,9 @@ def _render_job_search_page(
             st.session_state["profile_load_status"] = (
                 "The previously selected profile is no longer available."
             )
-    elif (
-        session_profile is None
-        or profile_change_fingerprint(session_profile)
-        != profile_change_fingerprint(profile)
-    ):
+    elif session_profile is None or profile_change_fingerprint(
+        session_profile
+    ) != profile_change_fingerprint(profile):
         invalidate_profile_derived_workflow(_state())
         _invalidate_job_discovery_profile_state()
         st.session_state["profile"] = profile
@@ -2278,27 +2290,50 @@ if not st.session_state.get("_profile_bootstrap_complete"):
             "Saved profile data requires repair before it can be loaded."
         )
 
-with st.sidebar:
-    st.markdown("### Application Viego")
-    st.caption("Evidence-backed application workspace")
-    selected_navigation = st.radio(
-        "Primary navigation",
-        NAVIGATION_ITEMS,
-        key="navigation_selection",
+active_profile = cast(MasterProfile | None, st.session_state.get("profile"))
+active_route = normalize_route(
+    render_application_shell(
+        st,
+        active_profile_label=getattr(active_profile, "display_name", None),
+        active_profile_id=getattr(active_profile, "id", None)
+        or st.session_state.get("job_discovery_profile_id")
+        or st.session_state.get("profile_id"),
     )
-    st.session_state["active_page"] = selected_navigation
-    st.caption("Profile · " + str(st.session_state.get("profile_id", "not selected")))
+)
 
-active_page = st.session_state["active_page"]
-if active_page == "Home / Workspace":
-    _render_home()
-elif active_page == "Profile":
-    _render_profile_page(profile_repository, service)
-elif active_page == "Tailor Resume":
-    _render_tailor_page(service)
-elif active_page == "Cover Letter":
-    _render_cover_letter_page(service)
-elif active_page == "Job Search":
-    _render_job_search_page(settings, profile_repository)
-elif active_page == "Settings / Diagnostics":
-    _render_settings_page(settings, profile_repository)
+if active_route is AppRoute.CAREER_PROFILE:
+    render_profile_page(
+        st,
+        ProfilePageDependencies(
+            profile_repository=profile_repository,
+            tailor_service=service,
+            invalidate_tailoring=_clear_tailoring_state,
+        ),
+    )
+elif active_route is AppRoute.JOBS:
+    job_services = None
+    try:
+        job_services = create_job_discovery_services(settings)
+        render_jobs_page(create_jobs_experience(profile_repository, services=job_services))
+    except sqlite3.OperationalError:
+        render_jobs_unavailable(st)
+    finally:
+        if job_services is not None:
+            job_services.close()
+elif active_route is AppRoute.RESUME_STUDIO:
+    render_resume_studio_page(
+        st,
+        ResumeStudioDependencies(
+            tailor_service=service,
+            resume_renderer=ManagedResumeRenderer(),
+            invalidate_tailoring=_clear_tailoring_state,
+        ),
+    )
+else:
+    render_cover_letters_page(
+        st,
+        CoverLettersDependencies(
+            tailor_service=service,
+            clear_cover_letter_state=_clear_cover_letter_state,
+        ),
+    )

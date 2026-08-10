@@ -52,7 +52,7 @@ def rank_feed_candidates(
         ),
     )
     visibility_by_job = {
-        job.id: _visibility(evaluation) for job, evaluation in candidates
+        job.id: _visibility(evaluation, feed_kind=feed_kind) for job, evaluation in candidates
     }
     excluded_count = sum(value is FeedVisibility.EXCLUDED for value in visibility_by_job.values())
     items: list[RankedFeedItem] = []
@@ -75,7 +75,11 @@ def rank_feed_candidates(
     )
 
 
-def _visibility(evaluation: JobEvaluation) -> FeedVisibility:
+def _visibility(evaluation: JobEvaluation, *, feed_kind: FeedKind) -> FeedVisibility:
+    if feed_kind is FeedKind.EXPLORE:
+        # Explore is a sector browse surface. Fit and eligibility remain visible
+        # annotations; they do not remove a retrieved sector role.
+        return FeedVisibility.VISIBLE
     if (
         evaluation.fit_grade is FitGrade.DONT_MATCH
         or evaluation.eligibility.status is EligibilityStatus.INELIGIBLE

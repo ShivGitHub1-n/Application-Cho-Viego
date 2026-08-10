@@ -84,11 +84,17 @@ class GetJobFeedService:
         user_id: str,
         feed_kind: _FeedKind,
         *,
+        profile_id: str | None = None,
+        sector: str | None = None,
         excluded_only: bool = False,
     ) -> JobFeedDetails:
         all_items = self._recommendations.list_for_feed(
             user_id, feed_kind.value, include_excluded=True
         )
+        if profile_id is not None:
+            all_items = [item for item in all_items if item.profile_id == profile_id]
+        if sector is not None and feed_kind is _FeedKind.EXPLORE:
+            all_items = [item for item in all_items if item.explore_sector == sector]
         excluded = [
             item for item in all_items if item.visibility is RecommendationVisibility.EXCLUDED
         ]

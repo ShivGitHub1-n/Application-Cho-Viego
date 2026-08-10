@@ -42,6 +42,7 @@ class FeedAssemblyService:
         assessed: Sequence[tuple[DiscoveredJob, JobEvaluation]],
         feed_kind: FeedKind,
         created_at: datetime,
+        explore_sector: str | None = None,
     ) -> FeedAssemblyResult:
         ranked = rank_feed_candidates(
             assessed,
@@ -88,6 +89,7 @@ class FeedAssemblyService:
                     created_at=created_at,
                     evaluation_policy_version=evaluation.evaluation_policy_version,
                     feed_kind=feed_kind,
+                    explore_sector=explore_sector if feed_kind is FeedKind.EXPLORE else None,
                     visibility=visibility,
                     unresolved_facts=[
                         *[fact.statement for fact in evaluation.unresolved_facts],

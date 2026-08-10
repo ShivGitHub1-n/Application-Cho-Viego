@@ -28,9 +28,10 @@ Resume Tailor helps job seekers create one-page, role-specific resumes that rema
 The resume engine is accepted. The integrated evidence-grounded cover-letter
 workflow remains under product review and must target a professionally
 filled one-page output at 92–95% utilization, close to 95% when substantive
-content supports it. Authentication, multi-user deployment, application
-tracking, editor/template customization, broader frontend redesign, and Chrome
-extension capture are later-stage capabilities.
+content supports it. Precision Workbench now provides the shared Career
+Profile, Jobs, Resume Studio, and Cover Letters shell. Authentication,
+multi-user deployment, application tracking, editor/template customization,
+and Chrome extension capture remain later-stage capabilities.
 
 Known cover-letter composition and export-quality issues are tracked in
 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md). The implemented evidence, research,
@@ -100,6 +101,26 @@ legacy Strong/Good/Stretch/Provisional records labeled as earlier-policy
 results. The dedicated Jobs UI is deferred to Batch 4; this batch changes
 compatibility wiring and API contracts only.
 
+### Batch 4 dedicated Jobs experience
+
+Jobs is a dedicated navigable Streamlit workspace with four sections:
+Tailored for you, Explore sectors, Saved, and Preferences. Tailored keeps the
+approved backend fit ordering. Explore keeps newest known posting dates first,
+then unknown dates, with fit only as a tie-break. The page shows Excellent,
+Good, Weak, and Don't Match through a three-bar meter; numeric score values are
+not rendered. Eligibility (Eligible, Unknown, Ineligible) and Provisional are
+independent states, and each visible result retains exact reasons/evidence,
+material gaps, unresolved facts, verification, and freshness.
+
+Don't Match and excluded recommendations are absent from the normal rendered
+feed until the user expands `Show excluded jobs (N)`. Saved records display
+immutable posting snapshots and allow explicit availability checks. Tailor
+resume prepares the existing title/description inputs and invalidates stale
+derived output without generating a plan or document. The implementation uses
+scoped theme-aware styling and native Streamlit interaction; no React,
+Tailwind, JavaScript, provider controls, or live crawling are added. Final
+light/dark and responsive browser verification remains manual.
+
 ### Batch 3.5 source-discovery boundary
 
 Approved first-party pages use one static-first, bounded connector shared with
@@ -119,3 +140,33 @@ Runtime health, lifecycle timestamps, separate fingerprints, aliases, and
 refresh locks use schema version 3. The registry remains the only editable
 source-plan authority. Broad and force refresh are CLI-only; the API exposes
 safe read-only source summaries and health.
+
+## Batch 4 Jobs product contract
+
+Jobs is a dedicated Streamlit workspace with Tailored for you, Explore
+sectors, Saved, and Preferences. It is profile-scoped and exposes refresh,
+excluded-result expansion, immutable saved posting snapshots, explicit saved
+availability checks, and a Tailor resume handoff into the existing workflow.
+The deterministic offline harness supplies populated scenarios; the real app
+uses persisted data and can remain empty until a successful refresh.
+
+The user-facing fit grades are exactly Excellent, Good, Weak, and Don’t Match;
+the domain value for the last grade is `dont_match`. Provisional is independent
+of grade. Eligibility is also independent and has exactly Eligible, Unknown,
+and Ineligible states. Numeric fit scores are not shown in the normal UI.
+Don’t Match results are hidden until the user deliberately expands excluded
+jobs. Tailored ordering is backend-owned: grade, substantive fit, eligible
+before unknown, freshness, stable ID. Explore ordering is known newest
+`posted_at`, unknown dates, fit tie-break, stable ID. Presentation must not
+re-sort or recalculate either feed.
+
+Tailor resume prepares existing title and description inputs only. It does not
+invoke Gemini, generate a plan, render or export a document, or create a cover
+letter. These constraints preserve evidence truthfulness and the existing
+resume-generation boundary.
+
+Figma references guide hierarchy, spacing, proportions, selected state, fit
+bars, eligibility indicators, and responsive composition. They do not authorize
+a static canvas, fake HTML interaction, or a replacement frontend framework.
+Visual acceptance requires both dark and light browser checks in the offline
+harness and the persisted-data application.

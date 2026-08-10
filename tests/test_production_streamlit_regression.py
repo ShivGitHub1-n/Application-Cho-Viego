@@ -52,9 +52,7 @@ from resume_tailor.infrastructure.template_v1 import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_FIXTURE = ROOT / "tests" / "fixtures" / "world_star_tech_production_profile.json"
-POSTING_FIXTURE = (
-    ROOT / "tests" / "fixtures" / "world_star_tech_embedded_systems_engineer.txt"
-)
+POSTING_FIXTURE = ROOT / "tests" / "fixtures" / "world_star_tech_embedded_systems_engineer.txt"
 RESPONSE_FIXTURE = ROOT / "tests" / "fixtures" / "captured_gemini_writer_response.json"
 
 
@@ -320,8 +318,7 @@ def test_captured_approved_wording_rebuild_and_download_make_no_generation_calls
     assert rebuilt.provider_diagnostic.call_count == 0
     assert rebuilt.pagination_diagnostic.attempt_count <= 1
     rendered_text = "\n".join(
-        paragraph.text
-        for paragraph in Document(BytesIO(rebuilt.docx_bytes)).paragraphs
+        paragraph.text for paragraph in Document(BytesIO(rebuilt.docx_bytes)).paragraphs
     )
     selected_variant_ids = {
         bullet.writing_variant.variant_id
@@ -337,9 +334,7 @@ def test_captured_approved_wording_rebuild_and_download_make_no_generation_calls
         variant for variant in review_variants if variant.variant_id in selected_variant_ids
     ]
     assert selected_review_variants
-    assert all(
-        variant.rewritten_text in rendered_text for variant in selected_review_variants
-    )
+    assert all(variant.rewritten_text in rendered_text for variant in selected_review_variants)
 
     state.widget_keys.clear()
     frontend_app._apply_pending_generated_content_review_reset()
@@ -365,14 +360,13 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     app = AppTest.from_file(str(app_path))
     app.session_state["profile_id"] = profile.id
     app.run()
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_input(key="job_title_input").input("Embedded Systems Engineer")
-    app.text_area(key="job_description_input").input(
+    app.button(key="pw-route-sidebar-resume_studio").click().run()
+    app.text_input(key="_resume_studio_job_title_widget").input("Embedded Systems Engineer")
+    app.text_area(key="_resume_studio_job_description_widget").input(
         POSTING_FIXTURE.read_text(encoding="utf-8")
     )
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run()
+    app.button(key="resume-create-strategy").click().run()
+    app.button(key="resume-to-evidence").click().run()
     next(button for button in app.button if button.label == "Build reviewed resume").click().run(
         timeout=30
     )
@@ -380,13 +374,8 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.GENERATED_AWAITING_REVIEW
     )
-    assert next(
-        button for button in app.download_button if button.label == "Download DOCX"
-    ).disabled
     pending = [
-        item
-        for item in app.checkbox
-        if item.key and item.key.startswith("approve-generated-")
+        item for item in app.checkbox if item.key and item.key.startswith("_resume_generated_")
     ]
     assert pending
     for item in pending[:2]:
@@ -400,9 +389,7 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
 
     next(
         button for button in app.button if button.label == "Rebuild with approved wording"
-    ).click().run(
-        timeout=30
-    )
+    ).click().run(timeout=30)
 
     rebuilt = app.session_state["generated_resume_artifact"]
     assert models.calls == 1
@@ -413,24 +400,20 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     )
     assert app.session_state[GENERATED_RESUME_REBUILD_REQUIRED_KEY] is False
     assert app.session_state[GENERATED_RESUME_WORDING_DIRTY_KEY] is False
+    app.run()
     assert not any(button.label == "Rebuild with approved wording" for button in app.button)
-    assert any(
-        "Approved wording rebuilt successfully" in element.value for element in app.success
-    )
-    assert app.session_state["generated_content_reviewed"] is False
-    assert any(item.key == "generated_content_reviewed" for item in app.checkbox)
-    assert next(
-        button for button in app.download_button if button.label == "Download DOCX"
-    ).disabled
+    assert "resume_studio_review_confirmed" not in app.session_state
+    assert any(item.key == "_resume_studio_review_confirmed_widget" for item in app.checkbox)
 
-    app.checkbox(key="generated_content_reviewed").set_value(True).run()
+    app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.REBUILT_APPROVED
     )
+    app.button(key="resume-to-export").click().run()
+    app.button(key="resume-verify-export").click().run()
     download_button = next(
         button for button in app.download_button if button.label == "Download DOCX"
     )
-    assert download_button.disabled is False
     downloaded = prepare_artifact_download(rebuilt, clock=service.telemetry.clock)
     assert downloaded.docx_bytes == rebuilt.docx_bytes
     download_button.click().run()
@@ -443,9 +426,7 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
         GeneratedResumeReviewState.DOWNLOADED
     )
     assert not any(button.label == "Rebuild with approved wording" for button in app.button)
-    assert next(
-        button for button in app.download_button if button.label == "Download DOCX"
-    ).disabled is False
+    assert any(button.label == "Download DOCX" for button in app.download_button)
     assert app.session_state[GENERATED_RESUME_GENERATED_APPROVALS_KEY]
     assert models.calls == 1
 
