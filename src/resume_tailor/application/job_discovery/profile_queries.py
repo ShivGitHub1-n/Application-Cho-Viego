@@ -46,6 +46,15 @@ class ReviewedProfileQueryService:
             )
         return ReviewedProfileQueryResult(profiles=views)
 
+    def get_reviewed_profile(self, profile_id: str) -> ReviewedProfileView | None:
+        """Resolve one reviewed profile through the canonical profile authority."""
+
+        try:
+            profile = self._profiles.get(profile_id)
+        except (ProfileStoreError, ValueError):
+            return None
+        return None if profile is None else _to_view(profile)
+
 
 def _to_view(profile: MasterProfile) -> ReviewedProfileView:
     return ReviewedProfileView(

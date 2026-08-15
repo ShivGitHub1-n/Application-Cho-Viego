@@ -32,10 +32,17 @@ class JobsPageExperience(Protocol):
     ) -> Any: ...
     def refresh_tailored(self, profile_id: str) -> Any: ...
     def refresh_explore(self, profile_id: str, sector: str) -> Any: ...
-    def get_job_detail(self, profile_id: str, feed_kind: FeedKind, job_id: str) -> Any: ...
-    def save_job(self, job_id: str) -> Any: ...
-    def list_saved_jobs(self) -> Any: ...
-    def check_saved_job_availability(self, saved_id: str) -> Any: ...
+    def get_job_detail(
+        self,
+        profile_id: str,
+        feed_kind: FeedKind,
+        job_id: str,
+        *,
+        sector: str | None = None,
+    ) -> Any: ...
+    def save_job(self, job_id: str, profile_id: str) -> Any: ...
+    def list_saved_jobs(self, profile_id: str) -> Any: ...
+    def check_saved_job_availability(self, saved_id: str, profile_id: str) -> Any: ...
     def prepare_tailoring(self, job_id: str, profile_id: str) -> Any: ...
     def prepare_saved_tailoring(self, saved_id: str, profile_id: str) -> Any: ...
 
@@ -97,6 +104,7 @@ def render_jobs_page(
                 return
             profile_ids = [profile.profile_id for profile in profiles]
             labels = {profile.profile_id: profile.label for profile in profiles}
+            owners = {profile.profile_id: profile.user_id for profile in profiles}
             with streamlit_module.container(key="jobs-header-controls"):
                 profile_col, spacer_col, action_col = streamlit_module.columns(
                     [1.15, 2.25, 1], gap="medium", vertical_alignment="bottom"
@@ -163,7 +171,12 @@ def render_jobs_page(
             render_saved_jobs(experience, selected_profile, streamlit_module=streamlit_module)
         else:
             with streamlit_module.container(key="jobs-preferences"):
-                render_preferences(experience, selected_profile, streamlit_module=streamlit_module)
+                render_preferences(
+                    experience,
+                    selected_profile,
+                    owners[selected_profile],
+                    streamlit_module=streamlit_module,
+                )
 
 
 def _render_tailored(
@@ -387,7 +400,7 @@ def _render_feed(
             on_select=lambda job_id: streamlit_module.session_state.__setitem__(
                 selected_key, job_id
             ),
-            on_save=experience.save_job,
+            on_save=lambda job_id: experience.save_job(job_id, profile_id),
             on_tailor=lambda job_id: _tailor(experience, profile_id, job_id, streamlit_module),
             get_detail=lambda job_id: experience.get_job_detail(
                 profile_id, feed_kind, job_id, sector=sector

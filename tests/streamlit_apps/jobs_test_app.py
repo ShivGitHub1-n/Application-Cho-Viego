@@ -46,6 +46,7 @@ SCENARIOS = (
 class OfflineProfile:
     profile_id: str
     label: str
+    user_id: str
 
 
 @dataclass(frozen=True)
@@ -137,8 +138,8 @@ class OfflineJobsExperience:
 
     def __init__(self, scenario: str = "visible-grades") -> None:
         self.scenario = scenario
-        self.profile = OfflineProfile("profile-1", "Avery Engineer")
-        self.other_profile = OfflineProfile("profile-2", "Second Engineer")
+        self.profile = OfflineProfile("profile-1", "Avery Engineer", "local-user")
+        self.other_profile = OfflineProfile("profile-2", "Second Engineer", "local-user")
         self.visible = [
             self._recommendation(
                 "excellent-1", FitGrade.EXCELLENT, EligibilityStatus.ELIGIBLE, False
@@ -280,10 +281,12 @@ class OfflineJobsExperience:
                 )
         return None
 
-    def save_job(self, job_id: str) -> None:
+    def save_job(self, job_id: str, profile_id: str) -> None:
+        del job_id, profile_id
         return None
 
-    def list_saved_jobs(self) -> list[OfflineSaved]:
+    def list_saved_jobs(self, profile_id: str) -> list[OfflineSaved]:
+        del profile_id
         if self.scenario not in {"saved-available", "saved-unavailable"}:
             return []
         availability = "available" if self.scenario == "saved-available" else "unavailable"
@@ -304,8 +307,11 @@ class OfflineJobsExperience:
             )
         ]
 
-    def check_saved_job_availability(self, saved_id: str) -> OfflineSaved:
-        return self.list_saved_jobs()[0]
+    def check_saved_job_availability(
+        self, saved_id: str, profile_id: str
+    ) -> OfflineSaved:
+        del saved_id
+        return self.list_saved_jobs(profile_id)[0]
 
     def prepare_tailoring(self, job_id: str, profile_id: str) -> OfflineHandoff:
         return OfflineHandoff(profile_id, "Tailored Role", "Tailoring description.")

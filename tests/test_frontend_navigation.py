@@ -116,10 +116,14 @@ def test_job_search_services_initialize_only_on_job_search_page(
 
     create_services = dependencies.create_job_discovery_services
 
-    def tracked_job_discovery_initialization(_settings):
+    def tracked_job_discovery_initialization(_settings, *, profile_repository=None):
         nonlocal calls
         calls += 1
-        return create_services(_settings, legacy_repository_root=tmp_path / "no-legacy")
+        return create_services(
+            _settings,
+            legacy_repository_root=tmp_path / "no-legacy",
+            profile_repository=profile_repository,
+        )
 
     monkeypatch.setattr(
         dependencies,
@@ -178,7 +182,7 @@ def test_job_search_initialization_with_profile_does_not_call_sources(
     monkeypatch.setattr(
         dependencies,
         "create_job_discovery_services",
-        lambda _settings: create_services(
+        lambda _settings, *, profile_repository=None: create_services(
             _settings.model_copy(
                 update={
                     "app_data_directory": tmp_path,
@@ -187,6 +191,7 @@ def test_job_search_initialization_with_profile_does_not_call_sources(
                 }
             ),
             legacy_repository_root=tmp_path / "no-legacy",
+            profile_repository=profile_repository,
         ),
     )
 

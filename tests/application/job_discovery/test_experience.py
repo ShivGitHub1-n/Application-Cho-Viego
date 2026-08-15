@@ -111,6 +111,10 @@ class Profiles:
     def list_all(self) -> list[MasterProfile]:
         return [_profile()]
 
+    def get(self, profile_id: str) -> MasterProfile | None:
+        profile = _profile()
+        return profile if profile.id == profile_id else None
+
 
 class Jobs:
     def __init__(self, jobs: list[DiscoveredJob]) -> None:

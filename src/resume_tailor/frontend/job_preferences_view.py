@@ -19,6 +19,7 @@ from resume_tailor.ports.job_discovery import PreferenceVersionConflictError
 def render_preferences(
     experience: Any,
     profile_id: str,
+    user_id: str,
     *,
     streamlit_module: Any,
 ) -> None:
@@ -58,7 +59,7 @@ def render_preferences(
             )
         return
 
-    draft = _render_editor(source, profile_id, streamlit_module)
+    draft = _render_editor(source, profile_id, user_id, streamlit_module)
     streamlit_module.session_state["jobs_preference_draft"] = draft
     with streamlit_module.container(key="jobs-preference-actions"):
         if streamlit_module.button(
@@ -85,6 +86,7 @@ def render_preferences(
 def _render_editor(
     source: JobSearchPreferences | JobSearchPreferenceSuggestion,
     profile_id: str,
+    user_id: str,
     streamlit_module: Any,
 ) -> JobSearchPreferences:
     with streamlit_module.container(key="jobs-preference-editor"):
@@ -195,7 +197,7 @@ def _render_editor(
         or datetime.now(UTC)
     )
     return JobSearchPreferences(
-        user_id="local-user",
+        user_id=user_id,
         profile_id=profile_id,
         version=int(getattr(source, "version", 1)),
         role_family_priority=[RoleFamily(value) for value in roles],

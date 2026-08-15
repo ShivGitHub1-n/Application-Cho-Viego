@@ -97,7 +97,11 @@ from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileR
 from resume_tailor.infrastructure.rendering import ExactDocxPageCountProvider
 from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
 from resume_tailor.ports.cover_letter_rendering import CoverLetterBatchRenderer
-from resume_tailor.ports.interfaces import ResumeLanguageModel, RoleClassificationCache
+from resume_tailor.ports.interfaces import (
+    MasterProfileRepository,
+    ResumeLanguageModel,
+    RoleClassificationCache,
+)
 
 
 class _ConfiguredSourceRepository:
@@ -250,6 +254,7 @@ def create_job_discovery_services(
     settings: Settings | None = None,
     *,
     legacy_repository_root: Path | None = None,
+    profile_repository: MasterProfileRepository | None = None,
 ) -> JobDiscoveryServiceBundle:
     resolved_settings = settings or Settings()
     database = application_database_path(
@@ -260,23 +265,28 @@ def create_job_discovery_services(
     # boundary. Repository constructors below must not repeat migrations on
     # every Streamlit rerun.
     initialize_job_discovery_database(database)
-    profiles = SQLiteMasterProfileRepository(database)
+    if profile_repository is None:
+        profiles: MasterProfileRepository = SQLiteMasterProfileRepository(database)
+    else:
+        profiles = profile_repository
     preference_repository = SQLiteJobSearchPreferencesRepository(database, initialize=False)
     job_repository = SQLiteDiscoveredJobRepository(database, initialize=False)
     recommendation_repository = SQLiteJobRecommendationRepository(database, initialize=False)
     run_repository = SQLiteDiscoveryRunRepository(database, initialize=False)
     saved_job_repository = SQLiteSavedJobRepository(database, initialize=False)
     source_repository = SQLiteSupportedJobSourceRepository(database, initialize=False)
-    profiles.set_migration_report(
-        migrate_legacy_application_database(
-            _legacy_database(
-                resolved_settings,
-                explicit_root=legacy_repository_root,
-                use_current_repository=settings is None,
-            ),
-            database,
+    if profile_repository is None:
+        sqlite_profiles = cast(SQLiteMasterProfileRepository, profiles)
+        sqlite_profiles.set_migration_report(
+            migrate_legacy_application_database(
+                _legacy_database(
+                    resolved_settings,
+                    explicit_root=legacy_repository_root,
+                    use_current_repository=settings is None,
+                ),
+                database,
+            )
         )
-    )
     atomic_persistence = SQLiteAtomicJobDiscoveryPersistence(database, initialize=False)
     alias_repository = SQLiteSourceIdentityAliasRepository(database, initialize=False)
 

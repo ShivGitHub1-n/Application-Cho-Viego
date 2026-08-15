@@ -13,7 +13,7 @@ def render_saved_jobs(experience: Any, profile_id: str, *, streamlit_module: Any
         "Immutable snapshots stay available for review even when a live posting changes "
         "or disappears."
     )
-    saved_jobs = experience.list_saved_jobs()
+    saved_jobs = experience.list_saved_jobs(profile_id)
     if not saved_jobs:
         with streamlit_module.container(border=True, key="jobs-saved-empty"):
             streamlit_module.subheader("No saved jobs yet")
@@ -100,7 +100,9 @@ def _render_saved_detail(
                     "Check availability", key=f"jobs-check-{saved.saved_id}", width="content"
                 ):
                     try:
-                        checked = experience.check_saved_job_availability(saved.saved_id)
+                        checked = experience.check_saved_job_availability(
+                            saved.saved_id, profile_id
+                        )
                     except Exception:
                         streamlit_module.warning(
                             "Availability could not be checked. The saved snapshot was preserved."

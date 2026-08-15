@@ -570,14 +570,15 @@ def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
     monkeypatch.setattr(
         dependencies,
         "create_job_discovery_services",
-        lambda _settings: create_services(
+        lambda _settings, *, profile_repository=None: create_services(
             discovery_settings,
             legacy_repository_root=tmp_path / "no-legacy-repository",
+            profile_repository=profile_repository,
         ),
     )
     profile = {
         "id": "workflow-profile",
-        "user_id": "local-user",
+        "user_id": "workflow-owner",
         "display_name": "Workflow Candidate",
         "experiences": [
             {
@@ -608,7 +609,12 @@ def test_profile_workflow_is_canonical_for_job_discovery_and_stale_selection(
     app.button(key="jobs-suggest-preferences").click().run()
 
     assert app.session_state["jobs_preference_suggestion"].profile_id == profile["id"]
+    assert app.session_state["jobs_preference_draft"].user_id == profile["user_id"]
     assert any(item.label == "Target titles" for item in app.text_area)
+    app.button(key="jobs-confirm-preferences").click().run()
+
+    assert not app.exception
+    assert app.session_state["jobs_confirmed_preferences"].user_id == profile["user_id"]
 
     with sqlite3.connect(database) as connection:
         connection.execute(

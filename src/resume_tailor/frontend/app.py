@@ -608,7 +608,10 @@ def create_jobs_experience(
     """Compose the Jobs facade while retaining canonical application storage."""
 
     settings = Settings()
-    resolved_services = services or create_job_discovery_services(settings)
+    resolved_services = services or create_job_discovery_services(
+        settings,
+        profile_repository=profile_repository,
+    )
     database = application_database_path(
         settings.app_data_directory,
         settings.profile_store_filename,
@@ -2170,7 +2173,10 @@ def _render_job_search_page(
         st.session_state["profile_load_status"] = "Loaded from application storage."
         selected_user_id = profile.user_id
     if "_job_discovery_services" not in st.session_state:
-        st.session_state["_job_discovery_services"] = create_job_discovery_services(settings)
+        st.session_state["_job_discovery_services"] = create_job_discovery_services(
+            settings,
+            profile_repository=repository,
+        )
     services = st.session_state["_job_discovery_services"]
     database = application_database_path(
         settings.app_data_directory,
@@ -2313,7 +2319,10 @@ if active_route is AppRoute.CAREER_PROFILE:
 elif active_route is AppRoute.JOBS:
     job_services = None
     try:
-        job_services = create_job_discovery_services(settings)
+        job_services = create_job_discovery_services(
+            settings,
+            profile_repository=profile_repository,
+        )
         render_jobs_page(create_jobs_experience(profile_repository, services=job_services))
     except sqlite3.OperationalError:
         render_jobs_unavailable(st)

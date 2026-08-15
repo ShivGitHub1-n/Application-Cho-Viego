@@ -23,6 +23,11 @@ configured SQLite filename. As a result, a saved profile such as
 remain available across branches, clones, and worktrees that use the same
 application data directory.
 
+Within one application process, the composition root passes the canonical
+profile repository instance into Job Search services. Profile ownership is read
+from the selected reviewed profile; it is not inferred from a hard-coded local
+user identifier.
+
 ## Compatibility import
 
 When dependency construction can identify a repository root, it may inspect

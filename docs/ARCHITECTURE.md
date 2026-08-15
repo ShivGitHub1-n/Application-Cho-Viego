@@ -277,6 +277,12 @@ construction may perform an allowlisted compatibility import from one known
 repository-local database; domain/application code remains unaware of paths or
 SQLite.
 
+The Streamlit composition root injects its already-created
+`MasterProfileRepository` into Job Discovery service construction. The Jobs
+faÃ§ade resolves each selected profile's `user_id` from that same reviewed-profile
+authority for suggestions, preferences, feeds, saved jobs, and handoffs; delivery
+code does not substitute a workspace-wide placeholder user.
+
 Connector behavior is tested primarily with offline Greenhouse and Lever
 fixtures. Live source smoke testing is opt-in, uses the
 `job_source_integration` pytest marker, requires explicit approved source

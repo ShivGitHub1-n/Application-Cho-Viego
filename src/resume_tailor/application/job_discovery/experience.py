@@ -11,6 +11,7 @@ from resume_tailor.application.job_discovery.confirmation import (
 )
 from resume_tailor.application.job_discovery.handoff import TailoringHandoff
 from resume_tailor.application.job_discovery.preferences import (
+    ProfileNotFoundError,
     SuggestJobSearchPreferencesService,
 )
 from resume_tailor.application.job_discovery.profile_queries import (
@@ -153,14 +154,12 @@ class JobsExperienceService:
         services: JobsApplicationServices,
         jobs: DiscoveredJobPort,
         handoff: HandoffPort,
-        user_id: str = "local-user",
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._profiles = ReviewedProfileQueryService(profiles)
         self._services = services
         self._jobs = jobs
         self._handoff = handoff
-        self._user_id = user_id
         self._now = now or (lambda: datetime.now(UTC))
 
     def list_reviewed_profiles(self) -> ReviewedProfileQueryResult:
@@ -168,7 +167,7 @@ class JobsExperienceService:
 
     def suggest_preferences(self, profile_id: str) -> JobSearchPreferenceSuggestion:
         return self._services.suggest_preferences.suggest(
-            self._user_id, profile_id, generated_at=self._now()
+            self._profile_user_id(profile_id), profile_id, generated_at=self._now()
         )
 
     def get_preferences(self, profile_id: str) -> JobSearchPreferences | None:
@@ -176,7 +175,7 @@ class JobsExperienceService:
         if service is None:
             return None
         try:
-            return service.get(self._user_id, profile_id)
+            return service.get(self._profile_user_id(profile_id), profile_id)
         except PreferencesNotFoundError:
             return None
 
@@ -190,39 +189,41 @@ class JobsExperienceService:
     ) -> FeedView:
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
+        user_id = self._profile_user_id(profile_id)
         details = (
             self._services.feed_queries.get(
-                self._user_id,
+                user_id,
                 feed_kind,
                 profile_id=profile_id,
                 excluded_only=False,
             )
             if sector is None
             else self._services.feed_queries.get(
-                self._user_id,
+                user_id,
                 feed_kind,
                 profile_id=profile_id,
                 sector=sector,
                 excluded_only=False,
             )
         )
-        return self._feed_view(details)
+        return self._feed_view(details, user_id=user_id)
 
     def load_excluded(
         self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
     ) -> list[RecommendationView]:
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
+        user_id = self._profile_user_id(profile_id)
         details = (
             self._services.feed_queries.get(
-                self._user_id,
+                user_id,
                 feed_kind,
                 profile_id=profile_id,
                 excluded_only=True,
             )
             if sector is None
             else self._services.feed_queries.get(
-                self._user_id,
+                user_id,
                 feed_kind,
                 profile_id=profile_id,
                 sector=sector,
@@ -238,13 +239,13 @@ class JobsExperienceService:
                 f"Preferences for profile {profile_id!r} were not found."
             )
         run = self._services.refresh.refresh(
-            self._user_id, profile_id, preferences, started_at=self._now()
+            self._profile_user_id(profile_id), profile_id, preferences, started_at=self._now()
         )
         return FeedRefreshView(feed=self.load_feed(profile_id, FeedKind.TAILORED), run=run)
 
     def refresh_explore(self, profile_id: str, sector: str) -> FeedRefreshView:
         run = self._services.refresh.refresh_explore(
-            self._user_id,
+            self._profile_user_id(profile_id),
             sectors=[sector],
             profile_id=profile_id,
             started_at=self._now(),
@@ -268,21 +269,26 @@ class JobsExperienceService:
             description=job.description,
         )
 
-    def save_job(self, job_id: str) -> SavedJob:
+    def save_job(self, job_id: str, profile_id: str) -> SavedJob:
         if self._services.save is None:
             raise RuntimeError("Saved-job persistence is unavailable.")
-        return self._services.save.save(self._user_id, job_id, saved_at=self._now())
+        return self._services.save.save(
+            self._profile_user_id(profile_id), job_id, saved_at=self._now()
+        )
 
-    def list_saved_jobs(self) -> list[SavedJobView]:
+    def list_saved_jobs(self, profile_id: str) -> list[SavedJobView]:
         if self._services.save is None:
             return []
-        return [_saved_view(saved) for saved in self._services.save.list(self._user_id)]
+        return [
+            _saved_view(saved)
+            for saved in self._services.save.list(self._profile_user_id(profile_id))
+        ]
 
-    def check_saved_job_availability(self, saved_id: str) -> SavedJobView:
+    def check_saved_job_availability(self, saved_id: str, profile_id: str) -> SavedJobView:
         if self._services.check_saved_availability is None:
             raise RuntimeError("Saved-job availability is unavailable.")
         saved = self._services.check_saved_availability.check(
-            self._user_id, saved_id, checked_at=self._now()
+            self._profile_user_id(profile_id), saved_id, checked_at=self._now()
         )
         return _saved_view(saved)
 
@@ -290,12 +296,16 @@ class JobsExperienceService:
         return self._handoff.from_discovered(job_id, profile_id=profile_id)
 
     def prepare_saved_tailoring(self, saved_id: str, profile_id: str) -> TailoringHandoff:
-        return self._handoff.from_saved(saved_id, profile_id=profile_id, user_id=self._user_id)
+        return self._handoff.from_saved(
+            saved_id,
+            profile_id=profile_id,
+            user_id=self._profile_user_id(profile_id),
+        )
 
-    def _feed_view(self, details: JobFeedDetails) -> FeedView:
+    def _feed_view(self, details: JobFeedDetails, *, user_id: str) -> FeedView:
         run = details.run
         warnings = [] if run is None else [*run.warnings, *run.source_warnings, *run.error_messages]
-        saved_ids = self._saved_ids()
+        saved_ids = self._saved_ids(user_id)
         return FeedView(
             feed_kind=details.feed_kind,
             visible=[
@@ -319,10 +329,19 @@ class JobsExperienceService:
         job = self._jobs.get(recommendation.job_id)
         return _recommendation_view(recommendation, job, now=self._now())
 
-    def _saved_ids(self) -> set[str]:
+    def _saved_ids(self, user_id: str) -> set[str]:
         if self._services.save is None:
             return set()
-        return {saved.job_id for saved in self._services.save.list(self._user_id)}
+        return {saved.job_id for saved in self._services.save.list(user_id)}
+
+    def _profile_user_id(self, profile_id: str) -> str:
+        profile = self._profiles.get_reviewed_profile(profile_id)
+        if profile is None:
+            raise ProfileNotFoundError(
+                f"Reviewed profile {profile_id!r} is unavailable from the canonical "
+                "profile repository."
+            )
+        return profile.user_id
 
 
 def _recommendation_view(
