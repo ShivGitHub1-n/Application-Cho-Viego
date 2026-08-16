@@ -159,6 +159,27 @@ def test_offline_harness_all_documented_scenarios_start_without_exception() -> N
         assert app.exception == [], scenario_name
 
 
+def test_jobs_surfaces_sanitized_source_and_sector_no_match_diagnostics() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    scenario = next(item for item in app.selectbox if item.label == "Offline scenario")
+    scenario.set_value("partial-source-warning").run()
+
+    assert any(
+        item.value == "One approved source returned a partial response."
+        for item in app.warning
+    )
+
+    scenario = next(item for item in app.selectbox if item.label == "Offline scenario")
+    scenario.set_value("no-visible-results").run()
+    app.pills(key="jobs-active-section").set_value("Explore sectors").run()
+
+    assert any(item.value == "Explore returned no roles" for item in app.subheader)
+    assert any(
+        item.value == "No sector roles matched the approved retrieval boundary."
+        for item in app.markdown
+    )
+
+
 def test_jobs_empty_actions_use_safe_pending_navigation_intents() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
     scenario = next(item for item in app.selectbox if item.label == "Offline scenario")

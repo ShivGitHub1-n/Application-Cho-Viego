@@ -13,17 +13,9 @@ from resume_tailor.domain.job_discovery.models import (
     JobSearchPreferences,
     WorkArrangement,
 )
-
-APPROVED_EXPLORE_SECTORS = (
-    "Software Engineering",
-    "Data Engineering",
-    "AI / Machine Learning",
-    "Computer Vision",
-    "Robotics / Autonomous Systems",
-    "Embedded Systems / Firmware",
-    "Hardware / Systems Integration",
-    "Controls / Mechatronics",
-    "Testing / Verification",
+from resume_tailor.domain.job_discovery.search_taxonomy import (
+    APPROVED_EXPLORE_SECTORS,
+    explore_sector_query_terms,
 )
 
 
@@ -114,10 +106,19 @@ class ExploreJobQuery(BaseModel):
         return list(dict.fromkeys(values))
 
     def to_provider_query(self, *, cursor: str | None = None) -> ProviderJobQuery:
+        titles = list(self.title_keywords)
+        if not titles:
+            titles = list(
+                dict.fromkeys(
+                    term
+                    for sector in self.sectors
+                    for term in explore_sector_query_terms(sector)
+                )
+            )
         return ProviderJobQuery(
             feed_kind=FeedKind.EXPLORE,
             sectors=list(self.sectors),
-            titles=list(self.title_keywords),
+            titles=titles,
             locations=list(self.locations),
             work_arrangements=list(self.work_arrangements),
             levels=[level for level in self.levels if level is not JobLevel.UNKNOWN],

@@ -5,6 +5,7 @@ import ipaddress
 import posixpath
 import re
 import socket
+import threading
 import zlib
 from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
@@ -122,9 +123,12 @@ class UrlAccessPolicy:
         if any(part in {".", ".."} for part in decoded.split("/")):
             raise BlockedDestinationError("path traversal is not permitted")
         normalized = posixpath.normpath(decoded)
-        if normalized != decoded or not normalized.startswith("/"):
+        comparison_path = (
+            decoded[:-1] if len(decoded) > 1 and decoded.endswith("/") else decoded
+        )
+        if normalized != comparison_path or not normalized.startswith("/"):
             raise BlockedDestinationError("path normalization would change the request")
-        return normalized
+        return decoded
 
     def validate_authority(
         self, host: str, port: int, *, redirect: bool = False
@@ -298,6 +302,8 @@ class SafeHttpClient:
         self._max_retries = max_retries
         self._max_retry_after_seconds = max_retry_after_seconds
         self._total_deadline_seconds = total_deadline_seconds
+        self._sync_loop: asyncio.AbstractEventLoop | None = None
+        self._sync_lock = threading.Lock()
         self._client = httpx.AsyncClient(
             transport=PinnedAsyncHTTPTransport(policy),
             follow_redirects=False,
@@ -469,7 +475,12 @@ class SafeHttpClient:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(self.get(url, headers=headers))
+            with self._sync_lock:
+                if self._sync_loop is None or self._sync_loop.is_closed():
+                    self._sync_loop = asyncio.new_event_loop()
+                return self._sync_loop.run_until_complete(
+                    self.get(url, headers=headers)
+                )
         raise RuntimeError("SafeHttpClient.get_sync cannot run inside an event loop")
 
     def close(self) -> None:
@@ -477,8 +488,14 @@ class SafeHttpClient:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            if not self._client.is_closed:
-                asyncio.run(self.aclose())
+            with self._sync_lock:
+                if self._sync_loop is not None and not self._sync_loop.is_closed():
+                    if not self._client.is_closed:
+                        self._sync_loop.run_until_complete(self.aclose())
+                    self._sync_loop.close()
+                    self._sync_loop = None
+                elif not self._client.is_closed:
+                    asyncio.run(self.aclose())
         else:
             raise RuntimeError("use aclose() while an event loop is running")
 

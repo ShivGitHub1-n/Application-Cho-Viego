@@ -22,7 +22,7 @@ from resume_tailor.domain.job_discovery.providers import (
     ProviderCapabilities,
     ProviderCursor,
 )
-from resume_tailor.domain.job_discovery.queries import TailoredJobQuery
+from resume_tailor.domain.job_discovery.queries import ExploreJobQuery, TailoredJobQuery
 
 WHEN = datetime(2026, 7, 24, 12, tzinfo=UTC)
 
@@ -64,6 +64,18 @@ def _record(external_id: str) -> SourceJobRecord:
         company_name="Acme",
         description="Build systems.",
         official_url=AnyHttpUrl(f"https://boards.greenhouse.io/acme/jobs/{external_id}"),
+    )
+
+
+def _role_record(external_id: str, title: str, description: str = "Build systems."):
+    return SourceJobRecord(
+        external_job_id=external_id,
+        title=title,
+        company_name="Acme",
+        description=description,
+        official_url=AnyHttpUrl(
+            f"https://boards.greenhouse.io/acme/jobs/{external_id}"
+        ),
     )
 
 
@@ -187,3 +199,112 @@ def test_provider_warning_text_is_replaced_by_safe_structured_diagnostics() -> N
     diagnostic = outcome.source_outcomes[0].warnings[0]
     assert diagnostic.message == "Provider record had an invalid location."
     assert "RESUME SECRET" not in diagnostic.model_dump_json()
+
+
+def test_hardware_explore_retrieves_matching_approved_source_records() -> None:
+    source = _source("source-1")
+    connector = FakeConnector(
+        [
+            JobSourcePage(
+                source=source,
+                records=[
+                    _role_record("1", "Electrical Engineer, Manufacturing Test"),
+                    _role_record("2", "Systems Integration Engineer, Air Vehicles"),
+                    _role_record("3", "Robotics Software Integration Engineer"),
+                    _role_record("4", "Backend Software Engineer"),
+                ],
+            )
+        ]
+    )
+
+    outcome = RetrievalService(
+        sources=[source], connectors={ConnectorType.GREENHOUSE: connector}
+    ).retrieve(
+        ExploreJobQuery(sectors=["Hardware / Systems Integration"]),
+        fetched_at=WHEN,
+    )
+
+    assert [item.record.external_job_id for item in outcome.records] == ["1", "2", "3"]
+
+
+def test_local_title_and_level_filters_use_the_posting_title_not_description_noise() -> None:
+    source = _source("source-1")
+    preferences = _preferences().model_copy(
+        update={
+            "target_titles": ["Embedded Software Engineer"],
+            "related_title_variants": [],
+            "job_levels": [JobLevel.ENTRY],
+            "locations": [],
+            "work_arrangement": WorkArrangement.UNKNOWN,
+        }
+    )
+    connector = FakeConnector(
+        [
+            JobSourcePage(
+                source=source,
+                records=[
+                    _role_record(
+                        "1",
+                        "Embedded Software Engineer",
+                        "Partner with senior and staff engineers.",
+                    ),
+                    _role_record(
+                        "2",
+                        "Recruiter",
+                        "Recruit Software Engineers and hardware leaders.",
+                    ),
+                    _role_record("3", "Senior Embedded Software Engineer"),
+                ],
+            )
+        ]
+    )
+
+    outcome = RetrievalService(
+        sources=[source], connectors={ConnectorType.GREENHOUSE: connector}
+    ).retrieve(TailoredJobQuery(preferences=preferences), fetched_at=WHEN)
+
+    assert [item.record.external_job_id for item in outcome.records] == ["1"]
+
+
+def test_software_explore_remains_functional_without_matching_every_engineer() -> None:
+    source = _source("source-1")
+    connector = FakeConnector(
+        [
+            JobSourcePage(
+                source=source,
+                records=[
+                    _role_record("1", "Software Engineer, Platform"),
+                    _role_record("2", "Mechanical Engineer"),
+                ],
+            )
+        ]
+    )
+
+    outcome = RetrievalService(
+        sources=[source], connectors={ConnectorType.GREENHOUSE: connector}
+    ).retrieve(ExploreJobQuery(sectors=["Software Engineering"]), fetched_at=WHEN)
+
+    assert [item.record.external_job_id for item in outcome.records] == ["1"]
+
+
+def test_source_with_no_sector_matches_returns_sanitized_diagnostic() -> None:
+    source = _source("source-1")
+    connector = FakeConnector(
+        [
+            JobSourcePage(
+                source=source,
+                records=[_role_record("1", "Account Executive")],
+            )
+        ]
+    )
+
+    outcome = RetrievalService(
+        sources=[source], connectors={ConnectorType.GREENHOUSE: connector}
+    ).retrieve(
+        ExploreJobQuery(sectors=["Hardware / Systems Integration"]),
+        fetched_at=WHEN,
+    )
+
+    assert outcome.records == []
+    assert outcome.source_outcomes[0].warnings[-1].code == "local_filter_no_match"
+    assert "Account Executive" not in outcome.source_outcomes[0].warnings[-1].message

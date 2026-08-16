@@ -372,7 +372,11 @@ class RefreshJobDiscoveryService:
             assessed=assessed,
             feed_kind=feed_kind,
             created_at=started_at,
-            explore_sector=(query.sectors[0] if isinstance(query, ExploreJobQuery) else None),
+            explore_sector=(
+                query.sectors[0]
+                if isinstance(query, ExploreJobQuery) and len(query.sectors) == 1
+                else None
+            ),
         )
         recommendations = assembly.recommendations
         aliases = [_identity_alias(job, started_at) for job in deduplicated.jobs]
@@ -388,7 +392,7 @@ class RefreshJobDiscoveryService:
                 "sources_attempted": [source.source_id for source in sources],
                 "failed_sources": sorted(failed_sources),
                 "record_count": len(raw_records),
-                "retrieved_count": len(raw_records),
+                "retrieved_count": retrieval.retrieved_count,
                 "normalized_count": len(normalized),
                 "duplicate_count": deduplicated.duplicate_count,
                 "eligibility_filtered_count": sum(

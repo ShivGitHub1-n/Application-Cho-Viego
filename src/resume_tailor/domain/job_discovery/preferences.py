@@ -12,38 +12,12 @@ from resume_tailor.domain.job_discovery.models import (
     WorkArrangementPreferenceMode,
 )
 from resume_tailor.domain.job_discovery.role_signals import classify_role_signals
+from resume_tailor.domain.job_discovery.search_taxonomy import (
+    ROLE_FAMILY_TITLE_VARIANTS,
+)
 from resume_tailor.domain.models import MasterProfile, ResumeItem, RoleFamily
 
-_RELATED_TITLE_VARIANTS: dict[RoleFamily, tuple[str, ...]] = {
-    RoleFamily.AUTONOMOUS_SYSTEMS: (
-        "Autonomous Systems Engineer",
-        "Autonomous Vehicle Engineer",
-        "Autonomy Engineer",
-    ),
-    RoleFamily.ROBOTICS_MECHATRONICS: (
-        "Robotics Engineer",
-        "Robotics Software Engineer",
-        "Mechatronics Engineer",
-    ),
-    RoleFamily.COMPUTER_VISION_PERCEPTION: (
-        "Computer Vision Engineer",
-        "Perception Engineer",
-    ),
-    RoleFamily.AI_ML_MULTIMODAL: (
-        "Machine Learning Engineer",
-        "Applied AI Engineer",
-        "AI Engineer",
-    ),
-    RoleFamily.EMBEDDED_FIRMWARE: (
-        "Embedded Systems Engineer",
-        "Firmware Engineer",
-    ),
-    RoleFamily.SOFTWARE_DATA_ENGINEERING: (
-        "Software Engineer",
-        "Backend Engineer",
-        "Data Engineer",
-    ),
-}
+_RELATED_TITLE_VARIANTS = ROLE_FAMILY_TITLE_VARIANTS
 
 _CAREER_INTEREST_LABELS: dict[RoleFamily, str] = {
     RoleFamily.AUTONOMOUS_SYSTEMS: "autonomous systems",
@@ -53,6 +27,29 @@ _CAREER_INTEREST_LABELS: dict[RoleFamily, str] = {
     RoleFamily.EMBEDDED_FIRMWARE: "embedded systems",
     RoleFamily.SOFTWARE_DATA_ENGINEERING: "software and data engineering",
 }
+
+_EVIDENCE_TITLE_EXPANSIONS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        ("solidworks", "fusion360", "fusion 360", "gd&t", "mechanical", "cad"),
+        (
+            "Mechanical Engineer",
+            "Mechanical Design Engineer",
+            "Electromechanical Engineer",
+        ),
+    ),
+    (
+        ("dfm", "dfa", "bill of materials", "bom ownership", "manufacturing"),
+        ("Manufacturing Engineer", "Manufacturing Test Engineer"),
+    ),
+    (
+        ("closed-loop", "closed loop", "motor control", "actuator control"),
+        ("Controls Engineer", "Control Systems Engineer"),
+    ),
+    (
+        ("hardware test", "test automation", "hardware validation", "hil"),
+        ("Hardware Test Engineer", "Test Automation Engineer"),
+    ),
+)
 
 def _unique_sorted(values: list[str]) -> list[str]:
     unique_by_casefold: dict[str, str] = {}
@@ -109,6 +106,49 @@ def _entry_text(profile: MasterProfile, entity_id: str) -> str:
     return " ".join(evidence)
 
 
+def _contains_evidence_signal(text: str, signal: str) -> bool:
+    escaped = re.escape(signal).replace(r"\ ", r"\s+")
+    return re.search(rf"(?<!\w){escaped}(?!\w)", text) is not None
+
+
+def _evidence_title_candidates(profile: MasterProfile, entries: list[ResumeItem]) -> list[str]:
+    reviewed_text = " ".join(
+        [
+            *[
+                " ".join(
+                    [
+                        entry.title,
+                        entry.description or "",
+                        *entry.technologies,
+                        *entry.capabilities,
+                    ]
+                )
+                for entry in entries
+            ],
+            *[
+                " ".join(
+                    [item.source_text, *item.technologies, *item.capabilities]
+                )
+                for item in profile.evidence
+                if item.confirmed
+            ],
+            *[
+                skill.value
+                for category in profile.technical_skills
+                for skill in category.skills
+            ],
+        ]
+    ).casefold()
+    return _unique_in_order(
+        [
+            title
+            for signals, titles in _EVIDENCE_TITLE_EXPANSIONS
+            if any(_contains_evidence_signal(reviewed_text, signal) for signal in signals)
+            for title in titles
+        ]
+    )
+
+
 class DeterministicJobSearchPreferenceSuggester:
     def suggest(
         self,
@@ -148,7 +188,12 @@ class DeterministicJobSearchPreferenceSuggester:
             key=lambda family: (-family_scores[family], family.value),
         )
 
-        family_title_candidates = _interleaved_family_title_candidates(role_family_priority)
+        family_title_candidates = _unique_in_order(
+            [
+                *_interleaved_family_title_candidates(role_family_priority),
+                *_evidence_title_candidates(profile, entries),
+            ]
+        )
         target_titles = family_title_candidates[: _target_title_count(len(family_title_candidates))]
         related_title_variants = _unique_sorted(family_title_candidates)
         technical_themes = _unique_sorted(

@@ -96,6 +96,7 @@ class OfflineFeed:
     source_warnings: list[str]
     status: str
     last_refresh_at: datetime
+    retrieved_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -243,7 +244,13 @@ class OfflineJobsExperience:
             )
         if self.scenario == "no-visible-results":
             return OfflineFeed(
-                feed_kind, [], 1, warnings, "completed", datetime(2026, 7, 28, tzinfo=UTC)
+                feed_kind,
+                [],
+                1,
+                warnings,
+                "completed",
+                datetime(2026, 7, 28, tzinfo=UTC),
+                retrieved_count=12,
             )
         visible = [self.visible[1]] if feed_kind is FeedKind.EXPLORE else self.visible
         return OfflineFeed(

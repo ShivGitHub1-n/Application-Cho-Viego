@@ -6,14 +6,18 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
-from resume_tailor.domain.job_discovery.models import JobLevel
+from resume_tailor.domain.job_discovery.models import (
+    JobLevel,
+    JobSearchPreferences,
+)
 from resume_tailor.domain.job_discovery.preferences import (
-    DeterministicJobSearchPreferenceSuggester,
     _RELATED_TITLE_VARIANTS,
+    DeterministicJobSearchPreferenceSuggester,
     _interleaved_family_title_candidates,
     _target_title_count,
     _unique_sorted,
 )
+from resume_tailor.domain.job_discovery.queries import TailoredJobQuery
 from resume_tailor.domain.models import MasterProfile, RoleFamily
 
 WHEN = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
@@ -370,3 +374,64 @@ def test_suggester_does_not_mutate_input_profile():
     DeterministicJobSearchPreferenceSuggester().suggest(profile, generated_at=WHEN)
 
     assert profile.model_dump(mode="python") == before
+
+
+def test_embedded_hardware_profile_produces_broad_specific_provider_titles():
+    profile = MasterProfile(
+        id="embedded-hardware",
+        user_id="user-1",
+        display_name="Candidate",
+        projects=[
+            {
+                "id": "controller",
+                "title": "Embedded Motion Controller",
+                "kind": "project",
+                "technologies": ["STM32", "C++", "CAN bus", "SolidWorks"],
+                "capabilities": [
+                    "firmware",
+                    "hardware integration",
+                    "sensor integration",
+                    "motor control",
+                    "mechanical design",
+                ],
+            }
+        ],
+    )
+
+    suggestion = DeterministicJobSearchPreferenceSuggester().suggest(
+        profile, generated_at=WHEN
+    )
+    preferences = JobSearchPreferences(
+        user_id=profile.user_id,
+        profile_id=profile.id,
+        version=1,
+        role_family_priority=suggestion.role_family_priority,
+        target_titles=suggestion.target_titles,
+        related_title_variants=suggestion.related_title_variants,
+        technical_themes=suggestion.technical_themes,
+        career_interests=suggestion.career_interests,
+        job_levels=suggestion.job_levels,
+        locations=suggestion.locations,
+        work_arrangement=suggestion.work_arrangement,
+        work_arrangement_mode=suggestion.work_arrangement_mode,
+        preferred_companies=[],
+        created_at=WHEN,
+    )
+    provider_titles = set(TailoredJobQuery(preferences=preferences).to_provider_query().titles)
+
+    assert {
+        "Embedded Software Engineer",
+        "Embedded Systems Engineer",
+        "Firmware Engineer",
+        "Hardware Engineer",
+        "Electrical Engineer",
+        "Systems Integration Engineer",
+        "Hardware Test Engineer",
+        "Controls Engineer",
+        "Mechatronics Engineer",
+        "Robotics Integration Engineer",
+        "Mechanical Engineer",
+        "Mechanical Design Engineer",
+    }.issubset(provider_titles)
+    assert "Software Engineer" not in provider_titles
+    assert "Data Engineer" not in provider_titles

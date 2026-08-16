@@ -53,3 +53,17 @@ def test_policy_rejects_fragments_ports_and_encoded_path_traversal() -> None:
     ):
         with pytest.raises(BlockedDestinationError):
             policy.validate(url)
+
+
+def test_policy_accepts_one_trailing_slash_without_accepting_duplicate_slashes() -> None:
+    policy = UrlAccessPolicy(
+        allowed_hosts={"careers.example.com"},
+        allowed_path_patterns=(r"^/careers/positions/?$",),
+        resolver=lambda _: ["93.184.216.34"],
+    )
+
+    destination = policy.validate("https://careers.example.com/careers/positions/")
+
+    assert destination.host == "careers.example.com"
+    with pytest.raises(BlockedDestinationError):
+        policy.validate("https://careers.example.com/careers//positions/")

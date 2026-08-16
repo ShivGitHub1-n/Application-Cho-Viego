@@ -341,6 +341,17 @@ declare pushdown support, while the retrieval service records pushed-down,
 local, unsupported, and unrequested filters. Unsupported filters never
 silently broaden a query.
 
+Engineering search vocabulary is centralized in
+`domain/job_discovery/search_taxonomy.py`. Confirmed-profile role families and
+reviewed multidisciplinary signals produce bounded title/search terms; Explore
+sectors expand to the same provider-safe vocabulary. Local occupational
+matching is title-focused so boilerplate descriptions cannot turn every
+engineer into a software result or admit non-role postings merely because they
+mention an engineering team. Seniority markers are likewise read from the
+posting title; an unlabelled title remains eligible for downstream evaluation.
+Explore sector selection changes retrieval scope before evaluation, while weak
+fit remains visible in the freshness-led Explore feed.
+
 Retrieval is bounded by source, page, record, timeout, and retry settings. It
 protects against repeated cursors and preserves successful sources when
 another source fails. Normalization and deduplication retain source-qualified
@@ -350,6 +361,11 @@ evaluated by the frozen evaluator. Tailored and Explore feed ordering and
 visibility are applied after evaluation; ordinary feeds hide Don't Match and
 hard-ineligible items but report `excluded_count`, and excluded endpoints
 return retained evaluations without recomputation.
+
+When a healthy source returns records but none cross the requested local
+boundary, retrieval emits the sanitized `local_filter_no_match` diagnostic.
+Discovery runs separately retain provider-retrieved and locally accepted record
+counts so delivery can distinguish an empty source from an empty match set.
 
 Schema version 2 is the single permanent feed migration. Version-1
 recommendations remain readable as explicitly earlier-policy records, and
@@ -392,6 +408,14 @@ source starts after expiry. Static and rendered indexes consume the same
 audited declarative extraction profile; browser action limits count actual
 attempts and stop unchanged bounded load-more DOM. CLI force bypasses cadence
 only.
+
+The CLI source refresh queries the union of all approved engineering sectors;
+it is not implicitly a Software Engineering refresh. Multi-sector inventory
+runs are not labelled as a single Explore sector, so they cannot pollute a
+sector-specific feed. The synchronous safe HTTP bridge retains one event loop
+for a connector's bounded multi-request session, and permits a single trailing
+slash when the approved path pattern explicitly allows it; traversal and
+duplicate-slash normalization remain rejected.
 
 ## Batch 4 Jobs experience boundary
 

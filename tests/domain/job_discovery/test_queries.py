@@ -85,5 +85,17 @@ def test_explore_query_requires_approved_sector_and_does_not_require_profile() -
 
     assert provider_query.feed_kind is FeedKind.EXPLORE
     assert provider_query.sectors == [APPROVED_EXPLORE_SECTORS[0]]
-    assert provider_query.titles == []
+    assert "Software Engineer" in provider_query.titles
+    assert "Engineer" not in provider_query.titles
+
+
+def test_hardware_explore_query_expands_to_specific_provider_terms() -> None:
+    query = ExploreJobQuery(sectors=["Hardware / Systems Integration"])
+
+    provider_query = query.to_provider_query()
+
+    assert "Hardware Engineer" in provider_query.titles
+    assert "Electrical Engineer" in provider_query.titles
+    assert "Systems Integration Engineer" in provider_query.titles
+    assert "Software Engineer" not in provider_query.titles
 

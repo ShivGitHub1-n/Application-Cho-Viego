@@ -7,7 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from resume_tailor.domain.job_discovery.queries import ExploreJobQuery
+from resume_tailor.domain.job_discovery.queries import (
+    APPROVED_EXPLORE_SECTORS,
+    ExploreJobQuery,
+)
 from resume_tailor.domain.job_discovery.source_scheduling import select_due_sources
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.dependencies import create_job_discovery_services
@@ -124,7 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         summary = bundle.source_refresh.refresh(
             ExploreJobQuery(
-                sectors=["Software Engineering"],
+                sectors=list(APPROVED_EXPLORE_SECTORS),
                 page_size=100,
                 source_restrictions=(
                     [args.source_id] if args.source_id is not None else []

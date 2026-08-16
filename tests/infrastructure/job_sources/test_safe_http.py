@@ -161,6 +161,24 @@ def test_safe_http_client_redacts_body_and_uses_allowed_content_types() -> None:
     client.close()
 
 
+def test_safe_http_sync_bridge_reuses_one_event_loop_for_multi_page_connectors() -> None:
+    client = SafeHttpClient(UrlAccessPolicy(allowed_hosts={"careers.example.com"}))
+    loop_ids: list[int] = []
+
+    async def fake_get(url: str, *, headers=None):
+        loop_ids.append(id(asyncio.get_running_loop()))
+        return httpx.Response(200, content=url.encode("utf-8"))
+
+    client.get = fake_get  # type: ignore[method-assign]
+    try:
+        assert client.get_sync("https://careers.example.com/jobs/1").status_code == 200
+        assert client.get_sync("https://careers.example.com/jobs/2").status_code == 200
+    finally:
+        client.close()
+
+    assert len(set(loop_ids)) == 1
+
+
 def test_safe_http_client_enforces_decoded_limit_while_streaming() -> None:
     class Chunks(httpx.AsyncByteStream):
         consumed = 0

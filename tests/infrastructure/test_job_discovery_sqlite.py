@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from resume_tailor.application.job_discovery.presentation import (
     normalize_job_description_for_display,
@@ -17,12 +18,12 @@ from resume_tailor.domain.job_discovery.models import (
     EligibilityAssessment,
     EligibilityStatus,
     JobRecommendation,
-    RequirementEvidenceAllocation,
     JobScoreBreakdown,
     JobSearchPreferences,
     MatchLabel,
     NormalizedLocation,
     RecommendationGroup,
+    RequirementEvidenceAllocation,
     SavedJob,
     SavedJobAvailability,
     SupportedJobSource,
@@ -274,7 +275,9 @@ def test_discovered_job_upsert_and_read_round_trip(tmp_path) -> None:
     repository = SQLiteDiscoveredJobRepository(tmp_path / "discovery.sqlite3")
     repository.upsert(_job())
 
-    assert repository.get("job-1") == _job()
+    assert repository.get("job-1") == _job().model_copy(
+        update={"first_seen_at": WHEN}
+    )
 
     repository.upsert(_job(description="Updated description."))
     assert repository.get("job-1").description == "Updated description."
@@ -358,7 +361,7 @@ def test_invalid_legacy_evidence_values_are_rejected() -> None:
         "technology:python|required|direct_technical": "not-a-list",
     }
 
-    with pytest.raises(Exception):
+    with pytest.raises((TypeError, ValidationError)):
         JobRecommendation.model_validate(payload)
 
 

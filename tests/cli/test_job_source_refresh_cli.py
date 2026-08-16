@@ -13,7 +13,10 @@ from resume_tailor.application.job_discovery.source_refresh import (
 from resume_tailor.cli.job_sources import main
 from resume_tailor.domain.job_discovery.models import ConnectorType, SourceJobRecord
 from resume_tailor.domain.job_discovery.providers import JobSourcePage, ProviderCapabilities
-from resume_tailor.domain.job_discovery.queries import ExploreJobQuery
+from resume_tailor.domain.job_discovery.queries import (
+    APPROVED_EXPLORE_SECTORS,
+    ExploreJobQuery,
+)
 from resume_tailor.domain.job_discovery.source_lifecycle import SourceRuntimeState
 from resume_tailor.infrastructure.job_discovery_sqlite import SQLiteSourceRuntimeStateRepository
 from resume_tailor.infrastructure.job_sources.registry import (
@@ -63,7 +66,7 @@ def test_unknown_source_has_nonzero_exit_and_safe_output(capsys) -> None:
 def test_non_dry_refresh_uses_bounded_runtime(monkeypatch, capsys) -> None:
     class FakeRefresh:
         def refresh(self, query, *, force=False, force_source_id=None, force_all=False):
-            assert query.sectors == ["Software Engineering"]
+            assert query.sectors == list(APPROVED_EXPLORE_SECTORS)
             assert query.source_restrictions == ["rocket-lab"]
             assert force is False
             assert force_source_id == "rocket-lab"
@@ -211,7 +214,7 @@ def test_non_dry_force_uses_real_orchestrator_and_query_boundary(monkeypatch, ca
     assert len(connector.queries) == 1
     assert len(retrieval_queries) == 1
     assert retrieval_queries[0].source_restrictions == []
-    assert retrieval_queries[0].sectors == ["Software Engineering"]
+    assert retrieval_queries[0].sectors == list(APPROVED_EXPLORE_SECTORS)
     assert '"status":"complete"' in output
 
 

@@ -33,6 +33,11 @@ from resume_tailor.domain.job_discovery.queries import (
     ProviderJobQuery,
     TailoredJobQuery,
 )
+from resume_tailor.domain.job_discovery.search_taxonomy import (
+    matches_any_explore_sector,
+    matches_requested_levels,
+    matches_title_query,
+)
 from resume_tailor.ports.job_discovery import JobSourceConnector
 
 Query = TailoredJobQuery | ExploreJobQuery
@@ -241,6 +246,24 @@ class RetrievalService:
 
         if errors and accepted:
             status = SourceOutcomeStatus.PARTIAL
+        if records_retrieved and not accepted and (
+            provider_query.titles or provider_query.sectors
+        ):
+            warnings.append(
+                self._diagnostic(
+                    SourceDiagnosticKind.WARNING,
+                    source,
+                    page=pages_fetched,
+                    cursor=cursor.value,
+                    code="local_filter_no_match",
+                    message=(
+                        "Source returned records, but none matched the requested "
+                        "local retrieval boundaries."
+                    ),
+                )
+            )
+            if status is SourceOutcomeStatus.SUCCESS:
+                status = SourceOutcomeStatus.PARTIAL
         elif warnings and status is SourceOutcomeStatus.SUCCESS:
             status = SourceOutcomeStatus.PARTIAL
         return (
@@ -310,27 +333,11 @@ class RetrievalService:
         *,
         as_of: datetime,
     ) -> bool:
-        text = f"{record.title} {record.description}".casefold()
         if plan.dispositions["title_or_keyword"] is ProviderFilterDisposition.LOCAL:
-            if not any(item.casefold() in text for item in query.titles):
+            if not matches_title_query(record.title, query.titles):
                 return False
         if plan.dispositions["sector"] is ProviderFilterDisposition.LOCAL:
-            sector_terms = {
-                "software engineering": ("software", "engineer", "developer"),
-                "data engineering": ("data engineer", "analytics engineer"),
-                "ai / machine learning": ("machine learning", "artificial intelligence", "ml"),
-                "computer vision": ("computer vision", "perception"),
-                "robotics / autonomous systems": ("robot", "autonomy", "autonomous"),
-                "embedded systems / firmware": ("embedded", "firmware"),
-                "hardware / systems integration": ("hardware", "systems integration"),
-                "controls / mechatronics": ("controls", "mechatronics"),
-                "testing / verification": ("test", "verification", "validation"),
-            }
-            if not any(
-                token in text
-                for sector in query.sectors
-                for token in sector_terms.get(sector.casefold(), ())
-            ):
+            if not matches_any_explore_sector(record.title, query.sectors):
                 return False
         if plan.dispositions["location"] is ProviderFilterDisposition.LOCAL:
             location = (record.location_raw or "").casefold()
@@ -343,21 +350,7 @@ class RetrievalService:
             ):
                 return False
         if plan.dispositions["level"] is ProviderFilterDisposition.LOCAL:
-            known_levels = {
-                "intern",
-                "entry",
-                "junior",
-                "mid",
-                "senior",
-                "lead",
-                "staff",
-                "principal",
-                "director",
-            }
-            has_known_level = any(level in text for level in known_levels)
-            if has_known_level and not any(
-                level.value.casefold() in text for level in query.levels
-            ):
+            if not matches_requested_levels(record.title, query.levels):
                 return False
         if plan.dispositions["posting_date_boundary"] is ProviderFilterDisposition.LOCAL:
             boundary = query.posted_after

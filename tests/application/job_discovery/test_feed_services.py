@@ -109,11 +109,15 @@ def test_feed_assembly_persists_every_evaluation_with_visibility_and_feed_kind()
     )
 
     assert len(result.recommendations) == 4
-    assert result.excluded_count == 1
+    assert result.excluded_count == 0
     assert all(item.feed_kind is FeedKind.EXPLORE for item in result.recommendations)
     assert [item.visibility for item in result.recommendations].count(
         RecommendationVisibility.EXCLUDED
-    ) == 1
+    ) == 0
+    assert all(
+        item.visibility is RecommendationVisibility.VISIBLE
+        for item in result.recommendations
+    )
     assert result.recommendations[0].score.fit_grade is FitGrade.EXCELLENT
     assert result.recommendations[0].provisional is True
 

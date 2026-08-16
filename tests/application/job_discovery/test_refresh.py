@@ -16,6 +16,7 @@ from resume_tailor.domain.job_discovery.models import (
     DiscoveryRunStatus,
     JobSearchPreferences,
     JobSourceFetchResult,
+    RecommendationVisibility,
     SourceJobRecord,
     SourceRecordWarning,
     SourceRecordWarningCode,
@@ -272,6 +273,42 @@ def test_successful_one_source_refresh_persists_jobs_recommendations_and_run() -
     assert runs.created[0].status is DiscoveryRunStatus.RUNNING
     assert runs.completed[-1] == run
     assert connector.calls == [(source.source_id, WHEN)]
+
+
+def test_hardware_explore_keeps_weak_fit_records_visible_and_reports_filter_counts() -> None:
+    source = _source()
+    connector = FakeConnector(
+        JobSourceFetchResult(
+            records=[
+                _record("hardware", title="Electrical Engineer").model_copy(
+                    update={
+                        "description": (
+                            "Required PCB design, power electronics, and high-voltage "
+                            "hardware validation."
+                        )
+                    }
+                ),
+                _record("sales", title="Account Executive"),
+            ],
+            warnings=[],
+        )
+    )
+    service, _, recommendations, _ = _service(
+        [source], {"greenhouse": connector}
+    )
+
+    run = service.refresh_explore(
+        "u1",
+        sectors=["Hardware / Systems Integration"],
+        profile_id="p1",
+        started_at=WHEN,
+    )
+
+    items = recommendations.list_for_run(run.id)
+    assert run.retrieved_count == 2
+    assert run.record_count == 1
+    assert [item.visibility for item in items] == [RecommendationVisibility.VISIBLE]
+    assert items[0].explore_sector == "Hardware / Systems Integration"
 
 
 def test_refresh_persists_every_evaluation_without_initial_ten_truncation() -> None:
