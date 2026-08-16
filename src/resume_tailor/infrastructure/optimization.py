@@ -6,7 +6,7 @@ from itertools import combinations
 
 from resume_tailor.application.skill_selection import DeterministicSkillSelector
 from resume_tailor.domain.contact import (
-    compact_contact_display,
+    compact_contact_label,
     contact_destination_key,
     normalize_contact_destination,
     safe_contact_display,
@@ -778,7 +778,7 @@ class EvidenceBoundResumeWriter:
             email = profile.contact.email.strip()
             items.append(
                 ResumeContactItem(
-                    display_text=email,
+                    display_text=compact_contact_label(email),
                     destination=normalize_contact_destination(email),
                 )
             )
@@ -807,7 +807,7 @@ class EvidenceBoundResumeWriter:
                 continue
             items.append(
                 ResumeContactItem(
-                    display_text=compact_contact_display(value),
+                    display_text=compact_contact_label(value),
                     destination=normalize_contact_destination(value),
                 )
             )

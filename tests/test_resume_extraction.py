@@ -177,7 +177,7 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
     assert loaded.contact.hyperlinks == list(result.contact_links)
     assert contact_line is not None
     assert [item.display_text for item in contact_items] == [
-        "alex@example.test",
+        "Email",
         "+1 555 010 0200",
         "Toronto, ON",
         "Portfolio",

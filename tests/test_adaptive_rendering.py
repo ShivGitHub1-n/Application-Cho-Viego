@@ -370,7 +370,7 @@ def test_contact_hyperlinks_are_compact_and_missing_fields_leave_no_separators(
     missing_output = tmp_path / "missing-contact.docx"
     render_structured_resume(missing, profile, missing_output)
     missing_contact = Document(missing_output).paragraphs[1]
-    assert missing_contact.text == "alex@example.test"
+    assert missing_contact.text == "Email"
     assert "|" not in missing_contact.text
 
 

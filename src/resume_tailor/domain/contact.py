@@ -51,12 +51,36 @@ def compact_contact_display(value: str) -> str:
     return f"{host}{path}" if path else host
 
 
+def compact_contact_label(value: str) -> str:
+    """Derive a compact, non-personal label for a legacy contact destination."""
+
+    normalized = normalize_contact_destination(value)
+    if normalized is None:
+        return re.sub(r"\\+(?=[:/])", "", value.strip())
+    if normalized.casefold().startswith("mailto:"):
+        return "Email"
+    parsed = urlsplit(normalized)
+    host = (parsed.hostname or "").casefold().removeprefix("www.")
+    path_tokens = {
+        token
+        for token in re.split(r"[^a-z0-9]+", parsed.path.casefold())
+        if token
+    }
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return "LinkedIn"
+    if host == "github.com" or host.endswith(".github.com"):
+        return "GitHub"
+    if "portfolio" in host or path_tokens.intersection({"portfolio", "projects", "work"}):
+        return "Portfolio"
+    return "Website"
+
+
 def safe_contact_display(display_text: str, destination: str | None = None) -> str:
     cleaned = _repair_escaped_scheme(display_text.strip())
     if not cleaned:
-        return compact_contact_display(destination or "")
+        return compact_contact_label(destination or "")
     if normalize_contact_destination(cleaned) is not None:
-        return compact_contact_display(cleaned)
+        return compact_contact_label(destination or cleaned)
     return re.sub(r"\\+(?=[:/])", "", cleaned)
 
 
@@ -66,6 +90,7 @@ def _repair_escaped_scheme(value: str) -> str:
 
 __all__ = [
     "compact_contact_display",
+    "compact_contact_label",
     "contact_destination_key",
     "normalize_contact_destination",
     "safe_contact_display",

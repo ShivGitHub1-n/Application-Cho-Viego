@@ -399,7 +399,7 @@ def test_generic_admission_reopens_previously_hidden_relevant_evidence(
     )
     old_evaluation = TemplateV1PageFitEvaluator(ParagraphLimitPageProvider()).evaluate(old_resume)
 
-    assert old_evaluation.utilization_ratio == pytest.approx(0.5792895442359249)
+    assert old_evaluation.utilization_ratio == pytest.approx(0.5869302949061662)
     assert old_evaluation.status is PageUtilizationStatus.SEVERE_UNDERFILL
 
 
@@ -556,7 +556,7 @@ def test_mixed_posting_selects_complementary_cross_disciplinary_evidence(
     assert rover_mechanical.line_fit.future_rewrite_recommended is True
     assert diagnostic.utilization_target_reached is False
     assert len(diagnostic.selected_skill_category_ids) == 4
-    assert diagnostic.final_utilization_ratio == pytest.approx(0.8034182305630027)
+    assert diagnostic.final_utilization_ratio == pytest.approx(0.8110589812332439)
 
 
 def test_sparse_profile_reports_insufficient_evidence_without_invention() -> None:
@@ -1115,7 +1115,7 @@ def test_page_fill_substantially_improves_prior_sparse_plan_utilization(
     diagnostic = composed.composition_diagnostic
 
     assert diagnostic is not None
-    assert prior.utilization_ratio == pytest.approx(0.2878686327077748)
+    assert prior.utilization_ratio == pytest.approx(0.2930965147453083)
     assert diagnostic.final_utilization_ratio > prior.utilization_ratio + 0.20
     assert len(diagnostic.selected_bullet_ids) > sum(
         len(bullets) for bullets in baseline.experience_bullets.values()

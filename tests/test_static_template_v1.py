@@ -291,7 +291,7 @@ def test_packaged_template_is_content_neutral_and_has_explicit_prototypes() -> N
         "ae5a0fd1669efd8191339fbdf118421a38fc41ca12a98bbb941e83f439bd62a8"
     )
     assert TEMPLATE_V1_DOCX_SHA256 == (
-        "55cfee26ae4702b143a329b2f320a8d94a4c04f7f6df600a5a2d29cc58883245"
+        "0ecff82f8d5450df96c886c3300a067d050f9ddfc9e19cb793321f9aa2446089"
     )
     document = Document(template_path)
     assert document.paragraphs
@@ -492,9 +492,29 @@ def test_semantic_spacing_preserves_section_entry_and_bullet_hierarchy(
         for paragraph in bullets
     ]
 
-    assert section_before == [190, 100, 160, 100]
-    assert section_after == [88, 24, 28, 24]
+    assert section_before == [120, 120, 120, 120]
+    assert section_after == [40, 40, 40, 40]
     assert all(paragraph.paragraph_format.keep_with_next for paragraph in headings)
+    for paragraph in headings:
+        heading_index = next(
+            index
+            for index, candidate in enumerate(document.paragraphs)
+            if candidate.text == paragraph.text
+        )
+        previous = document.paragraphs[heading_index - 1]
+        previous_after = (
+            previous.paragraph_format.space_after
+            or previous.style.paragraph_format.space_after
+        )
+        assert previous_after is None or previous_after.twips == 0
+        properties = paragraph._p.pPr
+        assert properties is not None
+        border = properties.find(qn("w:pBdr") + "/" + qn("w:top"))
+        assert border is not None
+        assert border.get(qn("w:space")) == "1"
+        assert not paragraph._p.xpath(
+            './/*[local-name()="drawing" or local-name()="AlternateContent"]'
+        )
     assert first_experience.paragraph_format.space_before.twips == 80
     assert repeated_experience.paragraph_format.space_before.twips == 80
     assert project.paragraph_format.space_before.twips == 70
@@ -524,7 +544,7 @@ def test_contact_uses_compact_ordered_real_hyperlinks_and_safe_legacy_text(
                 ),
                 ResumeContactItem(
                     display_text="https\\://portfolio.example.test/work/",
-                    destination="https\\://portfolio.example.test/work/",
+                    destination="https\\://portfolio.example.test/work%20samples/",
                 ),
             ],
         }
@@ -541,23 +561,21 @@ def test_contact_uses_compact_ordered_real_hyperlinks_and_safe_legacy_text(
     visible = "".join(contact.xpath(".//w:t/text()", namespaces=namespace))
     hyperlink_text = contact.xpath("./w:hyperlink//w:t/text()", namespaces=namespace)
 
-    assert visible == (
-        "candidate@example.test | 555-0100 | Example City, ZZ | Code | "
-        "portfolio.example.test/work"
-    )
+    assert visible == "Email | 555-0100 | Example City, ZZ | Code | Portfolio"
     assert hyperlink_text == [
-        "candidate@example.test",
+        "Email",
         "Code",
-        "portfolio.example.test/work",
+        "Portfolio",
     ]
     assert "555-0100" not in hyperlink_text
     assert "Example City, ZZ" not in hyperlink_text
     assert "https\\://" not in visible
-    assert "https://portfolio.example.test/work/" in relationships
+    assert "%20" not in visible
+    assert "https://portfolio.example.test/work%20samples/" in relationships
     assert "https://code.example.test/candidate" in relationships
 
 
-def test_legacy_string_contact_line_remains_compatible_without_exposing_url_scheme(
+def test_legacy_string_contact_line_uses_compact_clickable_labels(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "legacy-contact.docx"
@@ -566,7 +584,7 @@ def test_legacy_string_contact_line_remains_compatible_without_exposing_url_sche
             "contact_items": [],
             "contact_line": (
                 "candidate@example.test | 555-0100 | Example City, ZZ | "
-                "https://portfolio.example.test/work"
+                "https://portfolio.example.test/work%20samples"
             ),
         }
     )
@@ -574,11 +592,17 @@ def test_legacy_string_contact_line_remains_compatible_without_exposing_url_sche
     render_template_v1_resume(resume, output)
 
     with ZipFile(output) as package:
-        document_xml = package.read("word/document.xml").decode()
+        document_xml = package.read("word/document.xml")
         relationships = package.read("word/_rels/document.xml.rels").decode()
-    assert "portfolio.example.test/work" in document_xml
-    assert "https://portfolio.example.test/work" not in document_xml
-    assert "https://portfolio.example.test/work" in relationships
+    root = etree.fromstring(document_xml)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    contact = root.xpath("//w:body/w:p", namespaces=namespace)[1]
+    visible = "".join(contact.xpath(".//w:t/text()", namespaces=namespace))
+    assert visible == "Email | 555-0100 | Example City, ZZ | Portfolio"
+    assert "candidate@example.test" not in visible
+    assert "%20" not in visible
+    assert "mailto:candidate@example.test" in relationships
+    assert "https://portfolio.example.test/work%20samples" in relationships
     assert "https://555-0100" not in relationships
 
 
@@ -722,6 +746,20 @@ def test_sparse_manual_resume_is_one_word_page_when_word_is_available(
 ) -> None:
     output = tmp_path / "sparse-manual-static.docx"
     render_template_v1_resume(_manual_sparse_resume(), output)
+    try:
+        measurement = MicrosoftWordDocxPageCountProvider().measure(output)
+    except PageCountVerificationError as error:
+        pytest.skip(f"Microsoft Word verification unavailable: {error}")
+
+    assert measurement.exact is True
+    assert measurement.page_count == 1
+
+
+def test_complete_presentation_fixture_remains_one_word_page_when_available(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "complete-presentation-static.docx"
+    render_template_v1_resume(_complete_resume(), output)
     try:
         measurement = MicrosoftWordDocxPageCountProvider().measure(output)
     except PageCountVerificationError as error:

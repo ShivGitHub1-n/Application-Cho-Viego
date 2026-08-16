@@ -12,7 +12,7 @@ from docx.oxml.ns import qn
 from lxml import etree  # type: ignore[import-untyped]
 
 from resume_tailor.domain.contact import (
-    compact_contact_display,
+    compact_contact_label,
     normalize_contact_destination,
     safe_contact_display,
 )
@@ -547,7 +547,7 @@ def _legacy_contact_items(contact_line: str | None) -> list[ResumeContactItem]:
         destination = normalize_contact_destination(part)
         items.append(
             ResumeContactItem(
-                display_text=(compact_contact_display(part) if destination else part),
+                display_text=(compact_contact_label(part) if destination else part),
                 destination=destination,
             )
         )

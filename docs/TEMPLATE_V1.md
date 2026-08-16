@@ -77,11 +77,11 @@ links remain supported: safe web/email strings receive deterministic compact
 display text, while malformed or unsafe destinations remain non-clickable and
 are never guessed.
 
-The canonical Education rule occupied a source-only empty DrawingML paragraph.
-The packaged template folds that rule into the nonblank Education heading as a
-0.5-point black bottom border. Other section rules retain their canonical
-anchored DrawingML. This one-time sanitization allows generated output to have
-zero blank paragraphs while preserving the section transition.
+The packaged template uses a uniform 0.5-point top paragraph border on each
+nonblank section heading. A bounded 120-twip heading transition and 1-point
+border-to-text offset keep the rule close to both neighboring sections without
+introducing blank paragraphs or floating DrawingML wrap geometry. Heading
+keep-with-next behavior remains authoritative.
 
 ## Content and truthfulness
 

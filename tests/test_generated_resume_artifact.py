@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import BytesIO
+from zipfile import ZipFile
 
 from docx import Document
+from lxml import etree
 
 from resume_tailor.application.generated_artifact import (
     ResumeGenerationConfiguration,
@@ -28,7 +30,12 @@ from resume_tailor.domain.llm_models import (
     BulletRewriteResult,
     LlmOperation,
 )
-from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConstraints
+from resume_tailor.domain.models import (
+    ContactInfo,
+    JobPosting,
+    MasterProfile,
+    TemplateConstraints,
+)
 from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
@@ -36,8 +43,10 @@ from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
 )
+from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.infrastructure.rendering import PageCountMeasurement
 from resume_tailor.infrastructure.template_v1 import TEMPLATE_V1_DOCX_SHA256, TEMPLATE_V1_ID
+from resume_tailor.ports.interfaces import ResumeArtifactRenderer
 from tests.fakes import FakeResumeLanguageModel, metadata
 
 
@@ -137,7 +146,7 @@ def _configuration(
 
 
 def _service(
-    renderer: _FakeArtifactRenderer,
+    renderer: ResumeArtifactRenderer,
     *,
     configuration: ResumeGenerationConfiguration | None = None,
     telemetry: GenerationTelemetry | None = None,
@@ -180,6 +189,55 @@ def test_completed_build_stores_final_docx_bytes_and_reuses_identical_artifact()
     assert artifact.docx_bytes == renderer.payload
     assert reused is artifact
     assert renderer.calls == 1
+
+
+def test_production_artifact_path_compacts_legacy_profile_contact_links(
+    tmp_path,
+) -> None:
+    profile = _profile().model_copy(
+        update={
+            "contact": ContactInfo(
+                email="candidate@example.test",
+                phone="555-0100",
+                location="Example City, ZZ",
+                links=[
+                    "https://www.linkedin.com/in/example-candidate",
+                    "https://github.com/example-candidate",
+                    "https://portfolio.example.test/work%20samples",
+                ],
+            )
+        }
+    )
+    repository = SQLiteMasterProfileRepository(tmp_path / "legacy-profile.sqlite3")
+    repository.save(profile)
+    loaded = repository.get(profile.id)
+    assert loaded is not None
+    assert loaded.contact.hyperlinks == []
+
+    service = _service(TemplateV1ArtifactRenderer())
+    service.start_generation()
+    plan = service.create_plan(loaded, _posting(), TemplateConstraints())
+    artifact = service.build_generated_artifact(plan, loaded, set())
+
+    with ZipFile(BytesIO(artifact.docx_bytes)) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+        relationships = package.read("word/_rels/document.xml.rels").decode()
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    contact = root.xpath("//w:body/w:p", namespaces=namespace)[1]
+    visible = "".join(contact.xpath(".//w:t/text()", namespaces=namespace))
+    hyperlink_text = contact.xpath("./w:hyperlink//w:t/text()", namespaces=namespace)
+
+    assert visible == (
+        "Email | 555-0100 | Example City, ZZ | LinkedIn | GitHub | Portfolio"
+    )
+    assert hyperlink_text == ["Email", "LinkedIn", "GitHub", "Portfolio"]
+    assert "candidate@example.test" not in visible
+    assert "https://" not in visible
+    assert "%20" not in visible
+    assert "mailto:candidate@example.test" in relationships
+    assert "https://www.linkedin.com/in/example-candidate" in relationships
+    assert "https://github.com/example-candidate" in relationships
+    assert "https://portfolio.example.test/work%20samples" in relationships
 
 
 def test_download_returns_exact_stored_bytes_and_runs_zero_generation_calls() -> None:

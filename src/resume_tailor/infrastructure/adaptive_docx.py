@@ -21,7 +21,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 from resume_tailor.domain.contact import (
-    compact_contact_display,
+    compact_contact_label,
     normalize_contact_destination,
     safe_contact_display,
 )
@@ -166,7 +166,7 @@ class AdaptiveStructuredResumeRenderer:
         items = contact_items or [
             ResumeContactItem(
                 display_text=(
-                    compact_contact_display(part)
+                    compact_contact_label(part)
                     if normalize_contact_destination(part)
                     else part
                 ),
