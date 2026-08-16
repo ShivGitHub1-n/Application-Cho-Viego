@@ -1,16 +1,19 @@
 from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 from resume_tailor.application.profile_editor import (
     editor_state_to_profile,
     profile_to_editor_state,
 )
 from resume_tailor.domain.models import MasterProfile, ResumeStrategy, StructuredResume
+from resume_tailor.infrastructure.optimization import EvidenceBoundResumeWriter
+from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.infrastructure.resume_extraction import (
     EmptyResumeFileError,
     ImageOnlyResumeError,
@@ -18,8 +21,6 @@ from resume_tailor.infrastructure.resume_extraction import (
     UnsupportedResumeFileError,
     extract_resume_text,
 )
-from resume_tailor.infrastructure.optimization import EvidenceBoundResumeWriter
-from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
 
 
@@ -75,7 +76,8 @@ def _pdf_bytes(text: str) -> bytes:
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
         b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
@@ -115,6 +117,20 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
     assert "alex@example.test" in result.text
     assert "+1 555 010 0200" in result.text
     assert all(result.text.count(link) == 1 for link in expected_links)
+    assert [link.model_dump() for link in result.contact_links] == [
+        {
+            "display_text": "Portfolio",
+            "destination": "https://portfolio.example.test/alex",
+        },
+        {
+            "display_text": "LinkedIn",
+            "destination": "https://www.linkedin.com/in/synthetic-candidate",
+        },
+        {
+            "display_text": "GitHub",
+            "destination": "https://github.com/synthetic-candidate",
+        },
+    ]
 
     imported = MasterProfile.model_validate(
         {
@@ -126,6 +142,7 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
                 "phone": "+1 555 010 0200",
                 "location": "Toronto, ON",
                 "links": expected_links,
+                "hyperlinks": [link.model_dump() for link in result.contact_links],
             },
         }
     )
@@ -135,6 +152,7 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
     loaded = repository.get(reviewed.id)
     assert loaded is not None
     contact_line = EvidenceBoundResumeWriter._contact_line(loaded)
+    contact_items = EvidenceBoundResumeWriter._contact_items(loaded)
     resume = StructuredResume(
         profile_id=loaded.id,
         profile_version=loaded.version,
@@ -142,6 +160,7 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
         template_id="managed-engineering-v1",
         display_name=loaded.display_name,
         contact_line=contact_line,
+        contact_items=contact_items,
         strategy=ResumeStrategy(
             role_family="embedded_systems",
             primary_focus="Embedded systems",
@@ -150,11 +169,26 @@ def test_docx_contact_links_from_tables_headers_and_footers_survive_save_and_ren
     )
     output = tmp_path / "contact.docx"
     render_template_v1_resume(resume, output)
-    rendered = "\n".join(paragraph.text for paragraph in Document(output).paragraphs)
+    with ZipFile(output) as package:
+        document_xml = package.read("word/document.xml").decode()
+        relationships = package.read("word/_rels/document.xml.rels").decode()
 
     assert loaded.contact.links == expected_links
+    assert loaded.contact.hyperlinks == list(result.contact_links)
     assert contact_line is not None
-    assert all(value in rendered for value in ["alex@example.test", *expected_links])
+    assert [item.display_text for item in contact_items] == [
+        "alex@example.test",
+        "+1 555 010 0200",
+        "Toronto, ON",
+        "Portfolio",
+        "LinkedIn",
+        "GitHub",
+    ]
+    assert all(value in relationships for value in ["mailto:alex@example.test", *expected_links])
+    assert all(label in document_xml for label in ["Portfolio", "LinkedIn", "GitHub"])
+    assert not any(value in document_xml for value in expected_links)
+    assert "+1 555 010 0200" in document_xml
+    assert "Toronto, ON" in document_xml
 
 
 def test_text_pdf_extraction() -> None:

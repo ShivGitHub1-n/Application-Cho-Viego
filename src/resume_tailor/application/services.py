@@ -40,6 +40,7 @@ from resume_tailor.domain.hybrid_resume import (
 )
 from resume_tailor.domain.llm_models import ProfileExtractionResult
 from resume_tailor.domain.models import (
+    ContactHyperlink,
     JobPosting,
     MasterProfile,
     StructuredResume,
@@ -124,12 +125,19 @@ class TailorResumeService:
             return self._hybrid_services.enrich_plan(plan, profile, posting)
 
     def extract_profile_draft(
-        self, profile_id: str, source_format: str, extracted_text: str
+        self,
+        profile_id: str,
+        source_format: str,
+        extracted_text: str,
+        contact_links: tuple[ContactHyperlink, ...] = (),
     ) -> ProfileExtractionResult:
         if self._hybrid_services is None:
             raise ValueError("Profile extraction requires a configured language model")
         return self._hybrid_services.extract_profile_draft(
-            profile_id, source_format, extracted_text
+            profile_id,
+            source_format,
+            extracted_text,
+            contact_links,
         )
 
     def build_document(

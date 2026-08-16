@@ -20,6 +20,11 @@ from docx.shared import Pt, RGBColor, Twips
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
+from resume_tailor.domain.contact import (
+    compact_contact_display,
+    normalize_contact_destination,
+    safe_contact_display,
+)
 from resume_tailor.domain.layout import (
     Border,
     BulletLayout,
@@ -34,6 +39,7 @@ from resume_tailor.domain.models import (
     EducationRecord,
     EntityKind,
     GraduationStatus,
+    ResumeContactItem,
     ResumeItem,
     StructuredBullet,
     StructuredResume,
@@ -88,8 +94,8 @@ class AdaptiveStructuredResumeRenderer:
         document = Document()
         self._apply_page_layout(document)
         self._add_text_paragraph(document, "name", [(resume.display_name, None)])
-        if resume.contact_line:
-            self._add_contact_line(document, resume.contact_line)
+        if resume.contact_items or resume.contact_line:
+            self._add_contact_line(document, resume.contact_items, resume.contact_line)
         if resume.education:
             self._add_section_heading(
                 document,
@@ -151,18 +157,40 @@ class AdaptiveStructuredResumeRenderer:
         if page.column_equal_width is not None:
             columns.set(qn("w:equalWidth"), "1" if page.column_equal_width else "0")
 
-    def _add_contact_line(self, document: DocumentType, contact_line: str) -> None:
-        parts = [part.strip() for part in contact_line.split("|") if part.strip()]
+    def _add_contact_line(
+        self,
+        document: DocumentType,
+        contact_items: list[ResumeContactItem],
+        contact_line: str | None,
+    ) -> None:
+        items = contact_items or [
+            ResumeContactItem(
+                display_text=(
+                    compact_contact_display(part)
+                    if normalize_contact_destination(part)
+                    else part
+                ),
+                destination=normalize_contact_destination(part),
+            )
+            for part in (value.strip() for value in (contact_line or "").split("|"))
+            if part
+        ]
         paragraph = self._new_paragraph(document, "contact_line")
-        for index, part in enumerate(parts):
+        for index, item in enumerate(items):
             if index:
                 run = paragraph.add_run(_FALLBACKS.contact_separator)
                 self._apply_run(run, self._role("contact_line"), index)
-            target = _hyperlink_target(part)
+            target = normalize_contact_destination(item.destination or "")
+            display_text = safe_contact_display(item.display_text, item.destination)
             if target:
-                self._add_hyperlink(paragraph, part, target, self._role("contact_line"))
+                self._add_hyperlink(
+                    paragraph,
+                    display_text,
+                    target,
+                    self._role("contact_line"),
+                )
             else:
-                run = paragraph.add_run(part)
+                run = paragraph.add_run(display_text)
                 self._apply_run(run, self._role("contact_line"), index)
 
     def _add_section_heading(
@@ -955,17 +983,6 @@ def _education_program(record: EducationRecord) -> str:
         if value and value.casefold() not in " ".join(unique).casefold():
             unique.append(value)
     return ", ".join(unique)
-
-
-def _hyperlink_target(value: str) -> str | None:
-    stripped = value.strip()
-    if "@" in stripped and not re.search(r"\s", stripped):
-        return stripped if stripped.casefold().startswith("mailto:") else f"mailto:{stripped}"
-    if stripped.casefold().startswith(("http://", "https://")):
-        return stripped
-    if re.match(r"^(www\.|[a-z0-9-]+\.[a-z]{2,}/)", stripped, re.IGNORECASE):
-        return f"https://{stripped}"
-    return None
 
 
 def _paragraph_alignment(value: object) -> WD_ALIGN_PARAGRAPH | None:

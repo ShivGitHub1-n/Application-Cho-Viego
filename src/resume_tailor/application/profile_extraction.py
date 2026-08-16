@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 from hashlib import sha256
 
+from resume_tailor.domain.contact import contact_destination_key
 from resume_tailor.domain.models import (
+    ContactHyperlink,
     EvidenceItem,
     GraduationStatus,
     MasterProfile,
@@ -91,6 +93,41 @@ def normalize_extracted_profile(profile: MasterProfile, source_text: str = "") -
                 normalized.model_dump(mode="python") | {"technical_skills": categories}
             )
     return normalized
+
+
+def preserve_extracted_contact_hyperlinks(
+    profile: MasterProfile,
+    extracted_links: list[ContactHyperlink] | tuple[ContactHyperlink, ...],
+) -> MasterProfile:
+    """Restore source DOCX display/destination pairs already identified as contact links."""
+
+    contact_keys = {
+        contact_destination_key(value)
+        for value in profile.contact.links
+        if contact_destination_key(value)
+    }
+    ordered: list[ContactHyperlink] = []
+    seen: set[str] = set()
+    for link in [*extracted_links, *profile.contact.hyperlinks]:
+        key = contact_destination_key(link.destination)
+        if not key or key in seen or key not in contact_keys:
+            continue
+        ordered.append(link)
+        seen.add(key)
+    if not ordered:
+        return profile
+    remaining = [
+        value
+        for value in profile.contact.links
+        if contact_destination_key(value) not in seen
+    ]
+    contact = profile.contact.model_copy(
+        update={
+            "links": [*[item.destination for item in ordered], *remaining],
+            "hyperlinks": ordered,
+        }
+    )
+    return profile.model_copy(update={"contact": contact})
 
 
 def audit_extracted_profile(profile: MasterProfile, source_text: str) -> list[str]:

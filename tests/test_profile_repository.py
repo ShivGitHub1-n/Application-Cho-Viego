@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.models import ContactHyperlink, ContactInfo, MasterProfile
 from resume_tailor.infrastructure.profile_repository import (
     CorruptStoredProfileError,
     SQLiteMasterProfileRepository,
@@ -26,11 +26,43 @@ def test_profile_round_trips_and_replaces_across_store_instances(tmp_path) -> No
     assert SQLiteMasterProfileRepository(database).get("profile-1") == _profile()
 
     first.save(_profile(display_name="Updated Candidate"))
-    assert SQLiteMasterProfileRepository(database).get("profile-1").display_name == "Updated Candidate"
+    loaded = SQLiteMasterProfileRepository(database).get("profile-1")
+    assert loaded is not None
+    assert loaded.display_name == "Updated Candidate"
 
 
 def test_missing_profile_returns_none(tmp_path) -> None:
     assert SQLiteMasterProfileRepository(tmp_path / "profiles.sqlite3").get("missing") is None
+
+
+def test_profile_hyperlink_semantics_round_trip_through_persistence(tmp_path) -> None:
+    profile = _profile().model_copy(
+        update={
+            "contact": ContactInfo(
+                links=[
+                    "https://code.example.test/candidate",
+                    "https://portfolio.example.test/work",
+                ],
+                hyperlinks=[
+                    ContactHyperlink(
+                        display_text="Code",
+                        destination="https://code.example.test/candidate",
+                    ),
+                    ContactHyperlink(
+                        display_text="Selected work",
+                        destination="https://portfolio.example.test/work",
+                    ),
+                ],
+            )
+        }
+    )
+    database = tmp_path / "hyperlinks.sqlite3"
+
+    SQLiteMasterProfileRepository(database).save(profile)
+    loaded = SQLiteMasterProfileRepository(database).get(profile.id)
+
+    assert loaded is not None
+    assert loaded.contact == profile.contact
 
 
 def test_corrupt_or_schema_invalid_profile_is_reported(tmp_path) -> None:

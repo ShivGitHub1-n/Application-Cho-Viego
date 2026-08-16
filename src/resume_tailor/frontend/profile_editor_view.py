@@ -98,10 +98,16 @@ def _render_personal_information(
     streamlit_module.markdown("**Links**")
     for index, link in enumerate(list(contact.get("links", []))):
         link_key = editor_ui_identity(registry, "contact-link", link)
-        value_column, remove_column = streamlit_module.columns((5, 1))
+        label_column, value_column, remove_column = streamlit_module.columns((2, 4, 1))
+        with label_column:
+            link["label"] = streamlit_module.text_input(
+                f"Link {index + 1} display text",
+                link.get("label", ""),
+                key=_widget_key(token, "link-label", link_key),
+            )
         with value_column:
             link["value"] = streamlit_module.text_input(
-                f"Link {index + 1}",
+                f"Link {index + 1} destination",
                 link.get("value", ""),
                 key=_widget_key(token, "link", link_key),
             )
@@ -113,7 +119,7 @@ def _render_personal_information(
                 streamlit_module.rerun()
     if streamlit_module.button("Add link", key=_widget_key(token, "add-link")):
         links = contact.setdefault("links", [])
-        links.append({"id": next_link_ui_id(links), "value": ""})
+        links.append({"id": next_link_ui_id(links), "label": "", "value": ""})
         streamlit_module.rerun()
 
 

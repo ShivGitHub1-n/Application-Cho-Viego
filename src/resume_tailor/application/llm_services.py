@@ -27,6 +27,7 @@ from resume_tailor.application.llm_validation import (
 from resume_tailor.application.profile_extraction import (
     audit_extracted_profile,
     normalize_extracted_profile,
+    preserve_extracted_contact_hyperlinks,
 )
 from resume_tailor.application.requirement_ranking import extract_posting_requirements
 from resume_tailor.application.resume_features import (
@@ -91,6 +92,7 @@ from resume_tailor.domain.models import (
     ClaimSupport,
     CompositionEvidenceGroup,
     CompositionSelection,
+    ContactHyperlink,
     Decision,
     JobPosting,
     MasterProfile,
@@ -705,7 +707,11 @@ class HybridLlmServices:
         )
 
     def extract_profile_draft(
-        self, profile_id: str, source_format: str, extracted_text: str
+        self,
+        profile_id: str,
+        source_format: str,
+        extracted_text: str,
+        contact_links: tuple[ContactHyperlink, ...] = (),
     ) -> ProfileExtractionResult:
         if self._language_model is None:
             raise LanguageModelError(
@@ -718,7 +724,10 @@ class HybridLlmServices:
             extracted_text=extracted_text,
         )
         result = self._language_model.extract_profile(request)
-        normalized_profile = normalize_extracted_profile(result.output.profile, extracted_text)
+        normalized_profile = preserve_extracted_contact_hyperlinks(
+            normalize_extracted_profile(result.output.profile, extracted_text),
+            contact_links,
+        )
         fidelity_flags = [
             *result.output.fidelity_flags,
             *audit_extracted_profile(normalized_profile, extracted_text),

@@ -399,7 +399,7 @@ def test_generic_admission_reopens_previously_hidden_relevant_evidence(
     )
     old_evaluation = TemplateV1PageFitEvaluator(ParagraphLimitPageProvider()).evaluate(old_resume)
 
-    assert old_evaluation.utilization_ratio == pytest.approx(0.578083109919571)
+    assert old_evaluation.utilization_ratio == pytest.approx(0.5792895442359249)
     assert old_evaluation.status is PageUtilizationStatus.SEVERE_UNDERFILL
 
 
@@ -556,7 +556,7 @@ def test_mixed_posting_selects_complementary_cross_disciplinary_evidence(
     assert rover_mechanical.line_fit.future_rewrite_recommended is True
     assert diagnostic.utilization_target_reached is False
     assert len(diagnostic.selected_skill_category_ids) == 4
-    assert diagnostic.final_utilization_ratio == pytest.approx(0.8110589812332439)
+    assert diagnostic.final_utilization_ratio == pytest.approx(0.8034182305630027)
 
 
 def test_sparse_profile_reports_insufficient_evidence_without_invention() -> None:
@@ -1115,7 +1115,7 @@ def test_page_fill_substantially_improves_prior_sparse_plan_utilization(
     diagnostic = composed.composition_diagnostic
 
     assert diagnostic is not None
-    assert prior.utilization_ratio == pytest.approx(0.2906166219839142)
+    assert prior.utilization_ratio == pytest.approx(0.2878686327077748)
     assert diagnostic.final_utilization_ratio > prior.utilization_ratio + 0.20
     assert len(diagnostic.selected_bullet_ids) > sum(
         len(bullets) for bullets in baseline.experience_bullets.values()
@@ -1275,19 +1275,28 @@ def test_embedded_networking_portfolio_outranks_unrelated_governance_and_bi() ->
         projects=[
             {"id": "robotics-control", "title": "Autonomous Controls Platform", "kind": "project"},
             {"id": "network-stack", "title": "Embedded Network Stack", "kind": "project"},
-            {"id": "governance-suite", "title": "Generative AI Governance Suite", "kind": "project"},
+            {
+                "id": "governance-suite",
+                "title": "Generative AI Governance Suite",
+                "kind": "project",
+            },
             {"id": "bi-dashboard", "title": "Executive BI Dashboard", "kind": "project"},
         ],
         evidence=[
             {
                 "id": "controls-cpp",
                 "entity_id": "robotics-control",
-                "source_text": "Implemented C++ microcontroller control loops for robotic actuators.",
+                "source_text": (
+                    "Implemented C++ microcontroller control loops for robotic actuators."
+                ),
             },
             {
                 "id": "controls-safety",
                 "entity_id": "robotics-control",
-                "source_text": "Validated perception-driven safety interlocks with Python hardware-in-the-loop tests.",
+                "source_text": (
+                    "Validated perception-driven safety interlocks with Python "
+                    "hardware-in-the-loop tests."
+                ),
             },
             {
                 "id": "network-linux",
@@ -1297,12 +1306,17 @@ def test_embedded_networking_portfolio_outranks_unrelated_governance_and_bi() ->
             {
                 "id": "network-firmware",
                 "entity_id": "network-stack",
-                "source_text": "Developed embedded C++ firmware for reliable microcontroller communications.",
+                "source_text": (
+                    "Developed embedded C++ firmware for reliable microcontroller communications."
+                ),
             },
             {
                 "id": "governance-policy",
                 "entity_id": "governance-suite",
-                "source_text": "Built Python automation for generative AI governance policy and executive risk controls.",
+                "source_text": (
+                    "Built Python automation for generative AI governance policy and "
+                    "executive risk controls."
+                ),
             },
             {
                 "id": "governance-reporting",
@@ -1312,16 +1326,24 @@ def test_embedded_networking_portfolio_outranks_unrelated_governance_and_bi() ->
             {
                 "id": "bi-model",
                 "entity_id": "bi-dashboard",
-                "source_text": "Deployed Power BI semantic models on Linux for finance performance reporting.",
+                "source_text": (
+                    "Deployed Power BI semantic models on Linux for finance performance reporting."
+                ),
             },
             {
                 "id": "bi-kpis",
                 "entity_id": "bi-dashboard",
-                "source_text": "Delivered executive KPI dashboards and quarterly business insights.",
+                "source_text": (
+                    "Delivered executive KPI dashboards and quarterly business insights."
+                ),
             },
         ],
         technical_skills=[
-            {"id": "embedded-skills", "category": "Embedded", "values": ["C++", "Python", "Linux", "CAN", "Ethernet"]}
+            {
+                "id": "embedded-skills",
+                "category": "Embedded",
+                "values": ["C++", "Python", "Linux", "CAN", "Ethernet"],
+            }
         ],
     )
     posting = JobPosting(

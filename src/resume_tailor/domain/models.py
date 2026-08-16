@@ -7,6 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from resume_tailor.domain.contact import contact_destination_key
 from resume_tailor.domain.hybrid_resume import (
     BulletVariantRecord,
     HybridResumeDiagnostic,
@@ -129,11 +130,38 @@ class ResumeItem(BaseModel):
     bullet_points: list[str] = Field(default_factory=list)
 
 
+class ContactHyperlink(BaseModel):
+    display_text: str = Field(min_length=1)
+    destination: str = Field(min_length=1)
+
+    @field_validator("display_text", "destination")
+    @classmethod
+    def strip_contact_hyperlink_fields(cls, value: str) -> str:
+        return value.strip()
+
+
 class ContactInfo(BaseModel):
     email: str | None = None
     phone: str | None = None
     location: str | None = None
     links: list[str] = Field(default_factory=list)
+    hyperlinks: list[ContactHyperlink] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def synchronize_hyperlink_destinations(self) -> ContactInfo:
+        if not self.hyperlinks:
+            return self
+        destinations = [item.destination for item in self.hyperlinks]
+        seen = {contact_destination_key(item) for item in destinations}
+        self.links = [
+            *destinations,
+            *[
+                item
+                for item in self.links
+                if contact_destination_key(item) not in seen
+            ],
+        ]
+        return self
 
 
 class EducationRecord(BaseModel):
@@ -531,6 +559,11 @@ class StructuredBullet(BaseModel):
     writing_variant: BulletVariantRecord | None = None
 
 
+class ResumeContactItem(BaseModel):
+    display_text: str = Field(min_length=1)
+    destination: str | None = None
+
+
 class StructuredResume(BaseModel):
     profile_id: str
     profile_version: int
@@ -538,6 +571,7 @@ class StructuredResume(BaseModel):
     template_id: str
     display_name: str
     contact_line: str | None = None
+    contact_items: list[ResumeContactItem] = Field(default_factory=list)
     strategy: ResumeStrategy
     entity_titles: dict[str, str] = Field(default_factory=dict)
     education: list[EducationRecord] = Field(default_factory=list)

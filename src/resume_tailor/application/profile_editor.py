@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from resume_tailor.domain.contact import contact_destination_key
 from resume_tailor.domain.models import (
     ContactInfo,
     EducationRecord,
@@ -57,8 +58,19 @@ def _clean_list(values: Any) -> list[str]:
     return result
 
 
-def _contact_link_rows(links: list[str]) -> list[dict[str, str]]:
-    return [{"id": f"link-{index}", "value": link} for index, link in enumerate(links)]
+def _contact_link_rows(contact: ContactInfo) -> list[dict[str, str]]:
+    labels = {
+        contact_destination_key(link.destination): link.display_text
+        for link in contact.hyperlinks
+    }
+    return [
+        {
+            "id": f"link-{index}",
+            "label": labels.get(contact_destination_key(link), ""),
+            "value": link,
+        }
+        for index, link in enumerate(contact.links)
+    ]
 
 
 def _entry_state(profile: MasterProfile, kind: EntityKind) -> list[dict[str, Any]]:
@@ -153,7 +165,7 @@ def profile_to_editor_state(profile: MasterProfile) -> EditorState:
                 "email": profile.contact.email or "",
                 "phone": profile.contact.phone or "",
                 "location": profile.contact.location or "",
-                "links": _contact_link_rows(profile.contact.links),
+                "links": _contact_link_rows(profile.contact),
             },
             "education": [
                 {
@@ -388,6 +400,16 @@ def editor_state_to_profile(state: EditorState) -> MasterProfile:
     invalid_links = [link for link in links if not editor_link_is_structurally_valid(link)]
     if invalid_links:
         raise ValueError(f"Invalid profile link: {invalid_links[0]}")
+    hyperlinks = [
+        {
+            "display_text": str(item.get("label", "")).strip(),
+            "destination": str(item.get("value", "")).strip(),
+        }
+        for item in state.get("contact", {}).get("links", [])
+        if isinstance(item, dict)
+        and str(item.get("label", "")).strip()
+        and str(item.get("value", "")).strip()
+    ]
     display_name = str(state.get("display_name", "")).strip()
     if not display_name:
         raise ValueError("Candidate name is required.")
@@ -401,6 +423,7 @@ def editor_state_to_profile(state: EditorState) -> MasterProfile:
             "phone": _clean_optional(state.get("contact", {}).get("phone")),
             "location": _clean_optional(state.get("contact", {}).get("location")),
             "links": links,
+            "hyperlinks": hyperlinks,
         },
         "education": _education(state),
         "experiences": experiences,

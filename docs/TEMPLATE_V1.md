@@ -10,7 +10,7 @@ authority.
 
 The runtime authority is the sanitized, content-neutral packaged DOCX at
 `resume_tailor/templates/template_v1.docx` (SHA-256
-`2B4EEAE9BED52FF27B86CB1E9F75516D0A9935359658849589B37FFEF0A5974E`).
+`55CFEE26AE4702B143A329B2F320A8D94A4C04F7F6DF600A5A2D29CC58883245`).
 It retains the canonical section, style, numbering, theme, font-table,
 paragraph, run, indentation, spacing, and DrawingML structures. Personal body
 text, external hyperlink relationships, custom properties, author metadata,
@@ -60,6 +60,22 @@ Each prototype retains its source style, direct run formatting, indentation,
 line behavior, numbering, keep behavior, and paragraph spacing. Dynamic
 metadata rows contain a static right-aligned tab at 11,160 twips, the usable
 width boundary. Runtime never discovers or reapplies tab geometry.
+
+The packaged prototype spacing is a deliberate presentation refinement rather
+than a blanket compression rule. Major section headings use the strongest
+separation, repeated entries and project titles use a smaller entry-level gap,
+and bullets plus their metadata rows use the tightest spacing. Name/contact
+separation remains compact. Fonts, margins, tab geometry, bullet indentation,
+typography hierarchy, and line behavior remain source-derived. Section and
+entry headings are kept with their following content so spacing does not create
+orphaned labels.
+
+Contact hyperlinks are structured as reviewed display text plus destination.
+The renderer emits real external Word hyperlink relationships while keeping
+phone and location as ordinary text. Profiles that only contain legacy string
+links remain supported: safe web/email strings receive deterministic compact
+display text, while malformed or unsafe destinations remain non-clickable and
+are never guessed.
 
 The canonical Education rule occupied a source-only empty DrawingML paragraph.
 The packaged template folds that rule into the nonblank Education heading as a

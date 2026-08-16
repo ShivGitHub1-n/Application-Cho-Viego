@@ -277,7 +277,10 @@ def _render_import(
                 raise ResumeExtractionError("Choose a DOCX or text-based PDF résumé first.")
             extracted = extract_resume_text(uploaded.name, uploaded.getvalue())
             result = dependencies.tailor_service.extract_profile_draft(
-                profile_id.strip() or "local-profile", extracted.source_format, extracted.text
+                profile_id.strip() or "local-profile",
+                extracted.source_format,
+                extracted.text,
+                extracted.contact_links,
             )
             streamlit_module.session_state["profile_extraction_draft"] = result.output
             streamlit_module.session_state["profile_extraction_source"] = extracted

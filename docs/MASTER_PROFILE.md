@@ -48,3 +48,12 @@ Every profile belongs to a user ID, may have many master-resume versions, and is
 ## Structured review editor
 
 The Streamlit extraction-review workflow uses a detached structured editor state for contact information, education, experiences, projects, evidence statements, and categorized technical skills. A successful upload extraction populates these visible controls. Conversion back to `MasterProfile` is deterministic and runs the existing Pydantic validation before persistence. Existing entry and evidence IDs are preserved; new IDs are generated deterministically. The SQLite `MasterProfileRepository` remains the only save pathway. Resume and cover-letter derived state is invalidated only when the canonical saved profile changes. An explicitly labeled, collapsed raw JSON fallback uses the same validation and repository pathway, refuses unsupported top-level fields, rejects empty input with a normal validation message, and sanitizes JSON syntax errors to line/column guidance.
+
+Reviewed contact links retain both visible display text and their actual
+destination when the imported DOCX supplies a hyperlink relationship. The
+legacy ordered `contact.links` string list remains supported and is synchronized
+with typed `contact.hyperlinks` destinations for backward compatibility. The
+structured editor exposes both fields, persistence stores them in the canonical
+profile JSON, and résumé composition carries ordered display/destination pairs
+to DOCX rendering. Hyperlinks discovered outside the links the extraction model
+classified as contact information are not promoted into the saved profile.

@@ -17,6 +17,7 @@ from resume_tailor.domain.models import (
     EducationRecord,
     EntityKind,
     GraduationStatus,
+    ResumeContactItem,
     ResumeItem,
     ResumeStrategy,
     StructuredBullet,
@@ -205,13 +206,28 @@ def _canonical_xml(element: etree._Element | None) -> bytes:
     return etree.tostring(clone, method="c14n")
 
 
-def _canonical_ppr_without_tabs(paragraph) -> bytes:
+def _canonical_styles_without_spacing(element: etree._Element) -> bytes:
+    clone = deepcopy(element)
+    for spacing in list(clone.iter(qn("w:spacing"))):
+        parent = spacing.getparent()
+        if parent is not None:
+            parent.remove(spacing)
+    return _canonical_xml(clone)
+
+
+def _canonical_ppr_without_presentation_overrides(paragraph) -> bytes:
     properties = deepcopy(paragraph._p.pPr)
     if properties is None:
         return b""
     tabs = properties.find(qn("w:tabs"))
     if tabs is not None:
         properties.remove(tabs)
+    spacing = properties.find(qn("w:spacing"))
+    if spacing is not None:
+        properties.remove(spacing)
+    keep_next = properties.find(qn("w:keepNext"))
+    if keep_next is not None:
+        properties.remove(keep_next)
     return _canonical_xml(properties)
 
 
@@ -275,7 +291,7 @@ def test_packaged_template_is_content_neutral_and_has_explicit_prototypes() -> N
         "ae5a0fd1669efd8191339fbdf118421a38fc41ca12a98bbb941e83f439bd62a8"
     )
     assert TEMPLATE_V1_DOCX_SHA256 == (
-        "2b4eeae9bed52ff27b86cb1e9f75516d0a9935359658849589b37ffef0a5974e"
+        "55cfee26ae4702b143a329b2f320a8d94a4c04f7f6df600a5a2d29cc58883245"
     )
     document = Document(template_path)
     assert document.paragraphs
@@ -357,7 +373,12 @@ def test_section_geometry_and_source_package_styles_are_preserved(tmp_path: Path
         ):
             reference_root = etree.fromstring(reference_package.read(part))
             template_root = etree.fromstring(template_package.read(part))
-            assert _canonical_xml(template_root) == _canonical_xml(reference_root)
+            if part == "word/styles.xml":
+                assert _canonical_styles_without_spacing(
+                    template_root
+                ) == _canonical_styles_without_spacing(reference_root)
+            else:
+                assert _canonical_xml(template_root) == _canonical_xml(reference_root)
 
 
 def test_styles_direct_formatting_and_education_rows_are_source_derived() -> None:
@@ -367,18 +388,18 @@ def test_styles_direct_formatting_and_education_rows_are_source_derived() -> Non
     assert _canonical_xml(template.paragraphs[0].runs[0]._r.rPr) == _canonical_xml(
         reference.paragraphs[0].runs[0]._r.rPr
     )
-    assert _canonical_ppr_without_tabs(template.paragraphs[3]) == _canonical_ppr_without_tabs(
-        reference.paragraphs[4]
-    )
-    assert _canonical_ppr_without_tabs(template.paragraphs[4]) == _canonical_ppr_without_tabs(
-        reference.paragraphs[5]
-    )
-    assert _canonical_xml(template.paragraphs[5]._p.pPr) == _canonical_xml(
-        reference.paragraphs[6]._p.pPr
-    )
-    assert _canonical_xml(template.paragraphs[6]._p.pPr) == _canonical_xml(
-        reference.paragraphs[7]._p.pPr
-    )
+    assert _canonical_ppr_without_presentation_overrides(
+        template.paragraphs[3]
+    ) == _canonical_ppr_without_presentation_overrides(reference.paragraphs[4])
+    assert _canonical_ppr_without_presentation_overrides(
+        template.paragraphs[4]
+    ) == _canonical_ppr_without_presentation_overrides(reference.paragraphs[5])
+    assert _canonical_ppr_without_presentation_overrides(
+        template.paragraphs[5]
+    ) == _canonical_ppr_without_presentation_overrides(reference.paragraphs[6])
+    assert _canonical_ppr_without_presentation_overrides(
+        template.paragraphs[6]
+    ) == _canonical_ppr_without_presentation_overrides(reference.paragraphs[7])
     assert _canonical_xml(template.paragraphs[12].runs[0]._r.rPr) == _canonical_xml(
         reference.paragraphs[17].runs[0]._r.rPr
     )
@@ -391,7 +412,6 @@ def test_metadata_rows_keep_static_right_tabs_and_education_spacing(tmp_path: Pa
     output = tmp_path / "metadata-tabs.docx"
     render_template_v1_resume(_complete_resume(), output)
     document = Document(output)
-    reference = Document(REFERENCE)
     metadata_prefixes = (
         "Example Polytechnic Institute",
         "Bachelor of Applied Engineering",
@@ -420,20 +440,146 @@ def test_metadata_rows_keep_static_right_tabs_and_education_spacing(tmp_path: Pa
     program = _paragraph(document, "Bachelor of Applied Engineering")
     awards = _paragraph(document, "Awards:")
     coursework = _paragraph(document, "Relevant Courses:")
-    assert institution.paragraph_format.space_before.twips == (
-        reference.paragraphs[4].paragraph_format.space_before.twips
-    )
-    assert program.paragraph_format.space_before.twips == (
-        reference.paragraphs[5].paragraph_format.space_before.twips
-    )
-    assert awards.paragraph_format.space_before.twips == (
-        reference.paragraphs[6].paragraph_format.space_before.twips
-    )
-    assert coursework.paragraph_format.space_before == (
-        reference.paragraphs[7].paragraph_format.space_before
-    )
+    assert institution.paragraph_format.space_before.twips == 35
+    assert program.paragraph_format.space_before.twips == 20
+    assert awards.paragraph_format.space_before.twips == 32
+    assert coursework.paragraph_format.space_before is None
+    assert coursework.style.paragraph_format.space_before.twips == 22
     assert institution.runs[0].bold is True
     assert program.runs[0].italic is True
+
+
+def test_semantic_spacing_preserves_section_entry_and_bullet_hierarchy(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "semantic-spacing.docx"
+    render_template_v1_resume(_complete_resume(), output)
+    document = Document(output)
+
+    headings = [
+        _paragraph(document, label)
+        for label in ("Education", "Technical Skills", "Technical Experience", "Projects")
+    ]
+    first_experience = _paragraph(document, "Firmware Engineer")
+    repeated_experience = _paragraph(document, "Embedded Systems Engineer")
+    project = _paragraph(document, "Sensor Platform")
+    organization = _paragraph(document, "Example Robotics")
+    bullets = [
+        paragraph
+        for paragraph in document.paragraphs
+        if paragraph._p.pPr is not None and paragraph._p.pPr.numPr is not None
+    ]
+
+    section_before = [
+        (
+            paragraph.paragraph_format.space_before
+            or paragraph.style.paragraph_format.space_before
+        ).twips
+        for paragraph in headings
+    ]
+    section_after = [
+        (
+            paragraph.paragraph_format.space_after
+            or paragraph.style.paragraph_format.space_after
+        ).twips
+        for paragraph in headings
+    ]
+    bullet_before = [
+        (
+            paragraph.paragraph_format.space_before
+            or paragraph.style.paragraph_format.space_before
+        ).twips
+        for paragraph in bullets
+    ]
+
+    assert section_before == [190, 100, 160, 100]
+    assert section_after == [88, 24, 28, 24]
+    assert all(paragraph.paragraph_format.keep_with_next for paragraph in headings)
+    assert first_experience.paragraph_format.space_before.twips == 80
+    assert repeated_experience.paragraph_format.space_before.twips == 80
+    assert project.paragraph_format.space_before.twips == 70
+    assert organization.paragraph_format.space_before.twips == 20
+    assert bullets
+    assert set(bullet_before) <= {22, 32}
+    assert min(section_before) > 80 > max(bullet_before) >= 20
+
+
+def test_contact_uses_compact_ordered_real_hyperlinks_and_safe_legacy_text(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "contact-links.docx"
+    resume = _complete_resume().model_copy(
+        update={
+            "contact_line": None,
+            "contact_items": [
+                ResumeContactItem(
+                    display_text="candidate@example.test",
+                    destination="mailto:candidate@example.test",
+                ),
+                ResumeContactItem(display_text="555-0100"),
+                ResumeContactItem(display_text="Example City, ZZ"),
+                ResumeContactItem(
+                    display_text="Code",
+                    destination="https://code.example.test/candidate",
+                ),
+                ResumeContactItem(
+                    display_text="https\\://portfolio.example.test/work/",
+                    destination="https\\://portfolio.example.test/work/",
+                ),
+            ],
+        }
+    )
+
+    render_template_v1_resume(resume, output)
+
+    with ZipFile(output) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+        relationships = package.read("word/_rels/document.xml.rels").decode()
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs = root.xpath("//w:body/w:p", namespaces=namespace)
+    contact = paragraphs[1]
+    visible = "".join(contact.xpath(".//w:t/text()", namespaces=namespace))
+    hyperlink_text = contact.xpath("./w:hyperlink//w:t/text()", namespaces=namespace)
+
+    assert visible == (
+        "candidate@example.test | 555-0100 | Example City, ZZ | Code | "
+        "portfolio.example.test/work"
+    )
+    assert hyperlink_text == [
+        "candidate@example.test",
+        "Code",
+        "portfolio.example.test/work",
+    ]
+    assert "555-0100" not in hyperlink_text
+    assert "Example City, ZZ" not in hyperlink_text
+    assert "https\\://" not in visible
+    assert "https://portfolio.example.test/work/" in relationships
+    assert "https://code.example.test/candidate" in relationships
+
+
+def test_legacy_string_contact_line_remains_compatible_without_exposing_url_scheme(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "legacy-contact.docx"
+    resume = _complete_resume().model_copy(
+        update={
+            "contact_items": [],
+            "contact_line": (
+                "candidate@example.test | 555-0100 | Example City, ZZ | "
+                "https://portfolio.example.test/work"
+            ),
+        }
+    )
+
+    render_template_v1_resume(resume, output)
+
+    with ZipFile(output) as package:
+        document_xml = package.read("word/document.xml").decode()
+        relationships = package.read("word/_rels/document.xml.rels").decode()
+    assert "portfolio.example.test/work" in document_xml
+    assert "https://portfolio.example.test/work" not in document_xml
+    assert "https://portfolio.example.test/work" in relationships
+    assert "https://555-0100" not in relationships
 
 
 def test_skill_rows_preserve_category_and_value_formatting(tmp_path: Path) -> None:

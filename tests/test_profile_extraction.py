@@ -8,7 +8,14 @@ from resume_tailor.domain.llm_models import (
     ProfileExtractionOutput,
     ProfileExtractionResult,
 )
-from resume_tailor.domain.models import EntityKind, JobPosting, MasterProfile, TemplateConstraints
+from resume_tailor.domain.models import (
+    ContactHyperlink,
+    ContactInfo,
+    EntityKind,
+    JobPosting,
+    MasterProfile,
+    TemplateConstraints,
+)
 from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer
 from resume_tailor.infrastructure.profile_repository import SQLiteMasterProfileRepository
 from tests.fakes import FakeResumeLanguageModel, metadata
@@ -48,6 +55,50 @@ def test_extraction_converts_schema_and_surfaces_uncertainty_without_persisting(
     assert repository.get("extracted-profile") is None
 
 
+def test_extraction_preserves_reviewed_docx_hyperlink_labels_and_source_order() -> None:
+    profile = _profile().model_copy(
+        update={
+            "contact": ContactInfo(
+                links=[
+                    "https://code.example.test/candidate",
+                    "https://portfolio.example.test/work",
+                ]
+            )
+        }
+    )
+    fake = FakeResumeLanguageModel(extract_profile=_response(profile))
+    source_links = (
+        ContactHyperlink(
+            display_text="Code",
+            destination="https://code.example.test/candidate",
+        ),
+        ContactHyperlink(
+            display_text="Selected work",
+            destination="https://portfolio.example.test/work",
+        ),
+        ContactHyperlink(
+            display_text="Unrelated body link",
+            destination="https://unrelated.example.test/article",
+        ),
+    )
+
+    extracted = HybridLlmServices(fake, 0, 1, False, False, False).extract_profile_draft(
+        "extracted-profile",
+        "docx",
+        "Jane Candidate\nEngineer\nBuilt firmware.",
+        source_links,
+    ).output.profile
+
+    assert extracted.contact.links == [
+        "https://code.example.test/candidate",
+        "https://portfolio.example.test/work",
+    ]
+    assert [link.model_dump() for link in extracted.contact.hyperlinks] == [
+        source_links[0].model_dump(),
+        source_links[1].model_dump(),
+    ]
+
+
 def _response(profile: MasterProfile) -> ProfileExtractionResult:
     return ProfileExtractionResult(
         metadata=metadata(LlmOperation.PROFILE_EXTRACTION),
@@ -71,7 +122,12 @@ def test_multiple_experience_bullets_become_linked_evidence_with_facts() -> None
                 ],
                 "technologies": ["STM32", "SPI", "DMA"],
             },
-            {"id": "experience-2", "title": "Software Engineer", "kind": "experience", "bullets": ["Built Python tooling."]},
+            {
+                "id": "experience-2",
+                "title": "Software Engineer",
+                "kind": "experience",
+                "bullets": ["Built Python tooling."],
+            },
         ],
     )
     fake = FakeResumeLanguageModel(extract_profile=_response(profile))
@@ -81,7 +137,11 @@ def test_multiple_experience_bullets_become_linked_evidence_with_facts() -> None
     evidence = result.output.profile.evidence
     assert len(evidence) == 3
     assert {item.entity_id for item in evidence} == {"experience-1", "experience-2"}
-    assert any("30 FPS" in item.source_text and item.technologies == ["STM32", "SPI", "DMA"] for item in evidence)
+    assert any(
+        "30 FPS" in item.source_text
+        and item.technologies == ["STM32", "SPI", "DMA"]
+        for item in evidence
+    )
     assert any("20%" in item.source_text for item in evidence)
     assert len({item.id for item in evidence}) == len(evidence)
     assert fake.calls["extract_profile"] == 1
@@ -106,7 +166,10 @@ def test_project_bullets_and_existing_evidence_are_not_fabricated() -> None:
         "project-profile", "pdf", "source"
     )
     assert [item.entity_id for item in result.output.profile.evidence] == ["project-1"]
-    assert result.output.profile.evidence[0].source_text == "Integrated ROS 2 navigation with LiDAR."
+    assert (
+        result.output.profile.evidence[0].source_text
+        == "Integrated ROS 2 navigation with LiDAR."
+    )
     assert result.output.profile.evidence[0].id.startswith("evidence:")
 
 
@@ -148,7 +211,11 @@ def test_normalized_extraction_produces_selectable_planner_evidence() -> None:
     ).output.profile
     plan = DeterministicResumeOptimizer().create_plan(
         extracted,
-        JobPosting(id="job", title="Embedded Firmware Engineer", description="Develop STM32 firmware."),
+        JobPosting(
+            id="job",
+            title="Embedded Firmware Engineer",
+            description="Develop STM32 firmware.",
+        ),
         TemplateConstraints(),
     )
     assert plan.selected_claim_ids

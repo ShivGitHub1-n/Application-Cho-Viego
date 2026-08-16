@@ -846,6 +846,7 @@ def _render_profile_page(
                     selected_id,
                     extracted.source_format,
                     extracted.text,
+                    extracted.contact_links,
                 )
                 st.session_state["profile_extraction_draft"] = result.output
                 st.session_state["profile_extraction_source"] = extracted
@@ -945,8 +946,13 @@ def _render_structured_profile_editor(
         for index, link in enumerate(list(contact.get("links", []))):
             link_id = link.get("id", f"link-{index}")
             with st.container(horizontal=True, vertical_alignment="bottom"):
+                link["label"] = st.text_input(
+                    f"Link {index + 1} display text",
+                    link.get("label", ""),
+                    key=_editor_widget_key(source_key, "link-label", link_id),
+                )
                 link["value"] = st.text_input(
-                    f"Link {index + 1}",
+                    f"Link {index + 1} destination",
                     link.get("value", ""),
                     key=_editor_widget_key(source_key, "link", link_id),
                 )
@@ -962,7 +968,11 @@ def _render_structured_profile_editor(
             key=_editor_widget_key(source_key, "add-link"),
         ):
             contact.setdefault("links", []).append(
-                {"id": f"link-{len(contact.get('links', []))}", "value": ""}
+                {
+                    "id": f"link-{len(contact.get('links', []))}",
+                    "label": "",
+                    "value": "",
+                }
             )
             st.rerun()
 

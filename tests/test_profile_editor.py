@@ -19,7 +19,7 @@ from resume_tailor.application.profile_editor import (
     remove_entry,
 )
 from resume_tailor.application.skill_categories import propose_reviewed_skill_categories
-from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.models import ContactHyperlink, ContactInfo, MasterProfile
 
 
 def _profile() -> MasterProfile:
@@ -149,6 +149,41 @@ def test_missing_optional_project_metadata_is_allowed_and_reviewed_country_is_pr
     assert profile.contact.location == "Canada"
     assert profile.projects[0].start_date is None
     assert profile.projects[0].location is None
+
+
+def test_contact_hyperlink_labels_destinations_and_order_survive_editor_round_trip() -> None:
+    profile = _profile().model_copy(
+        update={
+            "contact": ContactInfo(
+                email="candidate@example.test",
+                phone="555-0100",
+                location="Example City",
+                links=[
+                    "https://code.example.test/candidate",
+                    "https://portfolio.example.test/work",
+                ],
+                hyperlinks=[
+                    ContactHyperlink(
+                        display_text="Code",
+                        destination="https://code.example.test/candidate",
+                    ),
+                    ContactHyperlink(
+                        display_text="Selected work",
+                        destination="https://portfolio.example.test/work",
+                    ),
+                ],
+            )
+        }
+    )
+
+    state = profile_to_editor_state(profile)
+    edited = editor_state_to_profile(state)
+
+    assert [(row["label"], row["value"]) for row in state["contact"]["links"]] == [
+        ("Code", "https://code.example.test/candidate"),
+        ("Selected work", "https://portfolio.example.test/work"),
+    ]
+    assert edited.contact == profile.contact
 
 
 def test_empty_editor_and_empty_json_have_clear_validation_messages() -> None:

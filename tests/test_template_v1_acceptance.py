@@ -475,7 +475,7 @@ def test_page_utilization_uses_static_template_v1_calibration_floor(
     assert complete_diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL
     assert canonical_diagnostic.status is PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
     assert overflow_diagnostic.status is PageUtilizationStatus.OVERFLOW
-    assert complete_diagnostic.estimated_utilization_ratio == pytest.approx(0.6669571045576408)
+    assert complete_diagnostic.estimated_utilization_ratio == pytest.approx(0.6617292225201072)
     assert canonical_diagnostic.estimated_utilization_ratio == pytest.approx(0.964343163538874)
     assert complete_diagnostic.severe_underfill_threshold == TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
     assert (

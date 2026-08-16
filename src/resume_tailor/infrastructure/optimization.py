@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from itertools import combinations
 
 from resume_tailor.application.skill_selection import DeterministicSkillSelector
+from resume_tailor.domain.contact import (
+    compact_contact_display,
+    contact_destination_key,
+    normalize_contact_destination,
+    safe_contact_display,
+)
 from resume_tailor.domain.job_discovery.role_signals import (
     ROLE_SIGNAL_CATALOG,
     classify_role_signals,
@@ -22,6 +28,7 @@ from resume_tailor.domain.models import (
     MasterProfile,
     ProfileFitAssessment,
     ProfileFitStatus,
+    ResumeContactItem,
     ResumeItem,
     ResumeStrategy,
     ReviewedTechnicalSkill,
@@ -727,13 +734,15 @@ class EvidenceBoundResumeWriter:
                     value=skill.value, source_reference="generated-demonstrated-skill"
                 )
             )
+        contact_items = self._contact_items(profile)
         return StructuredResume(
             profile_id=profile.id,
             profile_version=profile.version,
             posting_id=plan.posting_id,
             template_id=plan.template_id,
             display_name=profile.display_name,
-            contact_line=self._contact_line(profile),
+            contact_line=" | ".join(item.display_text for item in contact_items) or None,
+            contact_items=contact_items,
             strategy=plan.strategy,
             entity_titles={item.id: item.title for item in profile.experiences + profile.projects},
             education=plan.education,
@@ -759,11 +768,48 @@ class EvidenceBoundResumeWriter:
 
     @staticmethod
     def _contact_line(profile: MasterProfile) -> str | None:
-        parts = [
-            profile.contact.email,
-            profile.contact.phone,
-            profile.contact.location,
-            *profile.contact.links,
-        ]
-        populated = [part for part in parts if part]
-        return " | ".join(populated) or None
+        items = EvidenceBoundResumeWriter._contact_items(profile)
+        return " | ".join(item.display_text for item in items) or None
+
+    @staticmethod
+    def _contact_items(profile: MasterProfile) -> list[ResumeContactItem]:
+        items: list[ResumeContactItem] = []
+        if profile.contact.email:
+            email = profile.contact.email.strip()
+            items.append(
+                ResumeContactItem(
+                    display_text=email,
+                    destination=normalize_contact_destination(email),
+                )
+            )
+        for value in (profile.contact.phone, profile.contact.location):
+            if value and value.strip():
+                items.append(ResumeContactItem(display_text=value.strip()))
+
+        seen_destinations: set[str] = set()
+        for link in profile.contact.hyperlinks:
+            key = contact_destination_key(link.destination)
+            if not key or key in seen_destinations:
+                continue
+            items.append(
+                ResumeContactItem(
+                    display_text=safe_contact_display(
+                        link.display_text,
+                        link.destination,
+                    ),
+                    destination=normalize_contact_destination(link.destination),
+                )
+            )
+            seen_destinations.add(key)
+        for value in profile.contact.links:
+            key = contact_destination_key(value)
+            if not key or key in seen_destinations:
+                continue
+            items.append(
+                ResumeContactItem(
+                    display_text=compact_contact_display(value),
+                    destination=normalize_contact_destination(value),
+                )
+            )
+            seen_destinations.add(key)
+        return items

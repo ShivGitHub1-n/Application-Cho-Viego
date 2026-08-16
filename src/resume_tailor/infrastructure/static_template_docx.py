@@ -6,12 +6,20 @@ from pathlib import Path
 
 from docx import Document
 from docx.document import Document as DocumentType
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from lxml import etree  # type: ignore[import-untyped]
 
+from resume_tailor.domain.contact import (
+    compact_contact_display,
+    normalize_contact_destination,
+    safe_contact_display,
+)
 from resume_tailor.domain.models import (
     EducationRecord,
     EntityKind,
+    ResumeContactItem,
     ResumeItem,
     StructuredBullet,
     StructuredResume,
@@ -82,13 +90,9 @@ class StaticTemplateV1Renderer:
         paragraphs = [
             catalog.populate("{{NAME}}", {"{{NAME}}": resume.display_name}),
         ]
-        if resume.contact_line:
-            paragraphs.append(
-                catalog.populate(
-                    "{{CONTACT_LINE}}",
-                    {"{{CONTACT_LINE}}": resume.contact_line},
-                )
-            )
+        contact_items = resume.contact_items or _legacy_contact_items(resume.contact_line)
+        if contact_items:
+            paragraphs.append(catalog.contact(contact_items))
         if resume.education:
             paragraphs.append(catalog.heading("Education"))
             paragraphs.extend(self._education_paragraphs(resume, catalog))
@@ -297,6 +301,7 @@ class StaticTemplateV1Renderer:
 
 class _TemplateCatalog:
     def __init__(self, document: DocumentType) -> None:
+        self._document = document
         self._paragraphs = [deepcopy(paragraph._p) for paragraph in document.paragraphs]
         self._by_heading = {
             paragraph.text: deepcopy(paragraph._p)
@@ -317,6 +322,54 @@ class _TemplateCatalog:
     def heading(self, label: str) -> etree._Element:
         paragraph = deepcopy(self._by_heading[label])
         _strip_template_markup(paragraph)
+        return paragraph
+
+    def contact(self, items: list[ResumeContactItem]) -> etree._Element:
+        matches = [
+            paragraph
+            for paragraph in self._paragraphs
+            if "{{CONTACT_LINE}}" in _paragraph_text(paragraph)
+        ]
+        if len(matches) != 1:
+            raise StaticTemplateRenderError(
+                "Template contact placeholder must match exactly one paragraph."
+            )
+        paragraph = deepcopy(matches[0])
+        _strip_template_markup(paragraph)
+        prototype = next(
+            (
+                run
+                for run in paragraph.iter(qn("w:r"))
+                if "{{CONTACT_LINE}}" in _paragraph_text(run)
+            ),
+            None,
+        )
+        if prototype is None:
+            raise StaticTemplateRenderError("Template contact run prototype is unavailable.")
+        for child in list(paragraph):
+            if child.tag in {qn("w:r"), qn("w:hyperlink")}:
+                paragraph.remove(child)
+        for index, item in enumerate(items):
+            if index:
+                paragraph.append(_contact_run(prototype, " | "))
+            target = normalize_contact_destination(item.destination or "")
+            display_text = safe_contact_display(item.display_text, item.destination)
+            if not display_text:
+                continue
+            run = _contact_run(prototype, display_text, hyperlink=bool(target))
+            if target is None:
+                paragraph.append(run)
+                continue
+            relationship_id = self._document.part.relate_to(
+                target,
+                RT.HYPERLINK,
+                is_external=True,
+            )
+            hyperlink = OxmlElement("w:hyperlink")
+            hyperlink.set(qn("r:id"), relationship_id)
+            hyperlink.set(qn("w:history"), "1")
+            hyperlink.append(run)
+            paragraph.append(hyperlink)
         return paragraph
 
     def populate(
@@ -449,6 +502,56 @@ def _paragraph_text(paragraph: etree._Element) -> str:
         elif element.tag == qn("w:tab"):
             pieces.append("\t")
     return "".join(pieces)
+
+
+def _contact_run(
+    prototype: etree._Element,
+    text: str,
+    *,
+    hyperlink: bool = False,
+) -> etree._Element:
+    run = deepcopy(prototype)
+    for child in list(run):
+        if child.tag != qn("w:rPr"):
+            run.remove(child)
+    properties = run.find(qn("w:rPr"))
+    if properties is None:
+        properties = OxmlElement("w:rPr")
+        run.insert(0, properties)
+    if hyperlink:
+        style = properties.find(qn("w:rStyle"))
+        if style is None:
+            style = OxmlElement("w:rStyle")
+            properties.insert(0, style)
+        style.set(qn("w:val"), "Hyperlink")
+        color = properties.find(qn("w:color"))
+        if color is None:
+            color = OxmlElement("w:color")
+            properties.append(color)
+        color.set(qn("w:val"), "auto")
+    text_node = OxmlElement("w:t")
+    text_node.text = text
+    if text.startswith(" ") or text.endswith(" "):
+        text_node.set(_XML_SPACE, "preserve")
+    run.append(text_node)
+    return run
+
+
+def _legacy_contact_items(contact_line: str | None) -> list[ResumeContactItem]:
+    if not contact_line:
+        return []
+    items: list[ResumeContactItem] = []
+    for part in (value.strip() for value in contact_line.split("|")):
+        if not part:
+            continue
+        destination = normalize_contact_destination(part)
+        items.append(
+            ResumeContactItem(
+                display_text=(compact_contact_display(part) if destination else part),
+                destination=destination,
+            )
+        )
+    return items
 
 
 def _ordered_records(
