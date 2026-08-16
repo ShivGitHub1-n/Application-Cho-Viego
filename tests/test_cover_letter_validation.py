@@ -274,10 +274,56 @@ def test_long_posting_copy_is_rejected_but_grounded_paraphrase_passes() -> None:
     copied_result = CoverLetterValidator().validate_output(copied, evidence, research, posting)
     paraphrased_result = CoverLetterValidator().validate_output(output, evidence, research, posting)
 
-    assert any("copied_posting_language" in claim.codes for claim in copied_result.rejected_claims)
+    copied_claim = next(
+        claim
+        for claim in copied_result.rejected_claims
+        if "copied_posting_language" in claim.codes
+    )
+    assert copied_claim.paragraph_index == 0
+    assert copied_claim.sentence_index == 0
+    assert copied_claim.text == posting.description
     assert not any(
         "copied_posting_language" in claim.codes for claim in paraphrased_result.rejected_claims
     )
+
+
+def test_canonical_senior_posting_title_is_not_an_experience_promotion() -> None:
+    profile, posting, plan = cover_letter_case(
+        title="Senior Embedded Firmware Engineer",
+    )
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[0]
+
+    result = CoverLetterValidator().validate_output(output, evidence, research, posting)
+    integrity = next(gate for gate in result.quality_gates if gate.gate == "narrative_integrity")
+
+    assert integrity.status is CoverLetterQualityGateStatus.PASSED
+    assert "unsupported_title_change" not in integrity.detail
+
+
+def test_canonical_senior_posting_title_cannot_be_claimed_as_experience() -> None:
+    profile, posting, plan = cover_letter_case(
+        title="Senior Embedded Firmware Engineer",
+    )
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[0]
+    unsafe = _replace_paragraph_text(
+        output,
+        1,
+        "As Senior Embedded Firmware Engineer, I built STM32 firmware and tested SPI.",
+    )
+
+    result = CoverLetterValidator().validate_output(unsafe, evidence, research, posting)
+    integrity = next(gate for gate in result.quality_gates if gate.gate == "narrative_integrity")
+
+    assert integrity.status is CoverLetterQualityGateStatus.FAILED
+    assert "unsupported_title_change" in integrity.detail
 
 
 def test_formulaic_opening_and_closing_are_rejected() -> None:

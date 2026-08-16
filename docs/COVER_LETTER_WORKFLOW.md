@@ -72,11 +72,15 @@ authority.
 One provider request returns only paragraph purpose/text, candidate evidence
 IDs, company research IDs, an optional narrative-thread ID, and a length class.
 The deterministic writer produces bounded concise, standard, and developed
-variants. With three substantive threads, the developed variant normally uses
-five paragraphs: a company-and-role opening, three distinct engineering
-threads, and a fit-and-closing paragraph. Supporting facts from the same
-experience or project remain in that thread rather than becoming repetitive
-paragraphs. The writer uses the canonical extracted company unless the user
+variants. Each variant uses a direct company-and-role opening, two synthesized
+engineering paragraphs, and a fit-and-closing paragraph. The concise candidate
+leads with the strongest representatives, the standard candidate rotates the
+supported thread emphasis, and the developed candidate adds deeper support
+within up to three threads. The source-bound fallback reverses thread priority
+so it is a genuinely different supported strategy. Supporting facts from the
+same experience or project remain in that thread rather than becoming
+repetitive paragraphs. The writer uses the canonical extracted company unless
+the user
 supplies a nonblank override, turns imperative posting fragments into noun
 phrases or complete clauses, and keeps validator terminology out of
 employer-facing prose. It may explain another supported constraint,
@@ -120,6 +124,8 @@ silently accepted.
 
 Every candidate also produces a safe validator-separated diagnostic covering
 structure, company grounding, narrative consistency, and claim grounding.
+Copied-posting diagnostics identify the exact generated sentence and paragraph
+that triggered the rejection without including unrelated profile evidence.
 Successful artifacts retain those diagnostics; when all candidates fail, the
 UI shows concise candidate-level rejection codes and summaries without source
 evidence text or personal information.

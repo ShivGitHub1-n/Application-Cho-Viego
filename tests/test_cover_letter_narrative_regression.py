@@ -24,7 +24,7 @@ from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConst
 from resume_tailor.infrastructure.cover_letter_rendering import CoverLetterRenderer
 from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer
 from resume_tailor.infrastructure.rendering import PageCountVerificationError
-from tests.cover_letter_helpers import ControlledCoverLetterRenderer
+from tests.cover_letter_helpers import ControlledCoverLetterRenderer, cover_letter_case
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_FIXTURE = ROOT / "tests" / "fixtures" / "world_star_tech_production_profile.json"
@@ -207,9 +207,18 @@ def test_deterministic_variants_synthesize_threads_without_provider_or_research_
         CoverLetterLengthClass.DEVELOPED,
     ]
     assert all(len(output.paragraphs) == 4 for output in outputs)
-    assert all(
-        len(output.paragraphs[1].candidate_evidence_ids) >= 2 for output in outputs
-    )
+    evidence_strategies = [
+        tuple(
+            dict.fromkeys(
+                evidence_id
+                for paragraph in output.paragraphs[1:-1]
+                for evidence_id in paragraph.candidate_evidence_ids
+            )
+        )
+        for output in outputs
+    ]
+    assert len(set(evidence_strategies)) == len(evidence_strategies)
+    assert len(evidence_strategies[0]) < len(evidence_strategies[-1])
     assert not hasattr(composer, "language_model")
     assert not hasattr(composer, "company_research")
 
@@ -224,11 +233,54 @@ def test_production_variants_are_grounded_and_keep_crest_explicitly_adjacent() -
         assert not _failed_codes(validated)
 
     developed_text = " ".join(paragraph.text for paragraph in outputs[-1].paragraphs)
-    assert "adjacent" in developed_text.casefold()
-    assert "not evidence of autonomous driving or multimodal reasoning experience" in (
+    assert "i do not claim direct autonomous driving or multimodal reasoning experience" in (
         developed_text.casefold()
     )
     assert "financial" in developed_text.casefold()
+
+
+def test_senior_target_title_and_concise_posting_facts_produce_an_artifact() -> None:
+    profile, posting, plan = cover_letter_case(
+        title="Senior Embedded Firmware Engineer",
+        company="Northwind Robotics",
+        description=(
+            "Develop embedded firmware for STM32 sensor controllers. Validate SPI "
+            "communication and build automated hardware test systems for autonomous mobile "
+            "robots. Work with electrical engineers to diagnose interface failures and "
+            "improve controller reliability."
+        ),
+    )
+    service = CoverLetterService(
+        renderer=ControlledCoverLetterRenderer([0.87, 0.90, 0.92]),
+    )
+
+    artifact = service.generate_artifact(
+        profile,
+        posting,
+        plan,
+        date_text="August 16, 2026",
+    )
+
+    failed = {
+        gate.code
+        for gate in artifact.quality_gates
+        if gate.status.value == "failed"
+    }
+    text = " ".join(paragraph.text for paragraph in artifact.letter.paragraphs)
+    accepted = [
+        candidate
+        for candidate in artifact.candidate_validations
+        if candidate.rendering_attempted
+    ]
+    assert artifact.ready_for_review
+    assert accepted
+    assert not failed
+    assert "Northwind Robotics" in text
+    assert "Senior Embedded Firmware Engineer" in text
+    assert "Firmware Intern" in text
+    assert "Test Engineering Assistant" in text
+    assert all("unsupported_title_change" not in item.rejection_codes for item in accepted)
+    assert all("copied_posting_language" not in item.rejection_codes for item in accepted)
 
 
 def test_substantive_developed_variant_improves_density_and_reaches_preferred_band(

@@ -35,6 +35,7 @@ from resume_tailor.infrastructure.rendering import (
     PageCountMeasurement,
     PageCountVerificationError,
 )
+from tests.cover_letter_helpers import rich_cover_letter_case
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_FIXTURE = ROOT / "tests" / "fixtures" / "world_star_tech_production_profile.json"
@@ -166,6 +167,66 @@ def _configure_offline_app(
     monkeypatch.setattr(dependencies, "CoverLetterRenderer", cover_renderer_factory)
     monkeypatch.setattr(dependencies, "GeminiResumeLanguageModel", forbidden_provider)
     return pagination, research_fetcher, cover_renderers, provider_constructions
+
+
+def test_production_streamlit_accepts_grounded_synthetic_senior_role(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_offline_app(monkeypatch, tmp_path)
+    profile, synthetic_posting, _ = rich_cover_letter_case()
+    dependencies.create_profile_repository(Settings()).save(profile)
+
+    app = AppTest.from_file(str(ROOT / "src" / "resume_tailor" / "frontend" / "app.py"))
+    app.session_state["profile_id"] = profile.id
+    app.run()
+
+    _navigate(app, "resume_studio")
+    target_title = "Senior Hardware Integration Engineer"
+    app.text_input(key="_resume_studio_job_title_widget").input(target_title).run()
+    app.text_area(key="_resume_studio_job_description_widget").input(
+        f"Company: {synthetic_posting.company_name}\n{synthetic_posting.description}"
+    ).run()
+    app.button(key="resume-create-strategy").click().run(timeout=30)
+    posting_fingerprint = content_fingerprint(app.session_state["posting"])
+    assert app.session_state["workflow_posting_fingerprint"] == posting_fingerprint
+
+    app.button(key="resume-to-evidence").click().run()
+    app.button(key="resume-build-document").click().run(timeout=60)
+    _navigate(app, "cover_letters")
+    next(button for button in app.button if button.label == "Generate cover letter").click().run(
+        timeout=60
+    )
+
+    assert not app.exception
+    assert not app.error
+    artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
+    accepted = [
+        candidate
+        for candidate in artifact.candidate_validations
+        if candidate.rendering_attempted
+    ]
+    letter_text = " ".join(paragraph.text for paragraph in artifact.letter.paragraphs)
+    used_evidence_ids = {
+        evidence_id
+        for paragraph in artifact.letter.paragraphs
+        for evidence_id in paragraph.candidate_evidence_ids
+    }
+    used_titles = {
+        record.entry_title
+        for record in artifact.evidence_records
+        if record.id in used_evidence_ids and record.entry_title
+    }
+
+    assert artifact.ready_for_review
+    assert artifact.fingerprint_inputs.posting_fingerprint == posting_fingerprint
+    assert artifact.letter.job_title == target_title
+    assert synthetic_posting.company_name in letter_text
+    assert accepted
+    assert used_titles
+    assert all(title in letter_text for title in used_titles)
+    assert all("unsupported_title_change" not in item.rejection_codes for item in accepted)
+    assert all("copied_posting_language" not in item.rejection_codes for item in accepted)
 
 
 def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(

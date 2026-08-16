@@ -240,15 +240,28 @@ class CoverLetterValidator:
         text = " ".join(generated.text.split())
         style_codes = self._style_codes(text, generated.purpose, posting)
         if style_codes:
+            diagnostic_text = text
+            sentence_index = None
+            if "copied_posting_language" in style_codes:
+                for candidate_index, sentence in enumerate(self._sentences(text)):
+                    if "copied_posting_language" in self._style_codes(
+                        sentence,
+                        generated.purpose,
+                        posting,
+                    ):
+                        diagnostic_text = sentence
+                        sentence_index = candidate_index
+                        break
             diagnostic = self._claim(
                 index,
-                text,
+                diagnostic_text,
                 generated.candidate_evidence_ids,
                 generated.company_research_ids,
                 CoverLetterValidationStatus.REJECTED,
                 style_codes,
                 "Paragraph failed local writing-policy checks.",
                 paragraph_index=index,
+                sentence_index=sentence_index,
             )
             return None, [diagnostic], []
         if generated.source_bound_sentences:
@@ -523,6 +536,43 @@ class CoverLetterValidator:
                 posting,
                 [*posting_facts, *verified_facts],
             )
+            explicit_company_or_role_reference = bool(
+                (
+                    posting.company_name
+                    and posting.company_name.casefold() in authority.text.casefold()
+                )
+                or re.search(
+                    r"\b(?:company|employer|organization|posting|position|"
+                    r"this role|the role|your)\b",
+                    authority.text,
+                    re.IGNORECASE,
+                )
+            )
+            candidate_narrative = bool(
+                re.search(
+                    r"\b(?:this|that|my)\s+(?:work|method|experience|project)\b|"
+                    r"\b(?:these|those)\s+(?:choices|results)\b|"
+                    r"\bat that boundary\b|\bdemonstrated technical work\b",
+                    authority.text,
+                    re.IGNORECASE,
+                )
+                or any(
+                    record.entry_title
+                    and record.entry_title.casefold() in authority.text.casefold()
+                    for record in candidate_records
+                )
+            )
+            if (
+                candidate_records
+                and posting_facts
+                and not verified_facts
+                and not explicit_company_or_role_reference
+                and candidate_narrative
+            ):
+                # Posting facts are attached to the whole deterministic paragraph so its
+                # relationship sentence can use them. Explicit candidate-narrative prose
+                # in that paragraph is not thereby a company assertion.
+                company_sentence = False
             if (
                 company_sentence
                 and not self._is_application_intent(authority.text)
@@ -1366,17 +1416,27 @@ class CoverLetterValidator:
             for record in evidence
             if (title := (record.entry_title or "").strip())
         }
-        promoted_titles = {
-            match.group(0).strip().casefold()
-            for match in re.finditer(
-                r"\b(?:chief|director|head|lead|manager|principal|senior|staff)\s+"
-                r"(?:[A-Z][A-Za-z0-9&+/-]*\s+){0,5}"
-                r"(?:engineer|architect|designer|researcher|developer|manager)\b",
-                text,
-                re.IGNORECASE,
+        posting_title = posting.title.casefold()
+        promoted_title_matches = re.finditer(
+            r"\b(?:chief|director|head|lead|manager|principal|senior|staff)\s+"
+            r"(?:[A-Z][A-Za-z0-9&+/-]*\s+){0,5}"
+            r"(?:engineer|architect|designer|researcher|developer|manager)\b",
+            text,
+            re.IGNORECASE,
+        )
+        unsupported_title = any(
+            (title := match.group(0).strip().casefold()) not in canonical_titles
+            and not (
+                title == posting_title
+                and re.match(
+                    r"\s+(?:role|position)\b",
+                    text[match.end() :],
+                    re.IGNORECASE,
+                )
             )
-        }
-        if promoted_titles - canonical_titles:
+            for match in promoted_title_matches
+        )
+        if unsupported_title:
             codes.append("unsupported_title_change")
 
         degree_terms = re.findall(
@@ -1615,16 +1675,22 @@ class DeterministicCoverLetterComposer:
         ]
         if not factual:
             raise ValueError("A deterministic cover letter requires reviewed candidate evidence")
-        developed_evidence = factual[: min(6, len(factual))]
+        threads = self._evidence_threads(factual)
+        concise_evidence = [record for thread in threads[:2] for record in thread[:1]]
+        standard_threads = [*threads[1:3], *threads[:1]]
+        standard_evidence = [
+            record for thread in standard_threads[:3] for record in thread[:1]
+        ]
+        developed_evidence = [record for thread in threads[:3] for record in thread[:2]]
         return [
             self._compose(
-                developed_evidence,
+                concise_evidence,
                 research,
                 posting,
                 CoverLetterLengthClass.CONCISE,
             ),
             self._compose(
-                developed_evidence,
+                standard_evidence,
                 research,
                 posting,
                 CoverLetterLengthClass.STANDARD,
@@ -1648,8 +1714,10 @@ class DeterministicCoverLetterComposer:
         ]
         if not factual:
             raise ValueError("A source-bound fallback requires reviewed candidate evidence")
+        threads = list(reversed(self._evidence_threads(factual)))
+        fallback_evidence = [record for thread in threads[:3] for record in thread[:2]]
         return self._compose(
-            factual[: min(6, len(factual))],
+            fallback_evidence,
             research,
             posting,
             CoverLetterLengthClass.DEVELOPED,
@@ -1741,6 +1809,7 @@ class DeterministicCoverLetterComposer:
         if not threads:
             raise ValueError("A deterministic cover letter requires an evidence thread")
         representatives = [thread[0] for thread in threads]
+        connection_records = representatives[:2]
         posting_concepts = self._prioritize_role_concepts(
             self._authority_concepts(research, posting),
             posting,
@@ -1761,11 +1830,11 @@ class DeterministicCoverLetterComposer:
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.OPENING,
                 text=self._narrative_opening(
-                    representatives,
+                    connection_records,
                     posting,
                     posting_concepts,
                 ),
-                evidence_ids=[item.id for item in representatives],
+                evidence_ids=[item.id for item in connection_records],
                 posting_fact_ids=posting_fact_ids,
                 metadata=[
                     CoverLetterCanonicalMetadata.COMPANY_NAME,
@@ -1813,11 +1882,11 @@ class DeterministicCoverLetterComposer:
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.CLOSING,
                 text=self._narrative_closing(
-                    representatives,
+                    connection_records,
                     posting,
                     posting_concepts,
                 ),
-                evidence_ids=[item.id for item in representatives],
+                evidence_ids=[item.id for item in connection_records],
                 posting_fact_ids=posting_fact_ids,
                 metadata=[
                     CoverLetterCanonicalMetadata.COMPANY_NAME,
@@ -1839,7 +1908,7 @@ class DeterministicCoverLetterComposer:
         destination = f" at {company}" if company else ""
         role_focus = self._joined(posting_concepts[:3])
         candidate_focus = self._joined(
-            [self._thread_focus(item) for item in evidence[:3]]
+            [self._thread_focus(item) for item in evidence[:2]]
         )
         return " ".join(
             [
@@ -1847,8 +1916,8 @@ class DeterministicCoverLetterComposer:
                 f"The role's focus on {role_focus} connects directly to my experience "
                 f"with {candidate_focus}.",
                 (
-                    "That combination of technical development and practical engineering "
-                    "constraints is what interests me about the position."
+                    f"What interests me is the need to keep {posting_concepts[0]} connected "
+                    f"to {self._thread_focus(evidence[0])} through implementation."
                 ),
             ]
         )
@@ -1868,23 +1937,22 @@ class DeterministicCoverLetterComposer:
         ]
         focuses = [self._thread_focus(record) for record in records]
         sentences.append(
-            "This thread adds a complementary view of how technical choices affect "
-            "behavior at the system boundary."
+            "This work linked hardware testing to interface behavior."
             if secondary
-            else "Together, my work connected technical choices to practical "
-            "implementation constraints."
+            else "Across this work, technical choices stayed tied to implementation "
+            "constraints and observable test behavior."
         )
         if adjacent:
             adjacent_scope = " or ".join(posting_concepts[:2])
             sentences.extend(
                 [
                     (
-                        "This thread is adjacent to the role, not evidence of "
-                        f"{adjacent_scope} experience."
+                        f"The connection is {self._joined(focuses[:2])}; I do not claim "
+                        f"direct {adjacent_scope} experience."
                     ),
                     (
-                        f"Its narrower relevance is the demonstrated work with "
-                        f"{self._joined(focuses[:2])}."
+                        "That method required implementation decisions to remain connected "
+                        "to observable system behavior."
                     ),
                 ]
             )
@@ -1898,12 +1966,12 @@ class DeterministicCoverLetterComposer:
                 sentences.extend(
                     [
                         (
-                            "That perspective helps me distinguish a transferable method "
-                            "from a claim of direct domain experience."
+                            "At that boundary, interface behavior remained tied to measured "
+                            "test results."
                         ),
                         (
-                            "Keeping that boundary explicit lets the strongest demonstrated "
-                            "connection remain central."
+                            "That is the transferable engineering method I would bring to "
+                            "the role."
                         ),
                     ]
                 )
@@ -1950,7 +2018,7 @@ class DeterministicCoverLetterComposer:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
         candidate_focus = self._joined(
-            [self._thread_focus(item) for item in evidence[:3]]
+            [self._thread_focus(item) for item in evidence[:2]]
         )
         role_focus = self._joined(posting_concepts[:2])
         return " ".join(
@@ -1960,8 +2028,9 @@ class DeterministicCoverLetterComposer:
                     f"role{destination}."
                 ),
                 (
-                    f"My direct experience with {candidate_focus} connects to the position's "
-                    f"focus on {role_focus}."
+                    f"My experience with {candidate_focus} gives me a grounded starting "
+                    f"point for contributing to {role_focus}, with that connection "
+                    "anchored in technical work and measured results I can support directly."
                 ),
                 "Thank you for considering my application.",
             ]
@@ -2091,14 +2160,12 @@ class DeterministicCoverLetterComposer:
         research: CompanyResearchBundle,
         posting: JobPosting,
     ) -> list[str]:
-        concepts = [
-            cls._normalize_posting_fragment(fact.fact)
+        posting_authority = " ".join(
+            fact.fact
             for fact in research.facts
             if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
-        ]
-        concepts = [concept for concept in concepts if concept]
-        flattened = cls._split_role_concepts(concepts)
-        return flattened or cls._posting_concepts(posting.description, posting)
+        )
+        return cls._posting_concepts(posting_authority or posting.description, posting)
 
     def _evidence_paragraph(
         self,
@@ -2271,8 +2338,8 @@ class DeterministicCoverLetterComposer:
         for concept in concepts:
             for part in re.split(r",\s*", concept):
                 cleaned = re.sub(
-                    r"^(?:architecture|development|implementation|integration|"
-                    r"investigation|testing|work) of\s+",
+                    r"^(?:architecture|development|diagnosis|implementation|improvement|"
+                    r"integration|investigation|testing|validation|work) of\s+",
                     "",
                     part.strip(),
                     flags=re.IGNORECASE,
@@ -2286,6 +2353,13 @@ class DeterministicCoverLetterComposer:
                 cleaned = re.sub(r"^run\s+", "", cleaned, flags=re.IGNORECASE)
                 cleaned = re.sub(r"^(?:and|or)\s+", "", cleaned, flags=re.IGNORECASE)
                 cleaned = DeterministicCoverLetterComposer._noun_sequence(cleaned)
+                cleaned = re.sub(
+                    r"^automated (.+?) systems?\b",
+                    r"\1 automation",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                )
+                cleaned = " ".join(cleaned.split()[:7]).rstrip(" ,")
                 if cleaned and cleaned.casefold() not in {
                     item.casefold() for item in output
                 }:
@@ -2328,13 +2402,13 @@ class DeterministicCoverLetterComposer:
                     item.strip()
                     for item in re.split(
                         r",\s+(?=(?:act|architect|build|collaborate|create|define|design|"
-                        r"develop|execute|implement|integrate|investigate|iterate|lead|maintain|"
-                        r"perform|prototype|run|select|support|test|translate|troubleshoot|"
-                        r"work|working)\b)|"
+                        r"develop|diagnose|execute|implement|improve|integrate|investigate|"
+                        r"iterate|lead|maintain|perform|prototype|run|select|support|test|"
+                        r"translate|troubleshoot|validate|work|working)\b)|"
                         r"\band\s+(?=(?:act|architect|build|collaborate|create|define|design|"
-                        r"develop|execute|implement|integrate|investigate|iterate|lead|maintain|"
-                        r"perform|prototype|run|select|support|test|translate|troubleshoot|"
-                        r"work)\b)",
+                        r"develop|diagnose|execute|implement|improve|integrate|investigate|"
+                        r"iterate|lead|maintain|perform|prototype|run|select|support|test|"
+                        r"translate|troubleshoot|validate|work)\b)",
                         sentence,
                         flags=re.IGNORECASE,
                     )
@@ -2356,7 +2430,7 @@ class DeterministicCoverLetterComposer:
             cleaned,
             flags=re.IGNORECASE,
         )
-        working = re.fullmatch(r"working with (.+?) to (.+)", cleaned, re.IGNORECASE)
+        working = re.fullmatch(r"work(?:ing)? with (.+?) to (.+)", cleaned, re.IGNORECASE)
         if working is not None:
             partners = cls._normalize_partner_terms(working.group(1))
             actions = cls._noun_sequence(working.group(2))
@@ -2390,8 +2464,10 @@ class DeterministicCoverLetterComposer:
             "define": "definition of",
             "design": "design of",
             "develop": "development of",
+            "diagnose": "diagnosis of",
             "execute": "execution of",
             "implement": "implementation of",
+            "improve": "improvement of",
             "integrate": "integration of",
             "investigate": "investigation of",
             "iterate": "iteration of",
@@ -2405,16 +2481,17 @@ class DeterministicCoverLetterComposer:
             "test": "testing of",
             "translate": "translation of",
             "troubleshoot": "troubleshooting of",
+            "validate": "validation of",
             "work": "work on",
         }
         cleaned = value.strip()
         coordinated = re.fullmatch(
             r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
-            r"translate|troubleshoot|work)\s+and\s+"
+            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
+            r"select|support|test|translate|troubleshoot|validate|work)\s+and\s+"
             r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
-            r"translate|troubleshoot|work)\s+(.+)",
+            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
+            r"select|support|test|translate|troubleshoot|validate|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
         )
@@ -2424,8 +2501,8 @@ class DeterministicCoverLetterComposer:
             return f"{first} and {second} of {coordinated.group(3)}"
         action = re.match(
             r"^(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"integrate|investigate|iterate|lead|maintain|perform|prototype|run|select|support|test|"
-            r"translate|troubleshoot|work)\s+(.+)",
+            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
+            r"select|support|test|translate|troubleshoot|validate|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
         )

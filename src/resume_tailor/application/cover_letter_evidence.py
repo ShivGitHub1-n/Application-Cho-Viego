@@ -220,15 +220,16 @@ class CoverLetterEvidencePortfolio:
             for requirement in item.direct_requirement_ids
         }
         best = thread[0]
+        has_prior_thread = bool(used_requirements or used_features)
         return (
             _RELATIONSHIP_PRIORITY[best.relationship],
+            -len(direct_requirements - used_requirements) if has_prior_thread else 0,
+            -len(requirements - used_requirements) if has_prior_thread else 0,
+            -len(features - used_features) if has_prior_thread else 0,
             -best.total_score,
             -best.contextual_relevance,
             -len(direct_requirements),
             -len(features),
-            -len(direct_requirements - used_requirements),
-            -len(requirements - used_requirements),
-            -len(features - used_features),
             -sum(item.total_score for item in thread[:2]),
             best.rank,
             best.entry_id,
