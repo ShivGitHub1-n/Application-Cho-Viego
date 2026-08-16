@@ -104,6 +104,18 @@ entry-substitution signal; it does not suppress additional relevant bullets
 inside a coherent entry that is already open. Those bullets remain governed
 by marginal value, redundancy, readability, and page fit.
 
+The final search counts each directly covered posting requirement once at its
+authority and importance, with a bounded strongest-proof adjustment. Repeating
+the same requirement does not increase requirement coverage merely because it
+appears in another bullet. For an already-open experience, the search measures
+the next bullet's change to the coherent package score, including its
+diminishing depth weight, redundancy, specificity, and line cost. New direct
+requirements and specific technical signals receive marginal value; expansion
+ordering divides that value by rendered line cost. Alternative seeds and the
+bounded beam therefore model page opportunity cost without a replacement quota:
+a repetitive fourth bullet may lose to complementary experience or project
+evidence, while a weak or redundant project receives no type-based preference.
+
 ## Bounded search
 
 The search uses two deterministic planning stages before exact pagination.

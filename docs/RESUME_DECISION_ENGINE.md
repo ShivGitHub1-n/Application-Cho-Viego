@@ -98,6 +98,19 @@ large same-entry library without reserving a final résumé slot for any entry o
 source type. Existing requirement and project exploration seeds remain bounded;
 final selection still depends on portfolio quality and page fit.
 
+Final allocation scores requirement coverage as a portfolio property rather
+than multiplying value by the number of bullets that repeat it. Each directly
+covered requirement receives its authority and posting-importance weight once,
+using the strongest selected proof's contextual relevance and intrinsic
+specificity. Additional proof can still add independent technical substance,
+but raw direct-bullet count is only a late deterministic tie-breaker. When an
+experience is already open, its next bullet is valued by the change to that
+experience's coherent package score instead of receiving its full isolated
+candidate score again. Expansion order then compares marginal posting value per
+rendered line, so a direct uncovered requirement or new technical signal can
+use scarce page space before repetitive depth. This introduces no experience,
+project, or section quota.
+
 The posting role title remains retrieval and relevance context but is not
 itself a qualification or coverage row. Incidental-section authority cannot be
 overridden by words such as `must` inside company, location, culture, benefits,

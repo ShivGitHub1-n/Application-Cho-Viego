@@ -2370,6 +2370,7 @@ def test_expansion_priority_prefers_skills_and_selected_blocks_over_weak_new_ent
     options = composer._expansions(
         state,
         profile,
+        context,
         bullets,
         composer._experience_packages(profile, bullets),
         skills,

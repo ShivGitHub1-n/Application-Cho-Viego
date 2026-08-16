@@ -295,6 +295,7 @@ class _EvaluatedState:
     quality: float
     coverage_count: int
     direct_requirement_count: int
+    weighted_direct_requirement_coverage: float
     specific_signal_count: int
     repeated_specific_signal_count: int
     direct_bullet_count: int
@@ -485,16 +486,26 @@ class DeterministicResumeComposer:
                 for candidate in selected_candidates
                 for requirement_id in candidate.direct_requirement_ids
             )
+            requirement_support_counts = Counter(
+                requirement_id
+                for candidate in selected_candidates
+                for requirement_id in (
+                    *candidate.direct_requirement_ids,
+                    *candidate.adjacent_requirement_ids,
+                    *candidate.complementary_requirement_ids,
+                )
+            )
             specific_signal_entries: dict[str, set[str]] = {}
             for candidate in selected_candidates:
                 for signal in candidate.specific_signal_keys:
                     specific_signal_entries.setdefault(signal, set()).add(candidate.entry_id)
             domain_drift_project_count = 0
-            for project_id in {
+            project_bullet_counts = Counter(
                 candidate.entry_id
                 for candidate in selected_candidates
                 if candidate.entry_kind is EntityKind.PROJECT
-            }:
+            )
+            for project_id in project_bullet_counts:
                 project_candidates = [
                     candidate
                     for candidate in selected_candidates
@@ -503,7 +514,11 @@ class DeterministicResumeComposer:
                 project_requirements = {
                     requirement_id
                     for candidate in project_candidates
-                    for requirement_id in candidate.direct_requirement_ids
+                    for requirement_id in (
+                        *candidate.direct_requirement_ids,
+                        *candidate.adjacent_requirement_ids,
+                        *candidate.complementary_requirement_ids,
+                    )
                 }
                 project = next(item for item in profile.projects if item.id == project_id)
                 project_title_overlap = any(
@@ -521,6 +536,7 @@ class DeterministicResumeComposer:
                     )
                     and all(
                         direct_requirement_counts[requirement_id] > 1
+                        or requirement_support_counts[requirement_id] > 1
                         for requirement_id in project_requirements
                     )
                 ):
@@ -532,6 +548,7 @@ class DeterministicResumeComposer:
                 quality=self._state_quality(
                     state,
                     profile,
+                    context,
                     bullet_by_id,
                     skill_by_id,
                 ),
@@ -544,6 +561,13 @@ class DeterministicResumeComposer:
                             evidence_id
                         ].direct_requirement_ids
                     }
+                ),
+                weighted_direct_requirement_coverage=(
+                    self._weighted_direct_requirement_coverage(
+                        state,
+                        context,
+                        bullet_by_id,
+                    )
                 ),
                 specific_signal_count=len(specific_signal_entries),
                 repeated_specific_signal_count=sum(
@@ -567,12 +591,7 @@ class DeterministicResumeComposer:
                     for evidence_id in state.bullet_ids
                 ),
                 substantive_project_count=sum(
-                    count >= 2
-                    for count in Counter(
-                        bullet_by_id[evidence_id].entry_id
-                        for evidence_id in state.bullet_ids
-                        if bullet_by_id[evidence_id].entry_kind is EntityKind.PROJECT
-                    ).values()
+                    count >= 2 for count in project_bullet_counts.values()
                 ),
             )
 
@@ -784,6 +803,7 @@ class DeterministicResumeComposer:
             options = self._expansions(
                 current.state,
                 profile,
+                context,
                 bullets,
                 experience_packages,
                 skills,
@@ -911,6 +931,7 @@ class DeterministicResumeComposer:
                 traversable_options = self._expansions(
                     completion_source.state,
                     profile,
+                    context,
                     bullets,
                     experience_packages,
                     skills,
@@ -1238,6 +1259,7 @@ class DeterministicResumeComposer:
             for expansion in self._expansions(
                 final.state,
                 profile,
+                context,
                 bullets,
                 experience_packages,
                 skills,
@@ -1254,6 +1276,7 @@ class DeterministicResumeComposer:
             not self._has_admissible_expansion(
                 final.state,
                 profile,
+                context,
                 bullets,
                 experience_packages,
                 skills,
@@ -2301,10 +2324,118 @@ class DeterministicResumeComposer:
             ]
         return ranked
 
+    @staticmethod
+    def _marginal_posting_value(
+        candidates: list[_BulletCandidate],
+        state: _State,
+        context: _PostingContext,
+        bullet_by_id: dict[str, _BulletCandidate],
+    ) -> float:
+        """Score only posting coverage and signals not established by the state."""
+
+        selected = [bullet_by_id[evidence_id] for evidence_id in state.bullet_ids]
+        selected_direct_requirements = {
+            requirement_id
+            for candidate in selected
+            for requirement_id in candidate.direct_requirement_ids
+        }
+        selected_requirement_ids = {
+            requirement_id
+            for candidate in selected
+            for requirement_id in (
+                *candidate.direct_requirement_ids,
+                *candidate.adjacent_requirement_ids,
+                *candidate.complementary_requirement_ids,
+            )
+        }
+        selected_signals = {
+            signal for candidate in selected for signal in candidate.specific_signal_keys
+        }
+        candidate_direct_requirements = {
+            requirement_id
+            for candidate in candidates
+            for requirement_id in candidate.direct_requirement_ids
+        }
+        candidate_requirement_ids = {
+            requirement_id
+            for candidate in candidates
+            for requirement_id in (
+                *candidate.direct_requirement_ids,
+                *candidate.adjacent_requirement_ids,
+                *candidate.complementary_requirement_ids,
+            )
+        }
+        candidate_signals = {
+            signal for candidate in candidates for signal in candidate.specific_signal_keys
+        }
+        requirement_by_id = {
+            requirement.id: requirement
+            for requirement in context.requirements.requirements
+        }
+        authority_weight = {
+            RequirementAuthority.CORE: 1.15,
+            RequirementAuthority.IMPORTANT: 1.0,
+            RequirementAuthority.BONUS: 0.45,
+            RequirementAuthority.INCIDENTAL: 0.15,
+        }
+        new_direct_value = sum(
+            requirement_by_id[requirement_id].importance
+            * authority_weight[requirement_by_id[requirement_id].authority]
+            * 16.0
+            for requirement_id in candidate_direct_requirements
+            - selected_direct_requirements
+            if requirement_id in requirement_by_id
+        )
+        new_context_value = sum(
+            requirement_by_id[requirement_id].importance
+            * authority_weight[requirement_by_id[requirement_id].authority]
+            * 3.0
+            for requirement_id in candidate_requirement_ids - selected_requirement_ids
+            if requirement_id in requirement_by_id
+            and requirement_id not in candidate_direct_requirements
+        )
+        new_signal_value = len(candidate_signals - selected_signals) * 3.0
+        return round(new_direct_value + new_context_value + new_signal_value, 2)
+
+    def _experience_addition_value(
+        self,
+        candidate: _BulletCandidate,
+        state: _State,
+        profile: MasterProfile,
+        bullet_by_id: dict[str, _BulletCandidate],
+    ) -> float:
+        selected = [
+            bullet_by_id[evidence_id]
+            for evidence_id in state.bullet_ids
+            if bullet_by_id[evidence_id].entry_id == candidate.entry_id
+        ]
+        entry = next(item for item in profile.experiences if item.id == candidate.entry_id)
+        latest_year = max(
+            (
+                year
+                for experience in profile.experiences
+                for value in (experience.start_date, experience.end_date)
+                for year in _years(value)
+            ),
+            default=0,
+        )
+        current_score = self._score_experience_package(
+            entry,
+            selected,
+            latest_year,
+        ).total_score
+        expanded_score = self._score_experience_package(
+            entry,
+            [*selected, candidate],
+            latest_year,
+        ).total_score
+        return round(expanded_score - current_score, 2)
+
     def _expansions(
         self,
         state: _State,
         profile: MasterProfile,
+        context: _PostingContext,
         bullets: list[_BulletCandidate],
         experience_packages: dict[str, list[_ExperiencePackage]],
         skills: list[_SkillCandidate],
@@ -2386,7 +2517,17 @@ class DeterministicResumeComposer:
                         constraints,
                     ):
                         continue
-                    marginal = package.total_score - package_penalty - 12.0
+                    marginal = (
+                        package.total_score
+                        + self._marginal_posting_value(
+                            package_candidates,
+                            state,
+                            context,
+                            bullet_by_id,
+                        )
+                        - package_penalty
+                        - 12.0
+                    )
                     if marginal < self._minimum_marginal_score:
                         continue
                     options.append(
@@ -2465,7 +2606,32 @@ class DeterministicResumeComposer:
                 and not (set(candidate.direct_requirement_ids) - selected_direct_requirements)
             ):
                 opening_penalty += 12.0
-            marginal = candidate.score - penalty - opening_penalty
+            isolated_value = (
+                self._experience_addition_value(
+                    candidate,
+                    state,
+                    profile,
+                    bullet_by_id,
+                )
+                if candidate.entry_kind is EntityKind.EXPERIENCE and not opens_entry
+                else candidate.score
+            )
+            marginal_penalty = (
+                0.0
+                if candidate.entry_kind is EntityKind.EXPERIENCE and not opens_entry
+                else penalty
+            )
+            marginal = (
+                isolated_value
+                + self._marginal_posting_value(
+                    [candidate],
+                    state,
+                    context,
+                    bullet_by_id,
+                )
+                - marginal_penalty
+                - opening_penalty
+            )
             if marginal < self._minimum_marginal_score:
                 continue
             proposal = _State(
@@ -2613,6 +2779,7 @@ class DeterministicResumeComposer:
         self,
         state: _State,
         profile: MasterProfile,
+        context: _PostingContext,
         bullets: list[_BulletCandidate],
         experience_packages: dict[str, list[_ExperiencePackage]],
         skills: list[_SkillCandidate],
@@ -2625,6 +2792,7 @@ class DeterministicResumeComposer:
             self._expansions(
                 state,
                 profile,
+                context,
                 bullets,
                 experience_packages,
                 skills,
@@ -2910,6 +3078,7 @@ class DeterministicResumeComposer:
         self,
         state: _State,
         profile: MasterProfile,
+        context: _PostingContext,
         bullet_by_id: dict[str, _BulletCandidate],
         skill_by_id: dict[str, _SkillCandidate],
     ) -> float:
@@ -2966,31 +3135,57 @@ class DeterministicResumeComposer:
             for entry_ids in specific_signal_entries.values()
         )
         opened_entries = {bullet.entry_id for bullet in bullets}
-        direct_count = sum(bullet.relationship is EvidenceRelationship.DIRECT for bullet in bullets)
-        adjacent_count = sum(
-            bullet.relationship is EvidenceRelationship.ADJACENT for bullet in bullets
+        direct_requirement_counts = Counter(
+            requirement_id for bullet in bullets for requirement_id in bullet.direct_requirement_ids
+        )
+        adjacent_requirement_ids = {
+            requirement_id
+            for bullet in bullets
+            for requirement_id in bullet.adjacent_requirement_ids
+        }
+        direct_without_requirement_count = sum(
+            bullet.relationship is EvidenceRelationship.DIRECT
+            and not bullet.direct_requirement_ids
+            for bullet in bullets
         )
         complementary_count = sum(
             bullet.relationship is EvidenceRelationship.COMPLEMENTARY for bullet in bullets
         )
+        weighted_direct_requirement_coverage = (
+            self._weighted_direct_requirement_coverage(
+                state,
+                context,
+                bullet_by_id,
+            )
+        )
         relationship_adjustment = (
-            (direct_count * 10.0)
-            + (adjacent_count * 6.0)
+            (weighted_direct_requirement_coverage * 10.0)
+            + (direct_without_requirement_count * 3.0)
+            + (len(adjacent_requirement_ids) * 4.0)
             + complementary_count
             - (
                 max(
                     0,
-                    complementary_count - max(1, direct_count + adjacent_count),
+                    complementary_count
+                    - max(1, len(direct_requirement_counts) + len(adjacent_requirement_ids)),
                 )
                 * 8.0
             )
         )
-        direct_requirement_counts = Counter(
-            requirement_id for bullet in bullets for requirement_id in bullet.direct_requirement_ids
+        requirement_by_id = {
+            requirement.id: requirement
+            for requirement in context.requirements.requirements
+        }
+        repeated_direct_requirement_penalty = sum(
+            max(0, count - 2)
+            * requirement_by_id[requirement_id].importance
+            * 5.0
+            for requirement_id, count in direct_requirement_counts.items()
+            if requirement_id in requirement_by_id
         )
         direct_requirement_adjustment = (
-            len(direct_requirement_counts) * 18.0
-            - sum(max(0, count - 1) for count in direct_requirement_counts.values()) * 2.0
+            weighted_direct_requirement_coverage * 8.0
+            - repeated_direct_requirement_penalty
         )
         project_bullet_counts = Counter(
             bullet.entry_id for bullet in bullets if bullet.entry_kind is EntityKind.PROJECT
@@ -3063,6 +3258,50 @@ class DeterministicResumeComposer:
             2,
         )
 
+    @staticmethod
+    def _weighted_direct_requirement_coverage(
+        state: _State,
+        context: _PostingContext,
+        bullet_by_id: dict[str, _BulletCandidate],
+    ) -> float:
+        """Value each covered requirement once using its strongest direct proof."""
+
+        selected = [bullet_by_id[evidence_id] for evidence_id in state.bullet_ids]
+        authority_weight = {
+            RequirementAuthority.CORE: 1.15,
+            RequirementAuthority.IMPORTANT: 1.0,
+            RequirementAuthority.BONUS: 0.45,
+            RequirementAuthority.INCIDENTAL: 0.15,
+        }
+        value = 0.0
+        for requirement in context.requirements.requirements:
+            supporters = [
+                candidate
+                for candidate in selected
+                if requirement.id in candidate.direct_requirement_ids
+            ]
+            if not supporters:
+                continue
+            strongest = max(
+                supporters,
+                key=lambda candidate: (
+                    candidate.contextual_relevance,
+                    candidate.intrinsic_evidence_strength,
+                    candidate.score,
+                    candidate.evidence_id,
+                ),
+            )
+            proof_factor = (
+                min(1.0, strongest.contextual_relevance / 70.0) * 0.12
+                + min(1.0, strongest.intrinsic_evidence_strength / 60.0) * 0.08
+            )
+            value += (
+                requirement.importance
+                * authority_weight[requirement.authority]
+                * (1.0 + proof_factor)
+            )
+        return round(value, 4)
+
     def _best_states(
         self,
         states: list[_EvaluatedState],
@@ -3074,15 +3313,16 @@ class DeterministicResumeComposer:
             key=lambda item: (
                 -item.direct_requirement_count,
                 item.domain_drift_project_count,
-                -min(8, item.direct_bullet_count),
                 -item.substantive_project_count,
-                item.low_context_nondirect_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
                 -item.quality,
+                -item.weighted_direct_requirement_coverage,
+                item.low_context_nondirect_count,
                 -item.specific_signal_count,
                 item.repeated_specific_signal_count,
                 -item.coverage_count,
+                -min(8, item.direct_bullet_count),
                 item.three_line_bullet_count,
                 item.state.key,
             ),
@@ -3098,15 +3338,16 @@ class DeterministicResumeComposer:
             unique.values(),
             key=lambda item: (
                 -item.direct_requirement_count,
-                -min(8, item.direct_bullet_count),
                 -item.substantive_project_count,
-                item.low_context_nondirect_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
-                -item.coverage_count,
                 -item.quality,
+                -item.weighted_direct_requirement_coverage,
+                item.low_context_nondirect_count,
+                -item.coverage_count,
                 -item.specific_signal_count,
                 item.repeated_specific_signal_count,
+                -min(8, item.direct_bullet_count),
                 item.three_line_bullet_count,
                 item.state.key,
             ),
