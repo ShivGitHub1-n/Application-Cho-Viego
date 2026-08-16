@@ -67,6 +67,14 @@ Terms appearing only in an explicitly incidental or optional posting segment
 do not independently admit evidence. A broad phrase is not credited when a
 selected, more specific phrase already contains it.
 
+Before the ranked-candidate bound is applied, the composer retains strong direct
+representatives for distinct core and important requirements. Remaining pool
+capacity is filled through deterministic marginal coverage and technical-signal
+gain with diminishing preference for additional candidates from an already
+represented entry. This is an exploration safeguard, not a section quota: a
+retained experience or project can still lose to a stronger portfolio, and
+candidate retention never forces that entry into the final document.
+
 Skill rows are rebuilt from the current reviewed categories on every run.
 Category labels and rendered skill text remain exact; normalization is used
 only for comparison and deduplication. When a legacy reviewed profile contains

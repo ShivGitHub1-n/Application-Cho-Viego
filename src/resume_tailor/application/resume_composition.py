@@ -1112,7 +1112,6 @@ class DeterministicResumeComposer:
         }
         exact_provider_available = attempt_exact_final
         exact_one_page_found = False
-        last_exact_candidate: _EvaluatedState | None = None
         exact_fitting_candidates: list[_EvaluatedState] = []
         if attempt_exact_final:
             batch_method = getattr(self._page_fit_evaluator, "evaluate_batch", None)
@@ -1161,7 +1160,6 @@ class DeterministicResumeComposer:
                 if not exact_candidate.evaluation.exact:
                     exact_provider_available = False
                     break
-                last_exact_candidate = exact_candidate
                 if (
                     exact_candidate.evaluation.fits_one_page
                     and exact_candidate.evaluation.page_count == 1
@@ -1381,12 +1379,110 @@ class DeterministicResumeComposer:
         relevance_excluded = [
             candidate for candidate in candidates if candidate not in preliminary_relevant
         ]
+        ranked_bullets = self._bounded_relevant_bullets(relevant, context)
         return _CandidatePool(
-            ranked_bullets=relevant[: self._bounds.maximum_ranked_bullets],
+            ranked_bullets=ranked_bullets,
             relevance_excluded_bullets=relevance_excluded,
             redundancy_excluded_bullets=redundancy_excluded,
-            ranking_bound_excluded_bullets=relevant[self._bounds.maximum_ranked_bullets :],
+            ranking_bound_excluded_bullets=[
+                candidate for candidate in relevant if candidate not in ranked_bullets
+            ],
         )
+
+    def _bounded_relevant_bullets(
+        self,
+        candidates: list[_BulletCandidate],
+        context: _PostingContext,
+    ) -> list[_BulletCandidate]:
+        """Keep bounded candidates representative of posting needs, not entry volume."""
+
+        limit = self._bounds.maximum_ranked_bullets
+        if len(candidates) <= limit:
+            return candidates
+        original_rank = {
+            candidate.evidence_id: index for index, candidate in enumerate(candidates)
+        }
+        requirement_priority = {
+            RequirementAuthority.CORE: 0,
+            RequirementAuthority.IMPORTANT: 1,
+            RequirementAuthority.BONUS: 2,
+            RequirementAuthority.INCIDENTAL: 3,
+        }
+        requirements = sorted(
+            (
+                requirement
+                for requirement in context.requirements.requirements
+                if requirement.authority
+                in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
+            ),
+            key=lambda requirement: (
+                requirement_priority[requirement.authority],
+                -requirement.importance,
+                -requirement.repetition_count,
+                -requirement.technical_specificity,
+                requirement.id,
+            ),
+        )
+        selected: list[_BulletCandidate] = []
+        selected_ids: set[str] = set()
+        covered_direct_requirements: set[str] = set()
+        for requirement in requirements:
+            if len(selected) >= limit:
+                break
+            if requirement.id in covered_direct_requirements:
+                continue
+            representative = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate.evidence_id not in selected_ids
+                    and requirement.id in candidate.direct_requirement_ids
+                    and candidate.contextual_relevance >= 30.0
+                    and candidate.intrinsic_evidence_strength >= 20.0
+                ),
+                None,
+            )
+            if representative is None:
+                continue
+            selected.append(representative)
+            selected_ids.add(representative.evidence_id)
+            covered_direct_requirements.update(representative.direct_requirement_ids)
+
+        while len(selected) < limit:
+            selected_coverage = {
+                coverage for candidate in selected for coverage in candidate.coverage_keys
+            }
+            selected_signals = {
+                signal for candidate in selected for signal in candidate.specific_signal_keys
+            }
+            entry_counts = Counter(candidate.entry_id for candidate in selected)
+            remaining = [
+                candidate for candidate in candidates if candidate.evidence_id not in selected_ids
+            ]
+            if not remaining:
+                break
+            next_candidate = max(
+                remaining,
+                key=lambda candidate: (
+                    len(
+                        set(candidate.direct_requirement_ids)
+                        - covered_direct_requirements
+                    ),
+                    len(set(candidate.coverage_keys) - selected_coverage),
+                    len(set(candidate.specific_signal_keys) - selected_signals),
+                    candidate.score - (entry_counts[candidate.entry_id] * 4.0),
+                    candidate.intrinsic_evidence_strength,
+                    -candidate.entry_order,
+                    -candidate.evidence_order,
+                    -original_rank[candidate.evidence_id],
+                ),
+            )
+            selected.append(next_candidate)
+            selected_ids.add(next_candidate.evidence_id)
+            covered_direct_requirements.update(next_candidate.direct_requirement_ids)
+
+        selected_set = set(selected_ids)
+        return [candidate for candidate in candidates if candidate.evidence_id in selected_set]
 
     def _rank_bullets(
         self,

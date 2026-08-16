@@ -1015,7 +1015,7 @@ def test_source_defeats_longer_rewrite_without_added_job_value() -> None:
     assert "line fit" in (variant.selection_reason or "")
 
 
-def test_validated_alternative_variant_can_replace_initial_portfolio_entry() -> None:
+def test_validated_material_variant_can_win_within_selected_portfolio_entry() -> None:
     profile, posting = _writer_replacement_case()
     bounds = CompositionSearchBounds(
         maximum_selected_bullets=2,
@@ -1035,7 +1035,9 @@ def test_validated_alternative_variant_can_replace_initial_portfolio_entry() -> 
         source_plan.constraints,
     )
     assert source_composed.composition_diagnostic is not None
-    assert source_composed.composition_diagnostic.selected_experience_ids == ["strong-source"]
+    assert source_composed.composition_diagnostic.selected_experience_ids == [
+        "writer-alternative"
+    ]
 
     written = "Built Python services that exposed APIs with reviewed governance controls."
     testing_written = "Evaluated production workflow behavior with automated tests."
@@ -1093,10 +1095,11 @@ def test_validated_alternative_variant_can_replace_initial_portfolio_entry() -> 
     assert "writer-alternative" in {group.entry_id for group in request.groups}
     assert final.composition_diagnostic is not None
     assert final.composition_diagnostic.selected_experience_ids == ["writer-alternative"]
-    assert any(
-        item.selected_entry_id == "writer-alternative"
-        and item.choice_changed_after_validated_writing
-        for item in final.composition_diagnostic.portfolio_marginal_comparisons
+    comparisons = final.composition_diagnostic.portfolio_marginal_comparisons
+    assert comparisons
+    assert all(
+        not item.choice_changed_after_validated_writing
+        for item in comparisons
     )
     assert {bullet.text for bullet in final.experience_bullets["writer-alternative"]} == {
         written,
@@ -1105,7 +1108,7 @@ def test_validated_alternative_variant_can_replace_initial_portfolio_entry() -> 
     assert final.hybrid_diagnostic.rewritten_bullet_count == 1
 
 
-def test_weak_rewrite_does_not_force_alternative_experience_package() -> None:
+def test_weak_rewrite_does_not_displace_selected_source_wording() -> None:
     profile, posting = _writer_replacement_case()
     source = next(
         item.source_text
@@ -1159,9 +1162,15 @@ def test_weak_rewrite_does_not_force_alternative_experience_package() -> None:
     )
 
     assert final.composition_diagnostic is not None
-    assert final.composition_diagnostic.selected_experience_ids == ["strong-source"]
+    assert final.composition_diagnostic.selected_experience_ids == ["writer-alternative"]
     assert final.hybrid_diagnostic is not None
     assert final.hybrid_diagnostic.rewritten_bullet_count == 0
+    selected_text = {
+        bullet.text
+        for bullet in final.experience_bullets["writer-alternative"]
+    }
+    assert source in selected_text
+    assert cosmetic not in selected_text
 
 
 def test_synthetic_profile_shortlist_is_bounded_and_does_not_transmit_employer_identity() -> None:

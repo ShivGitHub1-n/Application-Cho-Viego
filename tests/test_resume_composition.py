@@ -760,6 +760,230 @@ def test_direct_hardware_projects_displace_low_context_software_volume() -> None
     assert all(count <= 6 for count in diagnostic.bullet_counts.values())
 
 
+def _constrained_cross_entry_profile(*, extra_api_bullets: int = 0) -> MasterProfile:
+    evidence: list[dict[str, object]] = [
+        {
+            "id": "api-latency",
+            "entity_id": "api-role",
+            "source_text": (
+                "Reduced Python telemetry API latency by 40% across 12 services."
+            ),
+        },
+        {
+            "id": "api-throughput",
+            "entity_id": "api-role",
+            "source_text": (
+                "Improved Python telemetry API throughput by 35% for 8 services."
+            ),
+        },
+        {
+            "id": "api-errors",
+            "entity_id": "api-role",
+            "source_text": "Cut Python telemetry API errors by 30% across 10 endpoints.",
+        },
+        {
+            "id": "embedded-test",
+            "entity_id": "embedded-project",
+            "source_text": "Tested embedded boards using CAN.",
+        },
+        *[
+            {
+                "id": f"api-volume-{index}",
+                "entity_id": "api-role",
+                "source_text": (
+                    f"Monitored Python telemetry API batch {index} across device services."
+                ),
+            }
+            for index in range(extra_api_bullets)
+        ],
+    ]
+    return _synthetic_profile(
+        experiences=[
+            {"id": "api-role", "title": "Software Engineer", "kind": "experience"}
+        ],
+        projects=[
+            {
+                "id": "embedded-project",
+                "title": "Embedded Validation Project",
+                "kind": "project",
+            }
+        ],
+        evidence=evidence,
+    )
+
+
+def _constrained_cross_entry_posting() -> JobPosting:
+    return JobPosting(
+        id="constrained-portfolio-posting",
+        title="Embedded Test Engineer",
+        description=(
+            "Build Python telemetry APIs. Create CAN hardware tests to validate "
+            "embedded boards."
+        ),
+    )
+
+
+def _constrained_cross_entry_bounds() -> CompositionSearchBounds:
+    return CompositionSearchBounds(
+        maximum_ranked_bullets=2,
+        maximum_selected_bullets=2,
+        maximum_selected_entries=2,
+        maximum_experience_entries=1,
+        maximum_project_entries=1,
+        maximum_estimated_page_evaluations=40,
+        maximum_exact_finalist_evaluations=8,
+    )
+
+
+def test_distinct_direct_project_survives_volume_bound_and_displaces_repetition() -> None:
+    resume = _compose_with_bounds(
+        _constrained_cross_entry_profile(),
+        _constrained_cross_entry_posting(),
+        _constrained_cross_entry_bounds(),
+    )
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert "embedded-test" in diagnostic.selected_bullet_ids
+    assert "embedded-project" in diagnostic.selected_project_ids
+    assert len(
+        {"api-latency", "api-throughput", "api-errors"}
+        & set(diagnostic.selected_bullet_ids)
+    ) == 1
+
+
+def test_evidence_volume_does_not_hide_stronger_cross_entry_evidence() -> None:
+    posting = _constrained_cross_entry_posting()
+    bounds = _constrained_cross_entry_bounds()
+
+    baseline = _compose_with_bounds(
+        _constrained_cross_entry_profile(),
+        posting,
+        bounds,
+    )
+    grown = _compose_with_bounds(
+        _constrained_cross_entry_profile(extra_api_bullets=24),
+        posting,
+        bounds,
+    )
+
+    assert baseline.composition_diagnostic is not None
+    assert grown.composition_diagnostic is not None
+    assert "embedded-test" in baseline.composition_diagnostic.selected_bullet_ids
+    assert "embedded-test" in grown.composition_diagnostic.selected_bullet_ids
+    assert baseline.composition_diagnostic.selected_project_ids == ["embedded-project"]
+    assert grown.composition_diagnostic.selected_project_ids == ["embedded-project"]
+
+
+def test_bounded_cross_entry_selection_is_deterministic_for_equivalent_inputs() -> None:
+    profile = _constrained_cross_entry_profile(extra_api_bullets=12)
+    posting = _constrained_cross_entry_posting()
+    bounds = _constrained_cross_entry_bounds()
+
+    first = _compose_with_bounds(profile, posting, bounds)
+    second = _compose_with_bounds(
+        profile.model_copy(deep=True),
+        posting.model_copy(deep=True),
+        bounds,
+    )
+
+    assert first.composition_diagnostic is not None
+    assert second.composition_diagnostic is not None
+    assert first.composition_diagnostic.selected_bullet_ids == (
+        second.composition_diagnostic.selected_bullet_ids
+    )
+    assert first.composition_diagnostic.selected_experience_ids == (
+        second.composition_diagnostic.selected_experience_ids
+    )
+    assert first.composition_diagnostic.selected_project_ids == (
+        second.composition_diagnostic.selected_project_ids
+    )
+
+
+def test_weak_project_does_not_displace_stronger_experience_package() -> None:
+    profile = _synthetic_profile(
+        experiences=[
+            {
+                "id": "platform-role",
+                "title": "Platform Validation Engineer",
+                "kind": "experience",
+            }
+        ],
+        projects=[
+            {"id": "hobby-project", "title": "Sensor Demo", "kind": "project"}
+        ],
+        evidence=[
+            {
+                "id": "release-proof",
+                "entity_id": "platform-role",
+                "source_text": (
+                    "Validated Kubernetes releases through automated rollback tests."
+                ),
+            },
+            {
+                "id": "diagnostic-proof",
+                "entity_id": "platform-role",
+                "source_text": (
+                    "Diagnosed PostgreSQL reliability defects using structured logs."
+                ),
+            },
+            {
+                "id": "weak-project-proof",
+                "entity_id": "hobby-project",
+                "source_text": "Documented a small sensor demonstration.",
+            },
+        ],
+    )
+    posting = JobPosting(
+        id="platform-validation-posting",
+        title="Platform Validation Engineer",
+        description=(
+            "Validate Kubernetes releases with automated rollback tests and diagnose "
+            "PostgreSQL reliability defects from structured logs."
+        ),
+    )
+    resume = _compose_with_bounds(
+        profile,
+        posting,
+        CompositionSearchBounds(
+            maximum_ranked_bullets=3,
+            maximum_selected_bullets=2,
+            maximum_selected_entries=2,
+            maximum_experience_entries=1,
+            maximum_project_entries=1,
+        ),
+    )
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert set(diagnostic.selected_bullet_ids) == {"release-proof", "diagnostic-proof"}
+    assert diagnostic.selected_project_ids == []
+
+
+def test_unconfirmed_high_overlap_evidence_cannot_enter_bounded_portfolio() -> None:
+    profile = _constrained_cross_entry_profile().model_copy(deep=True)
+    unsupported = EvidenceItem(
+        id="unsupported-perfect-match",
+        entity_id="embedded-project",
+        source_text=(
+            "Created CAN hardware tests and fault injection for embedded boards."
+        ),
+        confirmed=False,
+    )
+    profile.evidence.append(unsupported)
+
+    resume = _compose_with_bounds(
+        profile,
+        _constrained_cross_entry_posting(),
+        _constrained_cross_entry_bounds(),
+    )
+
+    assert resume.composition_diagnostic is not None
+    assert "unsupported-perfect-match" not in (
+        resume.composition_diagnostic.selected_bullet_ids
+    )
+
+
 def test_expanded_complementary_volume_stays_bounded_and_nonredundant() -> None:
     direct_concepts = (
         "Integrated STM32 firmware with sensor interfaces.",

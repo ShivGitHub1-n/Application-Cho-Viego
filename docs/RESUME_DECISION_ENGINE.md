@@ -89,6 +89,15 @@ complementary, incidental, or rejected evidence. Generic action words and entry
 labels do not independently establish bullet relevance, and selected entries do
 not transfer their strongest bullet's authority to weaker internal bullets.
 
+The bounded candidate pool is coverage-aware before its global size limit is
+applied. It retains the strongest sufficiently grounded direct representative
+for each core or important requirement, then fills remaining capacity by novel
+requirement coverage, specific technical signals, intrinsic strength, and a
+small entry-concentration discount. This protects distinct evidence from a
+large same-entry library without reserving a final résumé slot for any entry or
+source type. Existing requirement and project exploration seeds remain bounded;
+final selection still depends on portfolio quality and page fit.
+
 The posting role title remains retrieval and relevance context but is not
 itself a qualification or coverage row. Incidental-section authority cannot be
 overridden by words such as `must` inside company, location, culture, benefits,
