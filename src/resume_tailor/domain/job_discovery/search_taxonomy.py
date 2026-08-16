@@ -141,12 +141,21 @@ EXPLORE_SECTOR_TITLE_TERMS: Final[dict[str, tuple[str, ...]]] = {
         "ASIC Engineer",
         "Silicon",
         "Silicon Engineer",
+        "PCB",
+        "PCBA",
         "PCB Designer",
+        "Harness",
+        "Wiring",
+        "Instrumentation Engineer",
+        "Reliability Engineer",
         "Hardware Test",
         "Sensor Integration",
         "Vehicle Systems",
+        "Power Systems",
+        "Flight Controls",
         "Manufacturing Engineer",
         "Manufacturing Systems",
+        "Manufacturing Automation",
         "Manufacturing Test Engineer",
         "Production Test Engineer",
         "Test Automation Engineer",
@@ -154,10 +163,14 @@ EXPLORE_SECTOR_TITLE_TERMS: Final[dict[str, tuple[str, ...]]] = {
     "Controls / Mechatronics": (
         "Controls Engineer",
         "Control Systems Engineer",
+        "Controls Verification",
+        "Controls Test",
+        "Mechatronics",
         "Mechatronics Engineer",
         "Automation Engineer",
         "Motion Control",
         "Motion Planning",
+        "GNC",
         "GNC Engineer",
         "Guidance Navigation and Control",
         "Robot Controls",
@@ -198,6 +211,181 @@ _ENGINEERING_OCCUPATION_TERMS: Final[tuple[str, ...]] = (
     "technician",
     "designer",
     "specialist",
+)
+
+_SOFTWARE_SECTOR_DIRECT_TERMS: Final[tuple[str, ...]] = (
+    "Software Engineer",
+    "Software",
+    "Developer",
+    "Backend Engineer",
+    "Frontend Engineer",
+    "Full Stack Engineer",
+    "Site Reliability Engineer",
+    "DevOps Engineer",
+)
+
+_NON_SOFTWARE_PLATFORM_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Hardware",
+    "Electrical",
+    "Electronics",
+    "Mechanical",
+    "Electromechanical",
+    "Avionics",
+    "Manufacturing",
+    "Robotics",
+    "Vehicle",
+)
+
+_HARDWARE_DIRECT_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Hardware",
+    "Electrical",
+    "Electronics",
+    "Mechanical",
+    "Electromechanical",
+    "Electro-Mechanical",
+    "Avionics",
+    "FPGA",
+    "ASIC",
+    "Silicon",
+    "PCB",
+    "PCBA",
+    "Harness",
+    "Wiring",
+    "Instrumentation Engineer",
+    "Manufacturing Engineer",
+    "Manufacturing Systems",
+    "Manufacturing Test",
+    "Production Test",
+    "Hardware Test",
+    "Sensor Integration",
+    "Vehicle Systems",
+    "Power Systems",
+    "Flight Controls",
+    "Manufacturing Automation",
+)
+
+_HARDWARE_AMBIGUOUS_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Systems Integration",
+    "Integration & Test",
+    "Integration and Test",
+    "Systems Engineer",
+    "Integration Engineer",
+    "Reliability Engineer",
+    "Test Automation Engineer",
+)
+
+_HARDWARE_ADJACENT_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Embedded",
+    "Firmware",
+    "Robotics",
+    "Robot",
+    "Autonomy",
+    "Autonomous",
+    "Controls",
+    "Control Systems",
+    "GNC",
+    "Guidance Navigation and Control",
+    "RF",
+    "Radar",
+    "Flight",
+    "Launch",
+    "Launched Effects",
+    "Vehicle",
+    "Spacecraft",
+    "Starship",
+    "Booster",
+    "Heatshield",
+    "Wireless",
+    "Air Defense",
+    "Maritime",
+    "C3",
+    "Power Systems",
+    "Energy Systems",
+    "Fluid Systems",
+    "Fuel Systems",
+    "Propulsion",
+    "Thermal",
+    "Mechanisms",
+    "Mission Systems",
+    "Ground Systems",
+    "C2 Integration",
+    "C2",
+    "Battlespace",
+    "Electronic Warfare",
+    "EW",
+    "Fluids Systems",
+    "Reliability",
+    "Space",
+    "Weapons",
+    "Verification",
+    "Validation",
+)
+
+_SOFTWARE_ONLY_TITLE_CONTEXT: Final[tuple[str, ...]] = (
+    "Software",
+    "Backend",
+    "Application",
+    "Cloud",
+    "Data Platform",
+    "Hosted Model",
+    "HPC",
+    "High Performance Computing",
+    "Infrastructure",
+    "Network",
+    "Platform",
+    "Site Reliability",
+    "Telemetry",
+)
+
+_HARDWARE_MIXED_INTEGRATION_TERMS: Final[tuple[str, ...]] = (
+    "Embedded",
+    "Firmware",
+    "Robotics",
+    "Robot",
+    "Autonomy",
+    "Autonomous",
+    "Controls",
+    "Control Systems",
+    "GNC",
+    "Sensor",
+)
+
+_HARDWARE_NON_ENGINEERING_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Buyer",
+    "Procurement",
+    "Sourcing",
+    "Supply Chain",
+)
+
+_CONTROLS_DIRECT_TITLE_TERMS: Final[tuple[str, ...]] = (
+    "Controls Engineer",
+    "Control Systems Engineer",
+    "Controls Verification",
+    "Controls Test",
+    "Mechatronics",
+    "Mechatronics Engineer",
+    "Motion Control",
+    "GNC",
+    "GNC Engineer",
+    "Guidance Navigation and Control",
+    "Robot Controls",
+    "Manufacturing Automation",
+)
+
+_CONTROLS_AUTOMATION_CONTEXT: Final[tuple[str, ...]] = (
+    "Manufacturing",
+    "Industrial",
+    "Factory",
+    "Production",
+    "Process",
+    "Assembly",
+    "Welding",
+    "Robotics",
+    "Robot",
+    "Controls",
+    "Motion",
+    "PLC",
+    "Instrumentation",
 )
 
 _LEVEL_TERMS: Final[dict[JobLevel, tuple[str, ...]]] = {
@@ -256,7 +444,55 @@ def matches_explore_sector(title: str, sector: str) -> bool:
         return False
     if not any(_contains_phrase(title, term) for term in _ENGINEERING_OCCUPATION_TERMS):
         return False
+    if sector == "Software Engineering":
+        return _matches_software_sector(title)
+    if sector == "Hardware / Systems Integration":
+        return _matches_hardware_sector(title)
+    if sector == "Controls / Mechatronics":
+        return _matches_controls_sector(title)
     return matches_title_query(title, explore_sector_query_terms(sector))
+
+
+def _matches_software_sector(title: str) -> bool:
+    """Require an explicit software occupation rather than a generic platform label."""
+
+    if matches_title_query(title, _SOFTWARE_SECTOR_DIRECT_TERMS):
+        return True
+    return matches_title_query(title, ("Platform Engineer",)) and not matches_title_query(
+        title, _NON_SOFTWARE_PLATFORM_TITLE_TERMS
+    )
+
+
+def _matches_hardware_sector(title: str) -> bool:
+    """Classify from title evidence, with bounded rules for ambiguous systems roles."""
+
+    if matches_title_query(title, _HARDWARE_NON_ENGINEERING_TITLE_TERMS):
+        return False
+    if matches_title_query(title, _HARDWARE_DIRECT_TITLE_TERMS):
+        return True
+    if not matches_title_query(title, _HARDWARE_AMBIGUOUS_TITLE_TERMS):
+        return False
+    if matches_title_query(title, _SOFTWARE_ONLY_TITLE_CONTEXT):
+        return matches_title_query(
+            title,
+            ("Systems Integration", "Integration Engineer"),
+        ) and matches_title_query(title, _HARDWARE_MIXED_INTEGRATION_TERMS)
+    if matches_title_query(title, _HARDWARE_ADJACENT_TITLE_TERMS):
+        return True
+    return matches_title_query(
+        title,
+        ("Systems Integration", "Integration & Test", "Integration and Test"),
+    )
+
+
+def _matches_controls_sector(title: str) -> bool:
+    """Keep controls terms specific and qualify otherwise-generic automation roles."""
+
+    if matches_title_query(title, _CONTROLS_DIRECT_TITLE_TERMS):
+        return True
+    return matches_title_query(title, ("Automation Engineer",)) and matches_title_query(
+        title, _CONTROLS_AUTOMATION_CONTEXT
+    )
 
 
 def matches_any_explore_sector(title: str, sectors: Iterable[str]) -> bool:

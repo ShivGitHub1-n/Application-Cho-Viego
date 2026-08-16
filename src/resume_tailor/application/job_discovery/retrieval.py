@@ -336,9 +336,10 @@ class RetrievalService:
         if plan.dispositions["title_or_keyword"] is ProviderFilterDisposition.LOCAL:
             if not matches_title_query(record.title, query.titles):
                 return False
-        if plan.dispositions["sector"] is ProviderFilterDisposition.LOCAL:
-            if not matches_any_explore_sector(record.title, query.sectors):
-                return False
+        # Provider sector search is candidate retrieval, not canonical membership.
+        # Always enforce the deterministic title taxonomy after provider return.
+        if query.sectors and not matches_any_explore_sector(record.title, query.sectors):
+            return False
         if plan.dispositions["location"] is ProviderFilterDisposition.LOCAL:
             location = (record.location_raw or "").casefold()
             if location and not any(item.casefold() in location for item in query.locations):

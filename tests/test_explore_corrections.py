@@ -148,7 +148,7 @@ def test_recommendation_metadata_uses_earliest_provenance_and_latest_fetch() -> 
     assert view.checked_label == "Checked 1 day ago"
 
 
-def test_explore_provider_query_is_sector_driven_without_tailored_titles() -> None:
+def test_explore_provider_query_uses_sector_terms_without_tailored_profile_terms() -> None:
     query = ExploreJobQuery(
         sectors=["Controls / Mechatronics"],
         profile_id="profile",
@@ -156,7 +156,9 @@ def test_explore_provider_query_is_sector_driven_without_tailored_titles() -> No
     ).to_provider_query()
 
     assert query.sectors == ["Controls / Mechatronics"]
-    assert query.titles == []
+    assert "Controls Engineer" in query.titles
+    assert "Mechatronics Engineer" in query.titles
+    assert "Software Engineer" not in query.titles
     assert query.locations == []
 
 

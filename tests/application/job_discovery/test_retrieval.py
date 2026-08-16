@@ -107,6 +107,23 @@ class FakeConnector:
         return self.pages[index]
 
 
+class PushedDownSectorConnector(FakeConnector):
+    def capabilities(self, source: SupportedJobSource) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            connector_type=source.connector_type,
+            supports_title_or_keyword=True,
+            supports_sector=True,
+            supports_location=False,
+            supports_work_arrangement=False,
+            supports_level=False,
+            supports_employment_type=False,
+            supports_posting_date_boundary=False,
+            supports_pagination=True,
+            supports_page_size=True,
+            supports_availability_checks=True,
+        )
+
+
 def test_retrieval_stops_on_repeated_cursor_and_returns_safe_partial_diagnostics() -> None:
     source = _source("source-1")
     connector = FakeConnector(
@@ -211,7 +228,19 @@ def test_hardware_explore_retrieves_matching_approved_source_records() -> None:
                     _role_record("1", "Electrical Engineer, Manufacturing Test"),
                     _role_record("2", "Systems Integration Engineer, Air Vehicles"),
                     _role_record("3", "Robotics Software Integration Engineer"),
-                    _role_record("4", "Backend Software Engineer"),
+                    _role_record(
+                        "4",
+                        "Backend Software Engineer",
+                        "Build integrations for hardware systems and manufacturing test.",
+                    ).model_copy(
+                        update={"company_name": "Hardware Systems Integration, Inc."}
+                    ),
+                    _role_record(
+                        "5",
+                        "Hosted Model Infrastructure Engineer",
+                        "Run software on the company's robotics hardware platform.",
+                    ),
+                    _role_record("6", "High Performance Computing Systems Engineer"),
                 ],
             )
         ]
@@ -225,6 +254,34 @@ def test_hardware_explore_retrieves_matching_approved_source_records() -> None:
     )
 
     assert [item.record.external_job_id for item in outcome.records] == ["1", "2", "3"]
+
+
+def test_canonical_sector_membership_is_enforced_after_provider_pushdown() -> None:
+    source = _source("source-1")
+    connector = PushedDownSectorConnector(
+        [
+            JobSourcePage(
+                source=source,
+                records=[
+                    _role_record("1", "Hardware Engineer"),
+                    _role_record(
+                        "2",
+                        "Hosted Model Infrastructure Engineer",
+                        "Integrate software with the company's hardware systems.",
+                    ),
+                ],
+            )
+        ]
+    )
+
+    outcome = RetrievalService(
+        sources=[source], connectors={ConnectorType.GREENHOUSE: connector}
+    ).retrieve(
+        ExploreJobQuery(sectors=["Hardware / Systems Integration"]),
+        fetched_at=WHEN,
+    )
+
+    assert [item.record.external_job_id for item in outcome.records] == ["1"]
 
 
 def test_local_title_and_level_filters_use_the_posting_title_not_description_noise() -> None:
