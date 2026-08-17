@@ -102,14 +102,23 @@ Final allocation scores requirement coverage as a portfolio property rather
 than multiplying value by the number of bullets that repeat it. Each directly
 covered requirement receives its authority and posting-importance weight once,
 using the strongest selected proof's contextual relevance and intrinsic
-specificity. Additional proof can still add independent technical substance,
-but raw direct-bullet count is only a late deterministic tie-breaker. When an
-experience is already open, its next bullet is valued by the change to that
-experience's coherent package score instead of receiving its full isolated
-candidate score again. Expansion order then compares marginal posting value per
-rendered line, so a direct uncovered requirement or new technical signal can
-use scarce page space before repetitive depth. This introduces no experience,
-project, or section quota.
+specificity. Final-state comparison uses this weighted portfolio quality before
+raw direct-requirement or direct-bullet counts. Additional proof can still add
+independent technical substance, but broad adjacent matches do not make two
+otherwise distinct bullets redundant. Package redundancy is based on repeated
+direct requirements, repeated concrete technical signals, and actual text
+similarity.
+
+Every selected experience and project is evaluated as one coherent
+metadata-plus-bullets package. Opening the entry includes its heading/metadata
+line cost; later bullets pay only their bullet line cost. Depth weights diminish
+gradually, so a third or fourth distinct, strongly aligned proof can deepen the
+entry, while repetition still loses through package redundancy. Low-context
+entries without important direct support pay an entry-alignment cost, and a
+new shallow entry must recover its activation cost through sufficient total
+posting value. The same rules apply to experiences and projects, including
+one-bullet projects; no entry-type quota determines the result. Expansion order
+compares marginal posting value per rendered line.
 
 The posting role title remains retrieval and relevance context but is not
 itself a qualification or coverage row. Incidental-section authority cannot be
@@ -225,6 +234,12 @@ relationships, selected-entry coverage, bullet marginal contribution,
 short-token corroboration, direct-evidence tradeoffs, skill-row provenance,
 omitted direct skills, and portfolio gaps. Explanations are concise typed
 summaries, not hidden model chain-of-thought.
+
+The safe portfolio frontier compares the lowest-value selected evidence with
+the strongest rejected alternative on the same base state. It records stable
+candidate and entry IDs, marginal portfolio value, supported requirement IDs,
+package redundancy, entry-activation line cost, total rendered-line cost, and
+value per line. It does not retain reviewed evidence text or contact data.
 
 It also records the bounded page-fit finalists and marks the finalist used by
 the generated artifact. The application can expose a sanitized decision trace

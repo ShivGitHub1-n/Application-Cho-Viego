@@ -107,14 +107,22 @@ by marginal value, redundancy, readability, and page fit.
 The final search counts each directly covered posting requirement once at its
 authority and importance, with a bounded strongest-proof adjustment. Repeating
 the same requirement does not increase requirement coverage merely because it
-appears in another bullet. For an already-open experience, the search measures
-the next bullet's change to the coherent package score, including its
-diminishing depth weight, redundancy, specificity, and line cost. New direct
-requirements and specific technical signals receive marginal value; expansion
-ordering divides that value by rendered line cost. Alternative seeds and the
-bounded beam therefore model page opportunity cost without a replacement quota:
-a repetitive fourth bullet may lose to complementary experience or project
-evidence, while a weak or redundant project receives no type-based preference.
+appears in another bullet. Experiences and projects use the same coherent-entry
+score. Opening an entry carries two estimated Template V1 metadata lines plus
+its bullet lines; additions to an existing entry carry only their bullet lines.
+The search measures each addition's change to the package score, including
+gradual depth weighting, direct-requirement and technical-signal redundancy,
+specificity, and actual line cost. Broad adjacent matches are not treated as
+proof that distinct hands-on bullets repeat one another.
+
+New direct requirements and specific technical signals receive marginal value;
+expansion ordering divides that value by rendered line cost. A low-context
+entry without important direct support must also overcome its entry-alignment
+and activation costs. Alternative seeds and the bounded beam therefore model
+page opportunity cost without a replacement quota: a repetitive fourth bullet
+may lose to complementary experience or project evidence, while a distinct
+fourth bullet in a highly aligned entry can beat a shallow weak entry. A
+one-bullet project remains valid when its unique value pays for its metadata.
 
 ## Bounded search
 
@@ -280,6 +288,13 @@ overlap, generic-only rejection, skill support state, expansion type, bullet
 line fit, preferred-density status, profile-completeness warning, and typed
 underfill reasons. Streamlit shows this record in a collapsed expander. It is
 not rendered into the exported DOCX.
+
+The portfolio-frontier diagnostic uses a shared base state to compare selected
+and rejected evidence. It exposes only stable IDs and numeric components:
+marginal value, requirement IDs, within-entry redundancy, entry-activation line
+cost, total rendered-line cost, and value per line. New professional experience
+singletons are excluded from this bullet-level comparison because they must be
+evaluated through the existing coherent-package diagnostic.
 
 The adjacent hybrid diagnostic adds retrieval admissions/rejections,
 source-versus-written text, claim validation status, rejected variants,

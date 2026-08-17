@@ -169,6 +169,9 @@ for each bounded page-fit finalist, including the selected finalist. A
 sanitized production decision trace joins those diagnostics to profile,
 posting, plan, artifact, configuration, and provider-call fingerprints without
 including contact fields, reviewed evidence text, prompts, or credentials.
+Its selected/rejected frontier uses a shared portfolio base and records only
+stable IDs, requirement IDs, marginal values, redundancy, entry-activation
+line cost, and rendered-line cost.
 
 Cover letters follow the same immutable-artifact rule without duplicating the
 resume engine. The application reuses reviewed-profile retrieval, requirement

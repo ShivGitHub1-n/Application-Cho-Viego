@@ -73,6 +73,7 @@ from resume_tailor.domain.resume_composition import (
     PageFitEvaluation,
     PageFitPortfolioDiagnostic,
     PageVerificationStatus,
+    PortfolioFrontierComparisonDiagnostic,
     PortfolioMarginalComparisonDiagnostic,
     PreferredDensityStatus,
     ProjectRepresentationDiagnostic,
@@ -163,6 +164,14 @@ _ENTERPRISE_PRODUCTION_SIGNALS = frozenset(
         "scaled",
     }
 )
+_ENTRY_ACTIVATION_LINE_COST = 2.0
+_COHERENT_ENTRY_DEPTH_WEIGHTS = (1.0, 0.78, 0.50, 0.30)
+
+
+def _coherent_entry_depth_weight(rank: int) -> float:
+    if rank < len(_COHERENT_ENTRY_DEPTH_WEIGHTS):
+        return _COHERENT_ENTRY_DEPTH_WEIGHTS[rank]
+    return max(0.18, _COHERENT_ENTRY_DEPTH_WEIGHTS[-1] - ((rank - 3) * 0.08))
 
 
 @dataclass(frozen=True)
@@ -300,7 +309,7 @@ class _EvaluatedState:
     repeated_specific_signal_count: int
     direct_bullet_count: int
     low_context_nondirect_count: int
-    domain_drift_project_count: int
+    low_context_entry_count: int
     three_line_bullet_count: int
     substantive_project_count: int
 
@@ -481,66 +490,60 @@ class DeterministicResumeComposer:
             )
             coverage = self._state_coverage(state, bullet_by_id, skill_by_id)
             selected_candidates = [bullet_by_id[item] for item in state.bullet_ids]
-            direct_requirement_counts = Counter(
-                requirement_id
-                for candidate in selected_candidates
-                for requirement_id in candidate.direct_requirement_ids
-            )
-            requirement_support_counts = Counter(
-                requirement_id
-                for candidate in selected_candidates
-                for requirement_id in (
-                    *candidate.direct_requirement_ids,
-                    *candidate.adjacent_requirement_ids,
-                    *candidate.complementary_requirement_ids,
-                )
-            )
             specific_signal_entries: dict[str, set[str]] = {}
             for candidate in selected_candidates:
                 for signal in candidate.specific_signal_keys:
                     specific_signal_entries.setdefault(signal, set()).add(candidate.entry_id)
-            domain_drift_project_count = 0
+            low_context_entry_count = 0
             project_bullet_counts = Counter(
                 candidate.entry_id
                 for candidate in selected_candidates
                 if candidate.entry_kind is EntityKind.PROJECT
             )
-            for project_id in project_bullet_counts:
-                project_candidates = [
+            entry_by_id = {
+                entry.id: entry for entry in [*profile.experiences, *profile.projects]
+            }
+            for entry_id in {
+                candidate.entry_id for candidate in selected_candidates
+            }:
+                entry_candidates = [
                     candidate
                     for candidate in selected_candidates
-                    if candidate.entry_id == project_id
+                    if candidate.entry_id == entry_id
                 ]
-                project_requirements = {
+                entry_requirements = {
                     requirement_id
-                    for candidate in project_candidates
+                    for candidate in entry_candidates
                     for requirement_id in (
                         *candidate.direct_requirement_ids,
                         *candidate.adjacent_requirement_ids,
                         *candidate.complementary_requirement_ids,
                     )
                 }
-                project = next(item for item in profile.projects if item.id == project_id)
-                project_title_overlap = any(
+                outside_requirements = {
+                    requirement_id
+                    for candidate in selected_candidates
+                    if candidate.entry_id != entry_id
+                    for requirement_id in (
+                        *candidate.direct_requirement_ids,
+                        *candidate.adjacent_requirement_ids,
+                        *candidate.complementary_requirement_ids,
+                    )
+                }
+                entry_title_overlap = any(
                     _contains_phrase(context.normalized_text, token)
-                    for token in _normalize(project.title).split()
+                    for token in _normalize(entry_by_id[entry_id].title).split()
                     if len(token) >= 4
                 )
                 if (
-                    project_requirements
-                    and len(project_candidates) == 1
-                    and not project_title_overlap
+                    not entry_title_overlap
                     and all(
                         candidate.contextual_relevance < 40.0
-                        for candidate in project_candidates
+                        for candidate in entry_candidates
                     )
-                    and all(
-                        direct_requirement_counts[requirement_id] > 1
-                        or requirement_support_counts[requirement_id] > 1
-                        for requirement_id in project_requirements
-                    )
+                    and entry_requirements <= outside_requirements
                 ):
-                    domain_drift_project_count += 1
+                    low_context_entry_count += 1
             return _EvaluatedState(
                 state=state,
                 resume=resume,
@@ -585,7 +588,7 @@ class DeterministicResumeComposer:
                     and bullet_by_id[evidence_id].contextual_relevance < 40.0
                     for evidence_id in state.bullet_ids
                 ),
-                domain_drift_project_count=domain_drift_project_count,
+                low_context_entry_count=low_context_entry_count,
                 three_line_bullet_count=sum(
                     bullet_by_id[evidence_id].line_fit.three_line_risk
                     for evidence_id in state.bullet_ids
@@ -1747,10 +1750,19 @@ class DeterministicResumeComposer:
         for index, candidate in enumerate(ordered):
             for other in ordered[index + 1 :]:
                 similarity = _near_duplicate(candidate.text, other.text)
-                repeated = len(set(candidate.coverage_keys) & set(other.coverage_keys))
+                repeated_direct_requirements = len(
+                    set(candidate.direct_requirement_ids)
+                    & set(other.direct_requirement_ids)
+                )
+                repeated_specific_signals = len(
+                    set(candidate.specific_signal_keys)
+                    & set(other.specific_signal_keys)
+                )
                 redundancy_penalty += (
                     min(candidate.score, other.score) * similarity * 0.18
-                ) + (repeated * 2.0)
+                ) + (repeated_direct_requirements * 2.0) + (
+                    repeated_specific_signals * 1.5
+                )
         reviewed_context = " ".join(
             [
                 entry.title,
@@ -1779,20 +1791,27 @@ class DeterministicResumeComposer:
             for item in ordered
             if item.writing_variant is not None
         )
-        page_cost = 2.0 + sum(item.line_fit.total_vertical_line_cost for item in ordered)
-        depth_bonus = 5.0 if len(ordered) == 3 else 3.0 if len(ordered) >= 4 else 0.0
+        page_cost = _ENTRY_ACTIVATION_LINE_COST + sum(
+            item.line_fit.total_vertical_line_cost for item in ordered
+        )
+        depth_bonus = 7.0 if len(ordered) >= 4 else 5.0 if len(ordered) == 3 else 0.0
         ranked_bullet_scores = sorted((item.score for item in ordered), reverse=True)
         weighted_bullet_score = sum(
-            score * weight
-            for score, weight in zip(
-                ranked_bullet_scores,
-                (1.0, 0.75, 0.35, 0.15),
-                strict=False,
-            )
+            score * _coherent_entry_depth_weight(rank)
+            for rank, score in enumerate(ranked_bullet_scores)
         )
+        direct_requirement_coverage = {
+            requirement_id
+            for item in ordered
+            for requirement_id in item.direct_requirement_ids
+        }
+        specific_signal_coverage = {
+            signal for item in ordered for signal in item.specific_signal_keys
+        }
         total_score = (
             weighted_bullet_score
-            + (len(coverage) * 5.0)
+            + (len(direct_requirement_coverage) * 5.0)
+            + (len(specific_signal_coverage) * 2.0)
             + writing_quality
             + duration_recency
             + enterprise_contribution
@@ -2397,7 +2416,7 @@ class DeterministicResumeComposer:
         new_signal_value = len(candidate_signals - selected_signals) * 3.0
         return round(new_direct_value + new_context_value + new_signal_value, 2)
 
-    def _experience_addition_value(
+    def _entry_addition_value(
         self,
         candidate: _BulletCandidate,
         state: _State,
@@ -2409,12 +2428,16 @@ class DeterministicResumeComposer:
             for evidence_id in state.bullet_ids
             if bullet_by_id[evidence_id].entry_id == candidate.entry_id
         ]
-        entry = next(item for item in profile.experiences if item.id == candidate.entry_id)
+        entry = next(
+            item
+            for item in [*profile.experiences, *profile.projects]
+            if item.id == candidate.entry_id
+        )
         latest_year = max(
             (
                 year
-                for experience in profile.experiences
-                for value in (experience.start_date, experience.end_date)
+                for profile_entry in [*profile.experiences, *profile.projects]
+                for value in (profile_entry.start_date, profile_entry.end_date)
                 for year in _years(value)
             ),
             default=0,
@@ -2607,18 +2630,36 @@ class DeterministicResumeComposer:
             ):
                 opening_penalty += 12.0
             isolated_value = (
-                self._experience_addition_value(
+                self._entry_addition_value(
                     candidate,
                     state,
                     profile,
                     bullet_by_id,
                 )
-                if candidate.entry_kind is EntityKind.EXPERIENCE and not opens_entry
+                if not opens_entry
+                else self._score_experience_package(
+                    next(
+                        entry
+                        for entry in [*profile.experiences, *profile.projects]
+                        if entry.id == candidate.entry_id
+                    ),
+                    [candidate],
+                    max(
+                        (
+                            year
+                            for entry in [*profile.experiences, *profile.projects]
+                            for value in (entry.start_date, entry.end_date)
+                            for year in _years(value)
+                        ),
+                        default=0,
+                    ),
+                ).total_score
+                if candidate.entry_kind is EntityKind.PROJECT
                 else candidate.score
             )
             marginal_penalty = (
                 0.0
-                if candidate.entry_kind is EntityKind.EXPERIENCE and not opens_entry
+                if not opens_entry
                 else penalty
             )
             marginal = (
@@ -2678,7 +2719,8 @@ class DeterministicResumeComposer:
                     redundancy_penalty=penalty,
                     preference_bonus=coherence_bonus,
                     line_cost=(
-                        candidate.line_fit.total_vertical_line_cost + (2.0 if opens_entry else 0.0)
+                        candidate.line_fit.total_vertical_line_cost
+                        + (_ENTRY_ACTIVATION_LINE_COST if opens_entry else 0.0)
                     ),
                 )
             )
@@ -3083,38 +3125,34 @@ class DeterministicResumeComposer:
         skill_by_id: dict[str, _SkillCandidate],
     ) -> float:
         bullets = [bullet_by_id[item] for item in state.bullet_ids]
-        latest_experience_year = max(
+        latest_entry_year = max(
             (
                 year
-                for entry in profile.experiences
+                for entry in [*profile.experiences, *profile.projects]
                 for value in (entry.start_date, entry.end_date)
                 for year in _years(value)
             ),
             default=0,
         )
-        experience_package_score = 0.0
-        for entry in profile.experiences:
+        coherent_entry_package_score = 0.0
+        for entry in [*profile.experiences, *profile.projects]:
             entry_bullets = [
                 bullet
                 for bullet in bullets
-                if bullet.entry_kind is EntityKind.EXPERIENCE
-                and bullet.entry_id == entry.id
+                if bullet.entry_id == entry.id
             ]
             if not entry_bullets:
                 continue
-            experience_package_score += self._score_experience_package(
+            coherent_entry_package_score += self._score_experience_package(
                 entry,
                 entry_bullets,
-                latest_experience_year,
+                latest_entry_year,
                 single_bullet_exception_reason=(
                     self._single_bullet_exception_reason(entry_bullets[0], bullet_by_id)
-                    if len(entry_bullets) == 1
+                    if entry.kind is EntityKind.EXPERIENCE and len(entry_bullets) == 1
                     else None
                 ),
             ).total_score
-        project_bullet_score = sum(
-            bullet.score for bullet in bullets if bullet.entry_kind is EntityKind.PROJECT
-        )
         coverage_counts = Counter(
             coverage for bullet in bullets for coverage in bullet.coverage_keys
         )
@@ -3135,6 +3173,28 @@ class DeterministicResumeComposer:
             for entry_ids in specific_signal_entries.values()
         )
         opened_entries = {bullet.entry_id for bullet in bullets}
+        important_requirement_ids = {
+            requirement.id
+            for requirement in context.requirements.requirements
+            if requirement.authority
+            in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
+        }
+        entry_alignment_penalty = 0.0
+        for entry_id in opened_entries:
+            entry_bullets = [
+                bullet for bullet in bullets if bullet.entry_id == entry_id
+            ]
+            strongest_context = max(
+                bullet.contextual_relevance for bullet in entry_bullets
+            )
+            supports_important_direct = any(
+                important_requirement_ids & set(bullet.direct_requirement_ids)
+                for bullet in entry_bullets
+            )
+            if not supports_important_direct and strongest_context < 40.0:
+                entry_alignment_penalty += (
+                    (40.0 - strongest_context) / 40.0
+                ) * 12.0
         direct_requirement_counts = Counter(
             requirement_id for bullet in bullets for requirement_id in bullet.direct_requirement_ids
         )
@@ -3237,8 +3297,7 @@ class DeterministicResumeComposer:
             for item in state.skill_category_ids
         )
         return round(
-            experience_package_score
-            + project_bullet_score
+            coherent_entry_package_score
             + sum(skill_by_id[item].score * 0.42 for item in state.skill_category_ids)
             + (min(3, len(state.skill_category_ids)) * 10.0)
             + (5.0 if len(state.skill_category_ids) >= 4 else 0.0)
@@ -3252,6 +3311,7 @@ class DeterministicResumeComposer:
             + (unique_coverage * 7.0)
             - (repeated_coverage * 6.0)
             - (sparse_skill_row_count * 12.0)
+            - entry_alignment_penalty
             - (max(0, len(opened_entries) - 1) * 4.0)
             - sum(3.5 if bullet.line_fit.awkward_wrap_risk else 0.0 for bullet in bullets)
             - sum(max(0, bullet.line_fit.expected_line_count - 2) * 15.0 for bullet in bullets),
@@ -3311,18 +3371,18 @@ class DeterministicResumeComposer:
         ordered = sorted(
             states,
             key=lambda item: (
-                -item.direct_requirement_count,
-                item.domain_drift_project_count,
-                -item.substantive_project_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
+                item.low_context_entry_count,
                 -item.quality,
                 -item.weighted_direct_requirement_coverage,
+                -item.direct_requirement_count,
                 item.low_context_nondirect_count,
                 -item.specific_signal_count,
                 item.repeated_specific_signal_count,
                 -item.coverage_count,
                 -min(8, item.direct_bullet_count),
+                -item.substantive_project_count,
                 item.three_line_bullet_count,
                 item.state.key,
             ),
@@ -3337,17 +3397,18 @@ class DeterministicResumeComposer:
         ordered = sorted(
             unique.values(),
             key=lambda item: (
-                -item.direct_requirement_count,
-                -item.substantive_project_count,
                 self._density_priority(item.evaluation.utilization_ratio),
                 self._density_distance(item.evaluation.utilization_ratio),
+                item.low_context_entry_count,
                 -item.quality,
                 -item.weighted_direct_requirement_coverage,
+                -item.direct_requirement_count,
                 item.low_context_nondirect_count,
                 -item.coverage_count,
                 -item.specific_signal_count,
                 item.repeated_specific_signal_count,
                 -min(8, item.direct_bullet_count),
+                -item.substantive_project_count,
                 item.three_line_bullet_count,
                 item.state.key,
             ),
@@ -4313,22 +4374,18 @@ class DeterministicResumeComposer:
                 if bullet_id in bullet_candidate_by_id
             ]
             current_weighted = sum(
-                score * weight
-                for score, weight in zip(
-                    sorted((item.score for item in package_candidates), reverse=True),
-                    (1.0, 0.75, 0.35, 0.15),
-                    strict=False,
+                score * _coherent_entry_depth_weight(rank)
+                for rank, score in enumerate(
+                    sorted((item.score for item in package_candidates), reverse=True)
                 )
             )
             source_weighted = sum(
-                score * weight
-                for score, weight in zip(
+                score * _coherent_entry_depth_weight(rank)
+                for rank, score in enumerate(
                     sorted(
                         (item.source_alternative_score for item in package_candidates),
                         reverse=True,
-                    ),
-                    (1.0, 0.75, 0.35, 0.15),
-                    strict=False,
+                    )
                 )
             )
             source_only_score = (
@@ -4350,31 +4407,59 @@ class DeterministicResumeComposer:
         for candidate in all_relevant_bullets:
             if candidate.entry_kind is EntityKind.PROJECT and candidate.admitted:
                 project_candidates.setdefault(candidate.entry_id, []).append(candidate)
+        profile_entry_by_id = {
+            entry.id: entry for entry in [*profile.experiences, *profile.projects]
+        }
+        latest_entry_year = max(
+            (
+                year
+                for entry in profile_entry_by_id.values()
+                for value in (entry.start_date, entry.end_date)
+                for year in _years(value)
+            ),
+            default=0,
+        )
         for entry_id, candidates in project_candidates.items():
-            ranked = sorted(candidates, key=lambda item: (-item.score, item.evidence_id))[:4]
-            page_cost = 1.5 + sum(item.line_fit.total_vertical_line_cost for item in ranked)
-            redundancy = sum(
-                _near_duplicate(item.text, other.text) * min(item.score, other.score) * 0.18
-                for index, item in enumerate(ranked)
-                for other in ranked[index + 1 :]
+            selected_project_candidates = [
+                item
+                for item in selected_bullets.values()
+                if item.entry_id == entry_id
+            ]
+            ranked = selected_project_candidates or sorted(
+                candidates,
+                key=lambda item: (-item.score, item.evidence_id),
+            )[:4]
+            package = self._score_experience_package(
+                profile_entry_by_id[entry_id],
+                ranked,
+                latest_entry_year,
             )
-            score = sum(
-                item.score * weight
-                for item, weight in zip(ranked, (1.0, 0.75, 0.35, 0.15), strict=False)
-            ) - redundancy - (page_cost * 0.4)
-            source_only_score = sum(
-                item.source_alternative_score * weight
-                for item, weight in zip(
-                    sorted(ranked, key=lambda item: -item.source_alternative_score),
-                    (1.0, 0.75, 0.35, 0.15),
-                    strict=False,
+            current_weighted = sum(
+                score * _coherent_entry_depth_weight(rank)
+                for rank, score in enumerate(
+                    sorted((item.score for item in ranked), reverse=True)
                 )
-            ) - redundancy - (page_cost * 0.4)
+            )
+            source_weighted = sum(
+                score * _coherent_entry_depth_weight(rank)
+                for rank, score in enumerate(
+                    sorted(
+                        (item.source_alternative_score for item in ranked),
+                        reverse=True,
+                    )
+                )
+            )
+            source_only_score = (
+                package.total_score
+                - package.writing_quality
+                - current_weighted
+                + source_weighted
+            )
             entry_package_metrics[entry_id] = (
                 EntityKind.PROJECT.value,
-                round(score, 2),
-                round(page_cost, 2),
-                round(redundancy, 2),
+                package.total_score,
+                package.page_cost,
+                package.redundancy_penalty,
                 {key for item in ranked for key in item.coverage_keys},
                 f"project-package:{entry_id}",
                 round(source_only_score, 2),
@@ -4718,6 +4803,14 @@ class DeterministicResumeComposer:
                     final_reason=final_reason,
                 )
             )
+        portfolio_frontier_comparisons = self._portfolio_frontier_comparisons(
+            final,
+            profile,
+            context,
+            bullets,
+            skills,
+            constraints,
+        )
         return ResumeCompositionDiagnostic(
             outcome=outcome,
             termination_reason=termination_reason,
@@ -4745,6 +4838,7 @@ class DeterministicResumeComposer:
             entry_bullet_selections=entry_bullet_selections,
             experience_package_selections=experience_package_selections,
             portfolio_marginal_comparisons=portfolio_marginal_comparisons,
+            portfolio_frontier_comparisons=portfolio_frontier_comparisons,
             project_representation=project_representation,
             selected_skill_rows=selected_skill_rows,
             posting_requirements=list(context.requirements.requirements),
@@ -4821,6 +4915,230 @@ class DeterministicResumeComposer:
             expansion_operations=expansion_operations,
             maximum_search_depth=None,
         )
+
+    def _portfolio_frontier_comparisons(
+        self,
+        final: _EvaluatedState,
+        profile: MasterProfile,
+        context: _PostingContext,
+        bullets: list[_BulletCandidate],
+        skills: list[_SkillCandidate],
+        constraints: TemplateConstraints,
+    ) -> list[PortfolioFrontierComparisonDiagnostic]:
+        """Compare low-value selected bullets with rejected bullets on one shared base."""
+
+        bullet_by_id = {candidate.evidence_id: candidate for candidate in bullets}
+        skill_by_id = {candidate.category_id: candidate for candidate in skills}
+        selected_candidates = [
+            bullet_by_id[evidence_id]
+            for evidence_id in final.state.bullet_ids
+            if evidence_id in bullet_by_id
+        ]
+        rejected_candidates = [
+            candidate
+            for candidate in bullets
+            if candidate.evidence_id not in final.state.bullet_ids
+        ]
+        comparisons: list[PortfolioFrontierComparisonDiagnostic] = []
+        for selected in selected_candidates:
+            base_state = _State(
+                final.state.bullet_ids - {selected.evidence_id},
+                final.state.skill_category_ids,
+            )
+            base_quality = self._state_quality(
+                base_state,
+                profile,
+                context,
+                bullet_by_id,
+                skill_by_id,
+            )
+            base_entry_ids = {
+                bullet_by_id[evidence_id].entry_id
+                for evidence_id in base_state.bullet_ids
+            }
+            selected_activation_cost = (
+                _ENTRY_ACTIVATION_LINE_COST
+                if selected.entry_id not in base_entry_ids
+                else 0.0
+            )
+            selected_line_cost = (
+                selected.line_fit.total_vertical_line_cost
+                + selected_activation_cost
+            )
+            selected_redundancy = self._marginal_entry_redundancy_penalty(
+                selected,
+                base_state,
+                profile,
+                bullet_by_id,
+            )
+            selected_marginal = round(final.quality - base_quality, 2)
+            alternatives: list[
+                tuple[
+                    float,
+                    float,
+                    _BulletCandidate,
+                    float,
+                    float,
+                    float,
+                ]
+            ] = []
+            for rejected in rejected_candidates:
+                if (
+                    rejected.entry_kind is EntityKind.EXPERIENCE
+                    and rejected.entry_id not in base_entry_ids
+                ):
+                    # A new professional experience must be compared through its
+                    # coherent package diagnostic, not as an invalid singleton.
+                    continue
+                _cross_entry_penalty, duplicate = self._redundancy_penalty(
+                    rejected,
+                    base_state,
+                    bullet_by_id,
+                )
+                if duplicate:
+                    continue
+                redundancy_penalty = self._marginal_entry_redundancy_penalty(
+                    rejected,
+                    base_state,
+                    profile,
+                    bullet_by_id,
+                )
+                proposal = _State(
+                    base_state.bullet_ids | {rejected.evidence_id},
+                    base_state.skill_category_ids,
+                )
+                if not self._within_planning_bounds(
+                    proposal,
+                    profile,
+                    bullet_by_id,
+                    constraints,
+                ):
+                    continue
+                activation_cost = (
+                    _ENTRY_ACTIVATION_LINE_COST
+                    if rejected.entry_id not in base_entry_ids
+                    else 0.0
+                )
+                line_cost = rejected.line_fit.total_vertical_line_cost + activation_cost
+                proposal_quality = self._state_quality(
+                    proposal,
+                    profile,
+                    context,
+                    bullet_by_id,
+                    skill_by_id,
+                )
+                marginal = round(proposal_quality - base_quality, 2)
+                alternatives.append(
+                    (
+                        marginal / line_cost,
+                        marginal,
+                        rejected,
+                        redundancy_penalty,
+                        activation_cost,
+                        line_cost,
+                    )
+                )
+            if not alternatives:
+                continue
+            (
+                rejected_value_per_line,
+                rejected_marginal,
+                rejected,
+                rejected_redundancy,
+                rejected_activation_cost,
+                rejected_line_cost,
+            ) = max(
+                alternatives,
+                key=lambda item: (
+                    item[0],
+                    item[1],
+                    item[2].score,
+                    item[2].evidence_id,
+                ),
+            )
+            comparisons.append(
+                PortfolioFrontierComparisonDiagnostic(
+                    selected_candidate_id=selected.evidence_id,
+                    selected_entry_id=selected.entry_id,
+                    selected_entry_kind=selected.entry_kind.value,
+                    selected_marginal_value=selected_marginal,
+                    selected_requirement_contribution=list(
+                        selected.direct_requirement_ids
+                    ),
+                    selected_redundancy_penalty=selected_redundancy,
+                    selected_entry_activation_line_cost=selected_activation_cost,
+                    selected_rendered_line_cost=selected_line_cost,
+                    selected_value_per_line=round(
+                        selected_marginal / selected_line_cost,
+                        2,
+                    ),
+                    rejected_candidate_id=rejected.evidence_id,
+                    rejected_entry_id=rejected.entry_id,
+                    rejected_entry_kind=rejected.entry_kind.value,
+                    rejected_marginal_value=rejected_marginal,
+                    rejected_requirement_contribution=list(
+                        rejected.direct_requirement_ids
+                    ),
+                    rejected_redundancy_penalty=round(rejected_redundancy, 2),
+                    rejected_entry_activation_line_cost=rejected_activation_cost,
+                    rejected_rendered_line_cost=rejected_line_cost,
+                    rejected_value_per_line=round(rejected_value_per_line, 2),
+                    comparison_reason=(
+                        "Compared both evidence choices against the same portfolio after "
+                        "removing the selected candidate; values include coherent entry "
+                        "quality, redundancy, and metadata-plus-bullet line cost."
+                    ),
+                )
+            )
+        comparisons.sort(
+            key=lambda item: (
+                item.selected_value_per_line,
+                -item.rejected_value_per_line,
+                item.selected_candidate_id,
+                item.rejected_candidate_id,
+            )
+        )
+        return comparisons[:5]
+
+    def _marginal_entry_redundancy_penalty(
+        self,
+        candidate: _BulletCandidate,
+        state: _State,
+        profile: MasterProfile,
+        bullet_by_id: dict[str, _BulletCandidate],
+    ) -> float:
+        selected = [
+            bullet_by_id[evidence_id]
+            for evidence_id in state.bullet_ids
+            if bullet_by_id[evidence_id].entry_id == candidate.entry_id
+        ]
+        if not selected:
+            return 0.0
+        entry = next(
+            item
+            for item in [*profile.experiences, *profile.projects]
+            if item.id == candidate.entry_id
+        )
+        latest_year = max(
+            (
+                year
+                for profile_entry in [*profile.experiences, *profile.projects]
+                for value in (profile_entry.start_date, profile_entry.end_date)
+                for year in _years(value)
+            ),
+            default=0,
+        )
+        current = self._score_experience_package(
+            entry,
+            selected,
+            latest_year,
+        ).redundancy_penalty
+        expanded = self._score_experience_package(
+            entry,
+            [*selected, candidate],
+            latest_year,
+        ).redundancy_penalty
+        return round(max(0.0, expanded - current), 2)
 
     @staticmethod
     def _candidate_diagnostic(

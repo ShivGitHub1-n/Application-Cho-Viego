@@ -20,7 +20,7 @@ TEMPLATE_V1_PREFERRED_DENSITY_CEILING = 0.93
 TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING = 0.95
 TEMPLATE_V1_IDEAL_DENSITY = 0.92
 TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR = 0.85
-RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v6"
+RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v7"
 
 
 class CompositionOutcome(StrEnum):
@@ -274,6 +274,30 @@ class PortfolioMarginalComparisonDiagnostic(BaseModel):
     omitted_reason: str | None = None
 
 
+class PortfolioFrontierComparisonDiagnostic(BaseModel):
+    """Safe same-base comparison of selected and rejected evidence."""
+
+    selected_candidate_id: str
+    selected_entry_id: str
+    selected_entry_kind: str
+    selected_marginal_value: float
+    selected_requirement_contribution: list[str] = Field(default_factory=list)
+    selected_redundancy_penalty: float = Field(default=0, ge=0)
+    selected_entry_activation_line_cost: float = Field(default=0, ge=0)
+    selected_rendered_line_cost: float = Field(gt=0)
+    selected_value_per_line: float
+    rejected_candidate_id: str
+    rejected_entry_id: str
+    rejected_entry_kind: str
+    rejected_marginal_value: float
+    rejected_requirement_contribution: list[str] = Field(default_factory=list)
+    rejected_redundancy_penalty: float = Field(default=0, ge=0)
+    rejected_entry_activation_line_cost: float = Field(default=0, ge=0)
+    rejected_rendered_line_cost: float = Field(gt=0)
+    rejected_value_per_line: float
+    comparison_reason: str
+
+
 class SkillRowSelectionDiagnostic(BaseModel):
     row_id: str
     label: str
@@ -310,6 +334,9 @@ class ResumeCompositionDiagnostic(BaseModel):
     )
     project_representation: ProjectRepresentationDiagnostic | None = None
     portfolio_marginal_comparisons: list[PortfolioMarginalComparisonDiagnostic] = Field(
+        default_factory=list
+    )
+    portfolio_frontier_comparisons: list[PortfolioFrontierComparisonDiagnostic] = Field(
         default_factory=list
     )
     selected_skill_rows: list[SkillRowSelectionDiagnostic] = Field(default_factory=list)
@@ -403,6 +430,7 @@ __all__ = [
     "PageFitEvaluation",
     "PageVerificationStatus",
     "PortfolioMarginalComparisonDiagnostic",
+    "PortfolioFrontierComparisonDiagnostic",
     "PreferredDensityStatus",
     "ProjectRepresentationDiagnostic",
     "ProjectRepresentationStatus",
