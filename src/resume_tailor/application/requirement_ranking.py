@@ -35,6 +35,7 @@ _BONUS_MARKERS = re.compile(
 )
 _INCIDENTAL_MARKERS = re.compile(
     r"\b(incidental(?:ly)?|optional(?:ly)?|helpful|may occasionally|"
+    r"company(?: name)?(?=\s*:?\s*$)|employer(?=\s*:?\s*$)|"
     r"company overview|company description|about us|about the company|what we offer|"
     r"why join us|benefits|compensation|perks|culture|our facilities|workplace|"
     r"office location|work location)\b",

@@ -15,6 +15,12 @@ variant retains its original source text and evidence IDs; source text is the
 fallback for disabled, rejected, or unapproved writing. Metadata, education
 details, and skill values are copied from reviewed profile fields.
 
+The complete reviewed same-entry source bundle is also the ranking authority
+for every automatic or explicitly approved variant. Generated text may improve
+visible wording, material structure, and line fit, but its reordered phrases do
+not create admission, evidence relationships, requirement coverage, or
+technical-signal matches that the reviewed bundle did not already support.
+
 ## Atomic candidates
 
 The candidate pool contains:
@@ -37,6 +43,8 @@ are extracted on each run from the posting, exact reviewed bullet text, entry
 titles, reviewed skills, and available structured evidence metadata. Empty
 optional technology, capability, or outcome lists do not prevent source text
 from being evaluated. Extracted features are not persisted as profile facts.
+Bare company/employer headings and their section content are typed incidental
+before these features are built.
 
 The normalization pipeline preserves internal technical punctuation such as
 plus signs, number signs, periods, hyphens, slashes, parentheses-derived

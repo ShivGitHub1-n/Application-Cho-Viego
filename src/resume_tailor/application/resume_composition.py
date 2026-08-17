@@ -1582,32 +1582,6 @@ class DeterministicResumeComposer:
                 explicitly_approved or options,
                 key=_source_versus_rewrite_key,
             )
-            if explicitly_approved:
-                source = options[0]
-                # User approval governs wording, while the reviewed source
-                # remains the authority for relevance and requirement
-                # attribution. This prevents a harmless paraphrase from
-                # disappearing merely because its surface tokens score below
-                # the source it faithfully represents.
-                preferred = replace(
-                    preferred,
-                    score=max(preferred.score, source.score),
-                    contextual_relevance=source.contextual_relevance,
-                    intrinsic_evidence_strength=source.intrinsic_evidence_strength,
-                    coverage_keys=source.coverage_keys,
-                    coverage_labels=source.coverage_labels,
-                    meaningful_overlap=source.meaningful_overlap,
-                    specific_signal_keys=source.specific_signal_keys,
-                    generic_only_rejected=source.generic_only_rejected,
-                    admitted=source.admitted,
-                    admission_reason=source.admission_reason,
-                    relationship=source.relationship,
-                    direct_requirement_ids=source.direct_requirement_ids,
-                    adjacent_requirement_ids=source.adjacent_requirement_ids,
-                    complementary_requirement_ids=source.complementary_requirement_ids,
-                    incidental_requirement_ids=source.incidental_requirement_ids,
-                    short_token_contributions=source.short_token_contributions,
-                )
             preferred_candidates[evidence.id] = replace(
                 preferred,
                 source_alternative_score=options[0].score,
@@ -1884,6 +1858,7 @@ class DeterministicResumeComposer:
             for item in supporting_evidence
             for value in [*item.technologies, *item.capabilities, *item.outcomes]
         ]
+        authority_text = " ".join(item.source_text for item in supporting_evidence)
         (
             score,
             contextual_relevance,
@@ -1907,7 +1882,10 @@ class DeterministicResumeComposer:
             context,
             latest_year,
             line_fit,
-            candidate_text=candidate_text,
+            # Generated wording may improve readability and line fit, but it
+            # cannot create relevance or requirement coverage.  The complete
+            # reviewed same-entry evidence bundle remains selection authority.
+            candidate_text=authority_text,
             structured_values_override=(
                 supporting_structured_values if writing_variant is not None else None
             ),
@@ -1915,7 +1893,7 @@ class DeterministicResumeComposer:
         if advisory:
             score = round(score + 6.0, 2)
         specific_signal_keys = _specific_posting_signal_matches(
-            [candidate_text, *supporting_structured_values],
+            [authority_text, *supporting_structured_values],
             context,
             meaningful_overlap,
             short_token_contributions,

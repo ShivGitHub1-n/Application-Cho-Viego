@@ -113,10 +113,14 @@ The hybrid authority split is explicit:
   checks cannot prove is quarantined for bounded semantic review rather than
   rendered automatically;
 - the layout optimizer selects only validated or explicitly approved variants,
-  compares them with reviewed source text, builds two-to-four-bullet
-  professional package alternatives, and remains authoritative for final entry
-  selection, structure, duplication, readability-adjusted metadata-plus-bullet
-  page cost, page fit, and export;
+  compares them with reviewed source text, and derives every variant's
+  relevance, requirement coverage, evidence relationship, and technical
+  signals from its complete reviewed same-entry source bundle. Generated word
+  order may affect readability and line fit, but cannot create selection
+  authority. The optimizer builds two-to-four-bullet professional package
+  alternatives and remains authoritative for final entry selection, structure,
+  duplication, readability-adjusted metadata-plus-bullet page cost, page fit,
+  and export;
 - Template V1 alone owns DOCX formatting.
 
 Cache identity includes profile and posting fingerprints, evidence bundles,

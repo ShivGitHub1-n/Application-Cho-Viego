@@ -65,6 +65,12 @@ compares source and written variants across those entries. Writing may therefore
 change which entry wins, but only through supported posting emphasis,
 intrinsic evidence strength, distinct portfolio contribution, readability, and
 page cost. Employer reputation and other external popularity signals are absent.
+For both automatic and explicitly approved variants, the complete reviewed
+same-entry source bundle remains the authority for admission, relationship,
+requirement coverage, and technical-signal matching. Generated word order and
+phrasing affect only visible wording, material-improvement checks, readability,
+and line cost; they cannot manufacture a new compound requirement such as a
+technical phrase assembled from unrelated source fragments.
 
 Professional experience admission is package-aware. Each credible experience
 receives a bounded set of deterministic two-to-four-bullet alternatives after
@@ -248,9 +254,10 @@ profile/posting fingerprints, and provider-call counts. That trace consumes
 the production diagnostic; it never repeats scoring logic and never includes
 candidate contact details or reviewed evidence source text.
 
-Incidental posting sections such as company descriptions, location, culture,
-facilities, benefits, and `What We Offer` are excluded from evidence admission,
-writer terms, requirement coverage, and portfolio features. Global degree
+Incidental posting sections such as bare `Company`, `Company Name`, or
+`Employer` headings, company descriptions, location, culture, facilities,
+benefits, and `What We Offer` are excluded from evidence admission, writer
+terms, requirement coverage, and portfolio features. Global degree
 requirements are attributed to reviewed education rather than experience
 bullets or skill rows. Employer identity contributes zero package points;
 reviewed enterprise or production facts remain only a small bounded tie-breaker.

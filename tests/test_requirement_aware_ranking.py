@@ -151,6 +151,25 @@ def test_what_we_offer_and_company_context_are_incidental_not_candidate_requirem
     assert not candidate.coverage_keys
 
 
+@pytest.mark.parametrize("heading", ["Company", "Company:", "Company Name", "Employer"])
+def test_bare_company_heading_does_not_become_a_candidate_requirement(
+    heading: str,
+) -> None:
+    posting = JobPosting(
+        id="company-heading-posting",
+        title="Embedded Engineer",
+        description=(
+            f"{heading}\nExample Motion\n"
+            "Responsibilities:\nDevelop STM32 firmware."
+        ),
+    )
+
+    requirements = extract_posting_requirements(posting)
+    company = next(item for item in requirements.requirements if item.text == "Example Motion")
+
+    assert company.authority is RequirementAuthority.INCIDENTAL
+
+
 def test_reviewed_engineering_education_satisfies_degree_requirement() -> None:
     profile = _profile(
         projects=[ResumeItem(id="firmware-project", title="Controller", kind="project")],

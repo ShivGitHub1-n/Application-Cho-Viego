@@ -13,7 +13,10 @@ from resume_tailor.application.generated_artifact import (
 )
 from resume_tailor.application.generation_diagnostics import GenerationTelemetry
 from resume_tailor.application.llm_services import HybridLlmServices
-from resume_tailor.application.resume_composition import DeterministicResumeComposer
+from resume_tailor.application.resume_composition import (
+    CompositionSearchBounds,
+    DeterministicResumeComposer,
+)
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.application.workflow_state import (
     invalidate_posting_derived_workflow,
@@ -24,19 +27,27 @@ from resume_tailor.domain.hybrid_resume import (
     RESUME_WRITING_CONTRACT_VERSION,
     RESUME_WRITING_POLICY_VERSION,
 )
+from resume_tailor.domain.layout import PageUtilizationStatus
 from resume_tailor.domain.llm_models import (
     BulletRewrite,
+    BulletRewriteClaim,
     BulletRewriteOutput,
     BulletRewriteResult,
     LlmOperation,
 )
 from resume_tailor.domain.models import (
     ContactInfo,
+    EntityKind,
+    EvidenceItem,
     JobPosting,
     MasterProfile,
+    ResumeItem,
     TemplateConstraints,
 )
-from resume_tailor.domain.resume_composition import RESUME_COMPOSITION_CONTRACT_VERSION
+from resume_tailor.domain.resume_composition import (
+    RESUME_COMPOSITION_CONTRACT_VERSION,
+    PageFitEvaluation,
+)
 from resume_tailor.infrastructure.artifact_rendering import TemplateV1ArtifactRenderer
 from resume_tailor.infrastructure.composition_page_fit import TemplateV1PageFitEvaluator
 from resume_tailor.infrastructure.optimization import (
@@ -54,10 +65,29 @@ class _FakeArtifactRenderer:
     def __init__(self, payload: bytes = b"PK\x03\x04controlled-docx") -> None:
         self.payload = payload
         self.calls = 0
+        self.rendered_resume: object | None = None
 
     def render_docx_bytes(self, resume: object) -> bytes:
         self.calls += 1
+        self.rendered_resume = resume
         return self.payload
+
+
+class _ExactFixedPageFit:
+    def evaluate(
+        self,
+        resume: object,
+        *,
+        attempt_exact: bool = True,
+    ) -> PageFitEvaluation:
+        return PageFitEvaluation(
+            status=PageUtilizationStatus.ACCEPTABLE_ONE_PAGE,
+            page_count=1,
+            exact=attempt_exact,
+            provider="controlled exact page fit",
+            utilization_ratio=0.91,
+            fits_one_page=True,
+        )
 
 
 class _FakeClock:
@@ -189,6 +219,147 @@ def test_completed_build_stores_final_docx_bytes_and_reuses_identical_artifact()
     assert artifact.docx_bytes == renderer.payload
     assert reused is artifact
     assert renderer.calls == 1
+
+
+def test_generated_word_order_cannot_create_portfolio_relevance() -> None:
+    """Exercise the same writer, composer, artifact, and renderer path as Resume Studio."""
+
+    posting = JobPosting(
+        id="synthetic-mechatronics-posting",
+        title="Mechatronics Engineer Intern",
+        description=(
+            "Core responsibilities:\n"
+            "Debug embedded motor controls over CAN bus.\n"
+            "Tune PID loop controls for actuator motion.\n"
+            "Preferred qualifications:\n"
+            "Create data reports for inventory workflows."
+        ),
+    )
+    profile = MasterProfile(
+        id="synthetic-portfolio-profile",
+        user_id="synthetic-portfolio-user",
+        display_name="Synthetic Candidate",
+        experiences=[
+            ResumeItem(
+                id="mechatronics-entry",
+                title="Mechatronics Intern",
+                kind=EntityKind.EXPERIENCE,
+            ),
+            ResumeItem(
+                id="digital-entry",
+                title="Digital Engineering Intern",
+                kind=EntityKind.EXPERIENCE,
+            ),
+        ],
+        evidence=[
+            EvidenceItem(
+                id="motor-controls-evidence",
+                entity_id="mechatronics-entry",
+                source_text="Integrated motors with embedded controllers.",
+            ),
+            EvidenceItem(
+                id="actuator-tuning-evidence",
+                entity_id="mechatronics-entry",
+                source_text="Validated actuator response with PID tuning.",
+            ),
+            EvidenceItem(
+                id="digital-can-report",
+                entity_id="digital-entry",
+                source_text=(
+                    "Automated data reports for inventory workflows and tracked CAN "
+                    "logs with bus diagnostics."
+                ),
+            ),
+            EvidenceItem(
+                id="digital-pid-report",
+                entity_id="digital-entry",
+                source_text=(
+                    "Automated data reports for inventory workflows, tracking PID "
+                    "records and loop metrics."
+                ),
+            ),
+        ],
+    )
+    generated_can = "Automated CAN bus diagnostics reports for inventory workflows."
+    generated_pid = "Automated PID loop metrics reports for inventory workflows."
+    rewrites = [
+        BulletRewrite(
+            entry_id="digital-entry",
+            final_bullet_text=text,
+            source_evidence_ids=[evidence_id],
+            evidence_combined=False,
+            confidence=0.95,
+            claims=[
+                BulletRewriteClaim(
+                    text=text,
+                    supporting_evidence_ids=[evidence_id],
+                )
+            ],
+        )
+        for evidence_id, text in (
+            ("digital-can-report", generated_can),
+            ("digital-pid-report", generated_pid),
+        )
+    ]
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(bullets=rewrites),
+        )
+    )
+    renderer = _FakeArtifactRenderer()
+    configuration = _configuration().model_copy(
+        update={"feature_flags": {"bullet_rewrite": True}}
+    )
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        hybrid_services=HybridLlmServices(fake, 0, 2, False, False, True),
+        resume_composer=DeterministicResumeComposer(
+            _ExactFixedPageFit(),
+            bounds=CompositionSearchBounds(
+                maximum_selected_bullets=2,
+                maximum_selected_entries=1,
+                maximum_experience_entries=1,
+                maximum_project_entries=0,
+            ),
+        ),
+        artifact_renderer=renderer,
+        generation_configuration=configuration,
+    )
+    service.start_generation()
+    plan = service.create_plan(profile, posting, TemplateConstraints())
+
+    artifact = service.build_generated_artifact(plan, profile, set())
+
+    request = fake.requests["rewrite_bullets"][0]
+    assert {group.entry_id for group in request.groups} == {
+        "mechatronics-entry",
+        "digital-entry",
+    }
+    assert artifact.writing_diagnostic is not None
+    assert all(
+        variant.validation_status.value == "validated"
+        and variant.material_improvement
+        for variant in artifact.writing_diagnostic.bullet_variants
+    )
+    assert artifact.composition_diagnostic is not None
+    assert artifact.composition_diagnostic.selected_experience_ids == [
+        "mechatronics-entry"
+    ]
+    assert set(artifact.final_resume.experience_bullets) == {"mechatronics-entry"}
+    assert generated_can not in {
+        bullet.text
+        for bullets in artifact.final_resume.experience_bullets.values()
+        for bullet in bullets
+    }
+    assert generated_pid not in {
+        bullet.text
+        for bullets in artifact.final_resume.experience_bullets.values()
+        for bullet in bullets
+    }
+    assert not artifact.selected_bullet_variants
+    assert renderer.rendered_resume is artifact.final_resume
 
 
 def test_production_artifact_path_compacts_legacy_profile_contact_links(
