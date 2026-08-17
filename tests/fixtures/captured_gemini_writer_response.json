@@ -32,12 +32,12 @@
     },
     {
       "source_evidence_ids": ["evidence:8e887f630d5c6337"],
-      "rewritten_text": "Modeled custom actuator assemblies in SolidWorks with integrated harmonic drives, specifying torque-speed profiles, encoder resolution, and gear ratios for positioning accuracy within 0.1 degrees and minimal backlash.",
+      "rewritten_text": "Modeled SolidWorks actuator assemblies with harmonic drives, torque-speed profiles, encoders, and gear ratios for <0.1-degree positioning precision.",
       "length_class": "standard"
     },
     {
       "source_evidence_ids": ["evidence:42bafd375b096dbd"],
-      "rewritten_text": "Developed supervisory safety logic and emergency-stop control strategies, ensuring robust functional safety across every deployment.",
+      "rewritten_text": "Developed supervisory safety logic, emergency-stop controls, and system documentation for drive-by-wire functional safety.",
       "length_class": "standard"
     }
   ]

@@ -58,6 +58,19 @@ remaining supported content, including:
 
 It must never select weak or irrelevant material solely to occupy space.
 
+Entry headings do not confer relevance authority on their bullets. Portfolio
+alignment comes from the reviewed evidence's material support for posting
+requirements and concrete posting signals. Entry packages are compared at every
+reachable depth, so a large evidence library cannot win by volume and a fixed
+section quota cannot preserve weaker evidence. Repeated evidence must lose on
+redundancy and marginal contribution.
+
+Within the exact one-page preferred-density band, portfolio evidence quality is
+more important than a small utilization difference. Page fill remains a hard
+constraint and an opportunity cost, but it does not justify retaining a weaker
+entry merely because that state happens to land closer to the center of the
+target band.
+
 Later planning diagnostics must expose, for every candidate:
 
 - relevance classification

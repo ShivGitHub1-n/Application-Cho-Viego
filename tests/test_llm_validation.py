@@ -544,3 +544,36 @@ def test_exact_reviewed_langgraph_passes_and_absent_aws_stays_rejected() -> None
     )
     with pytest.raises(GroundingValidationError, match="AWS|aws"):
         validate_rewrites(unsupported, [group])
+
+
+def test_generated_variant_cannot_repeat_conflicting_reviewed_title_claim() -> None:
+    group = ApprovedEvidenceGroup(
+        entry_id="mechatronics-entry",
+        authoritative_entry_title="Mechatronics Engineer",
+        evidence_ids=["hardware-proof"],
+        source_texts=[
+            "Led the hardware workstream as Lead Mechatronics Engineer for a prototype."
+        ],
+        capabilities=["hardware workstream", "prototype"],
+        max_rendered_lines=2,
+    )
+    output = BulletRewriteOutput(
+        bullets=[
+            BulletRewrite(
+                entry_id="mechatronics-entry",
+                final_bullet_text=(
+                    "Served as Lead Mechatronics Engineer for the prototype hardware "
+                    "workstream."
+                ),
+                source_evidence_ids=["hardware-proof"],
+                evidence_combined=False,
+                confidence=0.9,
+            )
+        ]
+    )
+
+    with pytest.raises(
+        GroundingValidationError,
+        match="generated title claim conflicts with authoritative entry metadata",
+    ):
+        validate_rewrites(output, [group])

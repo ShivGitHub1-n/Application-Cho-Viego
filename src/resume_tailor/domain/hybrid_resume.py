@@ -12,8 +12,8 @@ from resume_tailor.domain.requirement_ranking import (
 from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 
 EVIDENCE_RETRIEVAL_CONTRACT_VERSION = "resume-evidence-retrieval-v1"
-RESUME_WRITING_CONTRACT_VERSION = "evidence-grounded-bullet-v3"
-RESUME_WRITING_POLICY_VERSION = "technical-recruiter-writing-v5"
+RESUME_WRITING_CONTRACT_VERSION = "evidence-grounded-bullet-v4"
+RESUME_WRITING_POLICY_VERSION = "technical-recruiter-writing-v6"
 RESUME_WRITING_PROMPT_VERSION = "gemini-batched-writer-v2"
 
 

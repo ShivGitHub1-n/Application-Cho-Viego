@@ -270,7 +270,13 @@ def test_captured_production_streamlit_route_selects_density_and_truthful_covera
     assert degree.supporting_evidence_ids == []
     assert all(item.component_matches for item in diagnostic.requirement_coverage)
 
-    assert len(diagnostic.candidates_excluded_by_search_bounds) >= 2
+    assert diagnostic.estimated_page_evaluations <= (
+        diagnostic.maximum_estimated_page_evaluations
+    )
+    assert diagnostic.exact_page_evaluations <= (
+        diagnostic.maximum_exact_finalist_evaluations
+    )
+    assert diagnostic.expansion_operations <= diagnostic.maximum_expansion_operations
     assert all(
         item.entry_id
         and item.package_bullet_count
@@ -302,8 +308,12 @@ def test_captured_approved_wording_rebuild_and_download_make_no_generation_calls
         variant
         for variant in initial.writing_diagnostic.bullet_variants
         if variant.validation_status is BulletValidationStatus.REVIEW_REQUIRED
+        and variant.material_improvement
     ]
-    assert len(review_variants) == 2
+    assert review_variants
+    assert {item.id for item in initial.final_resume.review_pending_bullets} == {
+        variant.variant_id for variant in review_variants
+    }
 
     state["generated_content_reviewed"] = True
     state.widget_keys.add("generated_content_reviewed")
@@ -333,8 +343,8 @@ def test_captured_approved_wording_rebuild_and_download_make_no_generation_calls
     selected_review_variants = [
         variant for variant in review_variants if variant.variant_id in selected_variant_ids
     ]
-    assert selected_review_variants
     assert all(variant.rewritten_text in rendered_text for variant in selected_review_variants)
+    assert selected_variant_ids <= {variant.variant_id for variant in review_variants}
 
     state.widget_keys.clear()
     frontend_app._apply_pending_generated_content_review_reset()

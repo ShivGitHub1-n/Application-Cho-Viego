@@ -11,7 +11,7 @@ class ResumeWritingPolicy:
     maximum_provider_batches: int = 1
     maximum_malformed_repairs: int = 1
     maximum_shortlisted_evidence: int = 24
-    maximum_shortlisted_evidence_per_entry: int = 4
+    maximum_shortlisted_evidence_per_entry: int | None = None
     maximum_variants_per_evidence_group: int = 2
     preferred_line_classes: tuple[str, ...] = (
         "concise_one_line",
@@ -51,6 +51,8 @@ class ResumeWritingPolicy:
         "Write specific, natural, concise, ATS-readable plain-text resume bullets.",
         "Use only facts entailed by the supplied same-entry evidence bundle.",
         "Never invent names, dates, metrics, technologies, methods, outcomes, or ownership.",
+        "Treat the supplied authoritative entry title as final; never add or restate a different "
+        "title, seniority, or leadership designation inside a bullet.",
         "Prioritize clear ownership or contribution, then technical method or mechanism, "
         "then supported scope, result, or measurable impact, then target-role relevance.",
         "Use an Accomplished X, measured by Y, by doing Z structure only when the evidence "

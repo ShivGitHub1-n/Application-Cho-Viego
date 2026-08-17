@@ -122,6 +122,38 @@ def test_required_context_has_more_authority_than_bonus_context() -> None:
     assert required.importance > bonus.importance
 
 
+def test_coordinated_engineering_duties_do_not_create_orphan_requirements() -> None:
+    posting = JobPosting(
+        id="coordinated-duty-posting",
+        title="Mechatronics Engineer",
+        description=(
+            "Responsibilities:\n"
+            "Architect and build end-to-end hardware prototypes.\n"
+            "Design electrical, waveform, durability, and reliability tests.\n"
+            "Maintain schematics, BOMs, integration guides, and test reports.\n"
+            "Integrate drivers, test real hardware, and iterate performance."
+        ),
+    )
+
+    requirement_text = [
+        item.text for item in extract_posting_requirements(posting).requirements
+    ]
+
+    assert "Architect and build end-to-end hardware prototypes." in requirement_text
+    assert "Design electrical, waveform, durability, and reliability tests." in (
+        requirement_text
+    )
+    assert "Maintain schematics, BOMs, integration guides, and test reports." in (
+        requirement_text
+    )
+    assert {"Integrate drivers", "test real hardware", "iterate performance."} <= set(
+        requirement_text
+    )
+    assert not {"Architect", "and test reports.", "and reliability tests."} & set(
+        requirement_text
+    )
+
+
 def test_what_we_offer_and_company_context_are_incidental_not_candidate_requirements() -> None:
     posting = JobPosting(
         id="incidental-posting",

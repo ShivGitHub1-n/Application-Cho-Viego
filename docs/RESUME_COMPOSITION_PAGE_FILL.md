@@ -146,7 +146,9 @@ The finalist set is submitted as one pagination batch. Microsoft Word is
 created once, each already-rendered finalist is opened read-only in that owned
 application instance, and the application closes only the documents and Word
 instance it created. The batch has a bounded timeout and records a typed
-`pagination_unverified` failure before using the existing estimated fallback.
+`pagination_unverified` failure. Final artifact generation then fails closed;
+an estimated result is available only when a caller explicitly requests a
+non-final planning composition.
 No global `WINWORD.EXE` enumeration or termination is used. Final DOCX artifact
 rendering does not repeat pagination.
 
@@ -166,8 +168,8 @@ The default computation bounds are:
 - maximum ranked bullets: 48;
 - maximum expansion options evaluated from one state: 6;
 - maximum selected bullets: 24;
-- maximum selected coherent entries: 7, with at most 4 experiences and
-  3 projects;
+- maximum selected coherent entries: 7, with no default experience/project
+  split;
 - no default per-entry bullet cap; each additional bullet must clear
   marginal-value and redundancy checks within the global 24-bullet
   computation bound.
@@ -180,12 +182,14 @@ which condition applied, and candidates omitted only by a bound are retained
 in diagnostics.
 
 The final-plan preference is: structural truthfulness; exact one-page fit when
-available; no inadmissible or duplicate content; preferred-density fit among
-admissible plans; evidence and portfolio quality; distinct requirement
+available; no inadmissible or duplicate content; density class among admissible
+plans; evidence and portfolio quality; distinct requirement
 coverage; avoidance of unnecessary three-line bullets; then stable candidate
-IDs. Below the preferred band, density is compared in two-percentage-point
-buckets so a negligible fill difference cannot defeat a clearly stronger
-portfolio, while a material underfill gap is resolved before quality.
+IDs. Exact fits from 90% through 95% share the preferred density class, so a
+negligible difference inside that band cannot defeat a clearly stronger
+portfolio. Below the preferred band, density is compared in
+two-percentage-point buckets, while a material underfill gap is resolved before
+quality.
 Overflowing finalists are rolled back without stopping evaluation of
 lower-occupancy alternatives.
 
@@ -255,13 +259,14 @@ boxes.
 
 ## Pagination and outcomes
 
-Exact Microsoft Word or LibreOffice page count is authoritative when
-available. An exact result with more than one page is never accepted.
+Exact Microsoft Word or LibreOffice page count is authoritative for final
+artifacts. An exact result with more than one page is never accepted.
 
 When exact pagination fails or returns a non-exact measurement, the failure is
-retained in typed diagnostics and the existing Template V1 occupied-height
-estimate is used. Such a result is `unverified`; it is never described as an
-exact one-page result.
+retained in typed diagnostics and final artifact generation fails closed. A
+caller that explicitly disables final exact verification may receive the
+Template V1 occupied-height estimate as `unverified`; it is never export
+authority or described as an exact one-page result.
 
 Composition outcomes are:
 
@@ -314,7 +319,7 @@ Production generation also records typed stage timings for profile loading,
 posting normalization, retrieval, deterministic and semantic planning, plan
 validation, writer shortlisting, writer cache lookup, provider request and
 parsing, claim validation, final variant selection, candidate construction, page-fit search,
-DOCX rendering, exact pagination, estimated fallback, artifact storage,
+DOCX rendering, exact pagination, non-final estimated evaluation, artifact storage,
 Streamlit rerun overhead, and download preparation. A completed
 artifact stores the final DOCX bytes; download returns those exact bytes and
 has zero generation call counts.

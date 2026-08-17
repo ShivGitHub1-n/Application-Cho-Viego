@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from hashlib import sha256
@@ -33,6 +33,7 @@ from resume_tailor.application.requirement_ranking import extract_posting_requir
 from resume_tailor.application.resume_features import (
     TemplateV1BulletLineEstimator,
     extract_reviewed_text_features,
+    normalize_reviewed_text,
 )
 from resume_tailor.application.resume_writing_policy import (
     DEFAULT_RESUME_WRITING_POLICY,
@@ -440,11 +441,8 @@ class HybridLlmServices:
             ),
             groups=groups,
             max_bullets_per_entry=max(
-                1,
-                min(
-                    constraints.max_bullets_per_entry,
-                    self._writing_policy.maximum_shortlisted_evidence_per_entry,
-                ),
+                Counter(group.entry_id for group in groups).values(),
+                default=1,
             ),
             max_total_lines=max(
                 constraints.max_total_lines,
@@ -845,6 +843,9 @@ class HybridLlmServices:
         profile: MasterProfile,
     ) -> list[ApprovedEvidenceGroup]:
         evidence_by_id = {item.id: item for item in profile.evidence if item.confirmed}
+        entry_titles = {
+            item.id: item.title for item in [*profile.experiences, *profile.projects]
+        }
         selected_ids = [
             evidence_id
             for bullet in _resume_bullets(resume)
@@ -865,6 +866,7 @@ class HybridLlmServices:
             groups.append(
                 ApprovedEvidenceGroup(
                     entry_id=evidence.entity_id,
+                    authoritative_entry_title=entry_titles.get(evidence.entity_id, ""),
                     evidence_ids=[evidence.id],
                     source_texts=[evidence.source_text],
                     technologies=evidence.technologies,
@@ -1199,7 +1201,21 @@ class HybridLlmServices:
         by_entry: defaultdict[str, list[BulletVariantRecord]] = defaultdict(list)
         for item in usable:
             by_entry[item.entry_id].append(item)
-        pending = list(resume.review_pending_bullets)
+        pending = [
+            *resume.review_pending_bullets,
+            *[
+                StructuredBullet(
+                    id=item.variant_id,
+                    text=item.rewritten_text,
+                    evidence_ids=item.source_evidence_ids,
+                    support=ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW,
+                    writing_variant=item,
+                )
+                for item in usable
+                if item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
+                and item.variant_id not in approved_claim_ids
+            ],
+        ]
 
         def rewrite_section(
             source: dict[str, list[StructuredBullet]],
@@ -1234,15 +1250,6 @@ class HybridLlmServices:
                         item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
                         and item.variant_id not in approved_claim_ids
                     ):
-                        pending.append(
-                            StructuredBullet(
-                                id=item.variant_id,
-                                text=item.rewritten_text,
-                                evidence_ids=item.source_evidence_ids,
-                                support=ClaimSupport.STRONG_INFERENCE_PENDING_REVIEW,
-                                writing_variant=item,
-                            )
-                        )
                         continue
                     selected_variants.append(item)
                     covered.update(source_ids)
@@ -1291,6 +1298,7 @@ class HybridLlmServices:
             "evidence": [
                 {
                     "entry_id": group.entry_id,
+                    "authoritative_entry_title": group.authoritative_entry_title,
                     "evidence_ids": group.evidence_ids,
                     "source_texts": group.source_texts,
                     "technologies": group.technologies,
@@ -1836,13 +1844,92 @@ def _material_improvement_reasons(
     if len(source_words) >= 8 and len(written_words) <= len(source_words) * 0.85:
         reasons.append("made the evidence materially more concise")
     similarity = SequenceMatcher(None, source_words, written_words).ratio()
-    if similarity < 0.88 and len(written_words) >= 5:
-        reasons.append("restructured the evidence for clearer technical emphasis")
-    source_requirements = set(_matched_target_requirements(source, posting))
-    written_requirements = set(_matched_target_requirements(written, posting))
-    if written_requirements - source_requirements:
+    if (
+        similarity < 0.88
+        and len(written_words) >= 5
+        and _removes_source_clarity_issue(source, written)
+    ):
+        reasons.append("restructured weak source wording for clearer technical ownership")
+    if _foregrounds_supported_requirement(source, written, posting):
         reasons.append("foregrounded an already-supported target requirement")
     return list(dict.fromkeys(reasons))
+
+
+def _removes_source_clarity_issue(source: str, written: str) -> bool:
+    vague_opening = re.compile(
+        r"^(?:responsible for|worked on|helped (?:with|to)|assisted (?:with|in)|"
+        r"was involved in|tasked with)\b",
+        re.IGNORECASE,
+    )
+    source_features = extract_reviewed_text_features(source)
+    written_features = extract_reviewed_text_features(written)
+    return bool(
+        vague_opening.search(source)
+        and not vague_opening.search(written)
+        or not source_features.responsibility_signals
+        and bool(written_features.responsibility_signals)
+    )
+
+
+def _foregrounds_supported_requirement(
+    source: str,
+    written: str,
+    posting: JobPosting,
+) -> bool:
+    """Reward emphasis only when the target language already exists in source.
+
+    A generated synonym or newly assembled compound phrase must not earn a
+    writing bonus.  This comparison therefore considers only meaningful posting
+    tokens present verbatim in the reviewed source and requires a material move
+    toward the beginning of the sentence.
+    """
+
+    source_normalized = normalize_reviewed_text(source)
+    written_normalized = normalize_reviewed_text(written)
+    source_tokens = source_normalized.split()
+    written_tokens = written_normalized.split()
+    if not source_tokens or not written_tokens:
+        return False
+    source_positions = _first_stem_positions(source_tokens)
+    written_positions = _first_stem_positions(written_tokens)
+    target_stems = {
+        _emphasis_stem(token)
+        for requirement in _authoritative_posting_requirements(posting)
+        for token in normalize_reviewed_text(requirement).split()
+        if len(token) >= 5
+    }
+    supported_target_stems = target_stems & source_positions.keys() & written_positions.keys()
+    materially_foregrounded = [
+        stem
+        for stem in supported_target_stems
+        if source_positions[stem] - written_positions[stem] >= 0.2
+        and written_positions[stem] <= 0.55
+    ]
+    return len(materially_foregrounded) >= 2
+
+
+def _first_stem_positions(tokens: list[str]) -> dict[str, float]:
+    denominator = max(1, len(tokens) - 1)
+    positions: dict[str, float] = {}
+    for index, token in enumerate(tokens):
+        positions.setdefault(_emphasis_stem(token), index / denominator)
+    return positions
+
+
+def _emphasis_stem(token: str) -> str:
+    """Normalize only common inflections for supported emphasis comparison."""
+
+    if len(token) > 5 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 5 and token.endswith("ated"):
+        return token[:-1]
+    if len(token) > 5 and token.endswith("ing"):
+        return token[:-3].rstrip("n")
+    if len(token) > 4 and token.endswith("ed"):
+        return token[:-2]
+    if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
 
 
 def _mapping_rewrite_diagnostics(

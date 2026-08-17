@@ -32,6 +32,9 @@ def build_writer_shortlist(
 
     estimator = line_estimator or TemplateV1BulletLineEstimator()
     evidence_by_id = {item.id: item for item in profile.evidence if item.confirmed}
+    entry_titles = {
+        item.id: item.title for item in [*profile.experiences, *profile.projects]
+    }
     selected_source_ids = {
         evidence_id
         for section in (resume.experience_bullets, resume.project_bullets)
@@ -69,7 +72,11 @@ def build_writer_shortlist(
     for item in ordered:
         if len(selected) >= policy.maximum_shortlisted_evidence:
             break
-        if entry_counts[item.entry_id] >= policy.maximum_shortlisted_evidence_per_entry:
+        if (
+            policy.maximum_shortlisted_evidence_per_entry is not None
+            and entry_counts[item.entry_id]
+            >= policy.maximum_shortlisted_evidence_per_entry
+        ):
             continue
         selected.append(item)
         entry_counts[item.entry_id] += 1
@@ -105,6 +112,7 @@ def build_writer_shortlist(
             requirements,
             estimator,
             diagnostics,
+            entry_titles.get(item.entry_id, ""),
         )
         for item in selected
     ]
@@ -117,6 +125,7 @@ def _group_for(
     requirements: dict[str, PostingRequirement],
     estimator: TemplateV1BulletLineEstimator,
     diagnostics: list[WriterShortlistCandidate],
+    authoritative_entry_title: str,
 ) -> ApprovedEvidenceGroup:
     requirement_ids = [
         *retrieved.direct_requirement_ids,
@@ -127,6 +136,7 @@ def _group_for(
     line_fit = estimator.estimate(evidence.source_text)
     return ApprovedEvidenceGroup(
         entry_id=evidence.entity_id,
+        authoritative_entry_title=authoritative_entry_title,
         evidence_ids=[evidence.id],
         source_texts=[evidence.source_text],
         technologies=list(evidence.technologies),

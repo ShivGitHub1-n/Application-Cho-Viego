@@ -192,7 +192,7 @@ def _sdk_writer(
 
 
 def _sdk_rewrite_payload() -> dict[str, object]:
-    written = "Built STM32 firmware for validated SPI sensor communication."
+    written = "Validated SPI sensor communication; developed STM32 firmware."
     return {
         "rewrites": [
             {
@@ -1265,7 +1265,7 @@ def _single_entry_case() -> tuple[MasterProfile, JobPosting]:
 
 
 def _single_entry_rewrite() -> BulletRewriteResult:
-    written = "Built STM32 firmware for validated SPI sensor communication."
+    written = "Validated SPI sensor communication; developed STM32 firmware."
     return BulletRewriteResult(
         metadata=metadata(LlmOperation.REWRITE_BULLETS),
         output=BulletRewriteOutput(

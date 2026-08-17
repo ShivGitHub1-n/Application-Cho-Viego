@@ -54,9 +54,9 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   integrity validation. It depends on a page-fit evaluation port; the
   Template V1 infrastructure adapter renders and measures candidate documents.
   Posting requirements and evidence relationships are typed domain models.
-  Professional experiences enter final search as bounded, coherent packages;
-  projects and later package depth remain marginal decisions in the same
-  evidence-quality search. Legacy
+  Experiences and projects enter final search as bounded, coherent depth
+  frontiers; opening any entry pays its metadata cost and every deeper package
+  remains a marginal decision in the same evidence-quality search. Legacy
   flat reviewed skills may be regrouped into bounded display-only semantic,
   non-contiguous groups with exact per-skill source-index provenance. Template
   V1 row width is estimated before adding a value; canonical profile data is
@@ -76,10 +76,11 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 4. Validate every proposed claim against evidence and policy; strong inferences require user approval.
 5. Compose validated reviewed atoms through bounded candidate search and render
    every evaluated state through the packaged static DOCX template.
-6. Use exact DOCX page count as the one-page authority when available. Retain
-   provider failures and return an explicitly unverified deterministic
-   occupancy estimate when exact pagination is unavailable; PDF rendering
-   remains a separate delivery concern.
+6. Require exact DOCX page count as the one-page authority for a final artifact.
+   Retain provider failures and fail closed when exact pagination is
+   unavailable. Explicit non-final planning calls may return an unverified
+   deterministic occupancy estimate; PDF rendering remains a separate delivery
+   concern.
 
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
@@ -87,9 +88,10 @@ Gemini composition is advisory and evidence-grounded. The application may
 narrow or reorder optimizer-selected candidates. Resume writing now uses an
 entry-balanced shortlist after deterministic retrieval and an initial
 source-text composition. The shortlist retains selected direct evidence,
-strong adjacent evidence, intrinsically strong complementary evidence, and at
-least one credible alternative per admitted entry before applying the global
-24-evidence and four-per-entry bounds. One primary batch writes only that
+strong adjacent evidence, intrinsically strong complementary evidence, and
+credible alternative entries before applying the global 24-evidence bound.
+There is no default per-entry shortlist quota; entry depth is limited by the
+reviewed evidence and the global bound. One primary batch writes only that
 shortlist. Validated variants are cached and reused during the final
 deterministic page-fit search. This corrects the former production handoff in which
 `DeterministicResumeComposer` rebuilt selected bullets from
@@ -117,8 +119,10 @@ The hybrid authority split is explicit:
   relevance, requirement coverage, evidence relationship, and technical
   signals from its complete reviewed same-entry source bundle. Generated word
   order may affect readability and line fit, but cannot create selection
-  authority. The optimizer builds two-to-four-bullet professional package
-  alternatives and remains authoritative for final entry selection, structure,
+  authority. Explicit approval makes a review-required variant eligible; it
+  does not force that wording to replace a stronger source candidate. The
+  optimizer builds a coherent package at every reachable depth and remains
+  authoritative for final entry selection, structure,
   duplication, readability-adjusted metadata-plus-bullet page cost, page fit,
   and export;
 - Template V1 alone owns DOCX formatting.
@@ -139,6 +143,19 @@ comparisons, final validation state, and aggregate batch effect. A mixed batch
 is reported as `writer_partially_succeeded` when a validated sibling reaches
 selection; complete source fallback requires zero usable validated rewrites.
 With all LLM features disabled, no provider is constructed or called.
+
+Authoritative entry metadata also bounds generated title claims. If reviewed
+source prose asserts a different title or seniority, composition leaves that
+canonical source untouched but removes the conflicting phrase from relevance
+authority and emits a sanitized claim-integrity diagnostic. A generated
+variant that repeats or introduces the conflict is rejected; approval cannot
+override authoritative entry metadata.
+
+Every material review-required variant in the bounded writer shortlist is
+carried to the approval surface, including alternatives that were absent from
+the pre-writer source seed. Approval invalidates the artifact fingerprint and
+recomposition compares the now-eligible wording with its source and the rest of
+the portfolio without another provider call.
 
 The Streamlit production flow completes generation through one typed immutable
 `GeneratedResumeArtifact`. Its identity covers the reviewed profile, normalized
@@ -331,8 +348,8 @@ current cover-letter implementation.
 
 - PDF-to-structured-resume extraction is unreliable; parsed data must be user-reviewable before use.
 - Exact page count needs a configured DOCX provider. Template V1 utilization
-  estimates permit an explicitly unverified fallback but never substitute for
-  or claim exact one-page verification.
+  estimates may support explicitly non-final planning but never substitute for
+  exact verification or authorize a generated artifact.
 - AI inference needs conservative policy and evidence citations to remain trustworthy.
 - Company research must respect source terms, permissions, rate limits, and clear provenance.
 - DOCX-to-PDF conversion varies by platform; production export needs a chosen conversion service or runtime.

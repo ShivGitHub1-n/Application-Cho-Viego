@@ -72,13 +72,15 @@ phrasing affect only visible wording, material-improvement checks, readability,
 and line cost; they cannot manufacture a new compound requirement such as a
 technical phrase assembled from unrelated source fragments.
 
-Professional experience admission is package-aware. Each credible experience
-receives a bounded set of deterministic two-to-four-bullet alternatives after
-validated writing variants are available. The search opens the metadata and
-bullets together, so an ordinary complementary bullet cannot create an isolated
-employer block. A one-bullet professional block requires a typed exception for
-user priority, uniquely important direct requirement coverage, or exceptional
-reviewed central value. Projects retain their supplemental one-bullet option.
+Entry admission is package-aware. Each credible experience or project receives
+a deterministic best package at every reachable depth after validated writing
+variants are available. The search opens metadata and bullets together, so an
+ordinary complementary bullet cannot create an isolated entry block. A
+one-bullet professional block requires a typed exception for user priority,
+uniquely important direct requirement coverage, or exceptional reviewed central
+value; a one-bullet project remains eligible when its evidence pays the same
+activation and line costs. There is no default entry-type or per-entry bullet
+quota.
 Package scores use direct and adjacent coverage, intrinsic technical evidence,
 validated writing quality, reviewed production/enterprise context, bounded
 duration and recency, seniority, distinctness, redundancy, and page cost.
@@ -104,6 +106,12 @@ large same-entry library without reserving a final résumé slot for any entry o
 source type. Existing requirement and project exploration seeds remain bounded;
 final selection still depends on portfolio quality and page fit.
 
+Compound posting responsibilities are split only when each coordinated fragment
+is independently a complete action clause. Comma-separated objects remain one
+requirement, preventing orphan requirements such as a bare action verb or
+`test reports` from gaining independent importance. A generic technology token
+alone also cannot prove a domain-rich compound requirement.
+
 Final allocation scores requirement coverage as a portfolio property rather
 than multiplying value by the number of bullets that repeat it. Each directly
 covered requirement receives its authority and posting-importance weight once,
@@ -120,7 +128,8 @@ metadata-plus-bullets package. Opening the entry includes its heading/metadata
 line cost; later bullets pay only their bullet line cost. Depth weights diminish
 gradually, so a third or fourth distinct, strongly aligned proof can deepen the
 entry, while repetition still loses through package redundancy. Low-context
-entries without important direct support pay an entry-alignment cost, and a
+entries without important direct support pay an entry-alignment cost based on
+their evidence, not merely on an entry-title word appearing in the posting. A
 new shallow entry must recover its activation cost through sufficient total
 posting value. The same rules apply to experiences and projects, including
 one-bullet projects; no entry-type quota determines the result. Expansion order
@@ -203,6 +212,19 @@ small bounded writing-value bonus only after it proves material improvement;
 additional line cost and awkward wrapping reduce its comparison score. Cosmetic,
 unclear, verbose, rejected, or review-required variants do not displace a
 stronger source. There is no rewrite quota.
+
+Approval is an eligibility decision, not a replacement instruction. An approved
+variant still competes with its reviewed source on supported substance,
+clarity, relevance emphasis, and line efficiency. Textual difference alone is
+not material improvement: an accepted rewrite must fix an objective clarity or
+line-fit problem, or materially foreground posting terminology already present
+in its reviewed source authority.
+
+The approval surface receives every bounded, material, review-required writer
+alternative rather than only variants whose entries appeared in the pre-writer
+seed. This keeps approval authority aligned with the same alternative set used
+by final recomposition. Non-material generated wording is not offered merely
+because it requires review.
 
 Visible technical-substance preservation is part of that comparison. Exact
 reviewed tool and platform names, protocols, mechanisms, constraints, testing

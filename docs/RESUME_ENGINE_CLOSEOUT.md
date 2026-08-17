@@ -27,12 +27,12 @@ deferred work; it is not a feature roadmap.
    intrinsic evidence strength, and provenance remain diagnostics; ranking does
    not invent claims or transfer authority between bullets.
 
-4. **Experience-package selection.** The composer selects coherent professional
-   experience packages, opening metadata and bounded two-to-four-bullet options
-   together. It searches a bounded portfolio using requirement coverage,
-   evidence quality, distinctness, readability, and Template V1 page cost.
-   Projects and skills are complementary decisions, not a substitute for
-   unsupported experience.
+4. **Entry-package selection.** The composer selects coherent experience and
+   project packages, opening metadata and bullets together. Every reachable
+   depth competes within global evidence and entry bounds; there is no default
+   section quota or per-entry bullet cap. It searches the bounded portfolio
+   using requirement coverage, evidence quality, distinctness, readability,
+   and Template V1 page cost.
 
 ## Writing and validation
 
@@ -53,6 +53,10 @@ deferred work; it is not a feature roadmap.
    technical substance, tools, mechanisms, constraints, metrics, ownership,
    outcome, and line fit remain protected. Cosmetic compression is not enough;
    generated three-line variants remain review-required.
+   Approval makes a material review-required variant eligible, including a
+   bounded writer alternative absent from the source seed, but does not force
+   it over stronger reviewed wording. Authoritative entry metadata bounds title
+   and seniority claims.
 
 8. **Skills and portfolio composition.** Reviewed skill categories and
    demonstrated skills can support the skills section and measured fit, but
@@ -66,8 +70,9 @@ deferred work; it is not a feature roadmap.
 9. **Page fitting and Template V1.** The bounded search evaluates candidates
    through the packaged, content-neutral `src/resume_tailor/templates/template_v1.docx`.
    Template V1 owns formatting; its JSON layout profile is diagnostic only.
-   Exact Microsoft Word pagination is authoritative when available. Otherwise
-   deterministic occupancy estimation is explicitly marked unverified.
+   Exact Microsoft Word pagination is authoritative. A final generated artifact
+   fails closed when the configured exact provider is unavailable; deterministic
+   occupancy estimates remain planning diagnostics, not export authority.
 
 10. **Generated artifact storage and immediate download.** A successful build
     creates one immutable `GeneratedResumeArtifact` containing the final
@@ -92,9 +97,9 @@ deferred work; it is not a feature roadmap.
 
 13. **Microsoft Word pagination limitation.** Exact Word pagination is not
     available in every runtime, including clean environments without the
-    configured Word pagination provider. The engine retains deterministic
-    estimation and clearly reports the result as unverified; manual Microsoft
-    Word inspection remains authoritative.
+    configured Word pagination provider. Such a runtime cannot complete a final
+    generated resume artifact; it reports the typed pagination failure and asks
+    the user to retry where Word or the configured exact provider is available.
 
 ## Setup, verification, and troubleshooting
 
@@ -113,7 +118,7 @@ deferred work; it is not a feature roadmap.
 
 15. **Completed versus deferred.** Completed behavior includes reviewed-profile
     provenance, requirement-aware retrieval/ranking, evidence relationships,
-    coherent experience packages, validated Gemini rewriting, strict grounding,
+    coherent experience and project packages, validated Gemini rewriting, strict grounding,
     deterministic fallback, skill composition, Template V1, bounded page fit,
     immutable artifacts, immediate byte download, zero provider calls during
     download, and the tracked synthetic reference DOCX used by clean-checkout

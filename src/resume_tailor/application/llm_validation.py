@@ -7,6 +7,7 @@ from math import isfinite
 
 from pydantic import BaseModel
 
+from resume_tailor.application.title_integrity import conflicting_role_titles
 from resume_tailor.domain.hybrid_resume import GroundingFailureCode
 from resume_tailor.domain.llm_models import (
     ApprovedEvidenceGroup,
@@ -454,6 +455,26 @@ def validate_rewrites(
         if bullet.support == ClaimConfidence.UNSUPPORTED:
             failures.append(f"unsupported generated claim: {bullet.final_bullet_text}")
             continue
+        authoritative_titles = {
+            group.authoritative_entry_title
+            for group in groups_for_bullet
+            if group.authoritative_entry_title
+        }
+        if len(authoritative_titles) > 1:
+            failures.append("same-entry evidence bundle has conflicting authoritative titles")
+        elif authoritative_titles:
+            authoritative_title = next(iter(authoritative_titles))
+            if conflicting_role_titles(bullet.final_bullet_text, authoritative_title):
+                failures.append(
+                    "generated title claim conflicts with authoritative entry metadata"
+                )
+            if bullet.concise_alternative is not None and conflicting_role_titles(
+                bullet.concise_alternative,
+                authoritative_title,
+            ):
+                failures.append(
+                    "concise generated title claim conflicts with authoritative entry metadata"
+                )
         _validate_claim_provenance(bullet, group_by_evidence, failures)
         _validate_protected_facts(
             bullet.final_bullet_text,

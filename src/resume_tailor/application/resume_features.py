@@ -113,7 +113,16 @@ _LOW_INFORMATION = frozenset(
 )
 _RESPONSIBILITY_TERMS: dict[str, frozenset[str]] = {
     "implementation": frozenset(
-        {"build", "built", "code", "coded", "configure", "configured", "implement", "implemented"}
+        {
+            "build",
+            "built",
+            "code",
+            "coded",
+            "configure",
+            "configured",
+            "implement",
+            "implemented",
+        }
     ),
     "design": frozenset(
         {"architect", "architected", "design", "designed", "model", "modeled", "specified"}
@@ -132,6 +141,7 @@ _RESPONSIBILITY_TERMS: dict[str, frozenset[str]] = {
             "testing",
             "validate",
             "validated",
+            "validating",
             "validation",
         }
     ),
@@ -165,7 +175,16 @@ _RESPONSIBILITY_TERMS: dict[str, frozenset[str]] = {
         }
     ),
     "documentation": frozenset(
-        {"document", "documented", "record", "recorded", "specify", "specified"}
+        {
+            "define",
+            "defined",
+            "document",
+            "documented",
+            "record",
+            "recorded",
+            "specify",
+            "specified",
+        }
     ),
     "improvement": frozenset(
         {"improve", "improved", "optimize", "optimized", "reduce", "reduced"}

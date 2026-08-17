@@ -20,7 +20,7 @@ TEMPLATE_V1_PREFERRED_DENSITY_CEILING = 0.93
 TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING = 0.95
 TEMPLATE_V1_IDEAL_DENSITY = 0.92
 TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR = 0.85
-RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v8"
+RESUME_COMPOSITION_CONTRACT_VERSION = "deterministic-resume-composition-v9"
 
 
 class CompositionOutcome(StrEnum):
@@ -103,6 +103,18 @@ class ExperienceSingleBulletExceptionReason(StrEnum):
     REVIEWED_CENTRAL_ROLE_EXCEPTIONAL_VALUE = (
         "reviewed_central_role_exceptional_value"
     )
+
+
+class ClaimIntegrityCode(StrEnum):
+    EVIDENCE_TITLE_CONFLICT = "evidence_title_conflicts_with_authoritative_entry_title"
+
+
+class ClaimIntegrityDiagnostic(BaseModel):
+    code: ClaimIntegrityCode
+    entry_id: str
+    evidence_id: str
+    authority_source: str = "reviewed_entry_metadata"
+    selection_authority_removed: bool = True
 
 
 class PageFitEvaluation(BaseModel):
@@ -210,9 +222,9 @@ class EntryBulletSelectionDiagnostic(BaseModel):
 
 class ExperiencePackageAlternativeDiagnostic(BaseModel):
     package_id: str
-    bullet_ids: list[str] = Field(min_length=1, max_length=4)
+    bullet_ids: list[str] = Field(min_length=1)
     source_evidence_ids: list[str] = Field(min_length=1)
-    bullet_count: int = Field(ge=1, le=4)
+    bullet_count: int = Field(ge=1)
     source_bullet_count: int = Field(ge=0)
     rewritten_bullet_count: int = Field(ge=0)
     package_relevance: float = Field(ge=0)
@@ -333,6 +345,7 @@ class ResumeCompositionDiagnostic(BaseModel):
         default_factory=list
     )
     project_representation: ProjectRepresentationDiagnostic | None = None
+    claim_integrity_warnings: list[ClaimIntegrityDiagnostic] = Field(default_factory=list)
     portfolio_marginal_comparisons: list[PortfolioMarginalComparisonDiagnostic] = Field(
         default_factory=list
     )
@@ -415,6 +428,8 @@ class ResumeCompositionDiagnostic(BaseModel):
 __all__ = [
     "BulletLineFitDiagnostic",
     "CandidateExclusionCategory",
+    "ClaimIntegrityCode",
+    "ClaimIntegrityDiagnostic",
     "CompositionCandidateDiagnostic",
     "CompositionCandidateKind",
     "CompositionOutcome",

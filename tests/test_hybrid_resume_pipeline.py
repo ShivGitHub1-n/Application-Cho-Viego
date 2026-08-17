@@ -149,7 +149,7 @@ def _rewrite_result() -> BulletRewriteResult:
     )
 
 
-def test_production_page_fill_consumes_validated_rewrite_and_reuses_cache() -> None:
+def test_production_page_fill_retains_strong_sources_and_reuses_writer_cache() -> None:
     profile = _profile()
     posting = _posting()
     fake = FakeResumeLanguageModel(rewrite_bullets=_rewrite_result())
@@ -166,23 +166,25 @@ def test_production_page_fill_consumes_validated_rewrite_and_reuses_cache() -> N
     second = service.build_document(plan, profile, set())
 
     first_bullet = first.experience_bullets["embedded-entry"][0]
-    assert first_bullet.text == ("Built and validated STM32 firmware for SPI sensor communication.")
+    assert first_bullet.text == (
+        "Developed STM32 firmware and validated SPI sensor communication."
+    )
     assert first_bullet.evidence_ids == ["embedded-evidence"]
-    assert first_bullet.writing_variant is not None
-    assert first_bullet.writing_variant.validation_status is (BulletValidationStatus.VALIDATED)
+    assert first_bullet.writing_variant is None
     assert first.hybrid_diagnostic is not None
     assert first.hybrid_diagnostic.provider_call_count == 1
     assert first.hybrid_diagnostic.layout_input == ("validated_variants_with_source_fallbacks")
     assert first.hybrid_diagnostic.writer_execution_status is (
-        WriterExecutionStatus.WRITER_SUCCEEDED
+        WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
     )
-    assert first.hybrid_diagnostic.rewritten_bullet_count == 1
-    assert first.hybrid_diagnostic.source_bullet_count == 1
+    assert first.hybrid_diagnostic.rewritten_bullet_count == 0
+    assert first.hybrid_diagnostic.source_bullet_count == 2
     assert second.hybrid_diagnostic is not None
     assert second.hybrid_diagnostic.provider_cache_hits == 1
     assert second.hybrid_diagnostic.writer_execution_status is (
-        WriterExecutionStatus.CACHE_HIT
+        WriterExecutionStatus.SOURCE_VARIANTS_SCORED_BETTER
     )
+    assert second.hybrid_diagnostic.provider_cache_hits == 1
     assert fake.calls["rewrite_bullets"] == 1
 
 
@@ -234,6 +236,70 @@ def test_cosmetic_action_verb_rewrite_does_not_displace_stronger_source() -> Non
     )
     assert resume.hybrid_diagnostic.rewritten_bullet_count == 0
     assert "zero rewrites reached" in resume.hybrid_diagnostic.writing_reason
+
+
+def test_materially_clearer_supported_rewrite_can_displace_awkward_source() -> None:
+    profile = _profile().model_copy(
+        update={
+            "evidence": [
+                _profile().evidence[0].model_copy(
+                    update={
+                        "source_text": (
+                            "Responsible for validating STM32 firmware and SPI sensor "
+                            "communication during release checks."
+                        )
+                    }
+                ),
+                _profile().evidence[1],
+            ]
+        }
+    )
+    improved = (
+        "Validated STM32 firmware and SPI sensor communication during release checks."
+    )
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(
+                bullets=[
+                    BulletRewrite(
+                        entry_id="embedded-entry",
+                        final_bullet_text=improved,
+                        source_evidence_ids=["embedded-evidence"],
+                        preserved_technologies=["STM32", "SPI"],
+                        evidence_combined=False,
+                        confidence=0.95,
+                        claims=[
+                            BulletRewriteClaim(
+                                text=improved,
+                                supporting_evidence_ids=["embedded-evidence"],
+                            )
+                        ],
+                    )
+                ]
+            ),
+        )
+    )
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        hybrid_services=HybridLlmServices(fake, 0, 2, False, False, True),
+        resume_composer=DeterministicResumeComposer(ExactFixedPageFit()),
+    )
+    plan = service.create_plan(profile, _posting(), TemplateConstraints())
+
+    resume = service.build_document(plan, profile, set())
+
+    rendered = [
+        bullet
+        for bullets in resume.experience_bullets.values()
+        for bullet in bullets
+        if bullet.evidence_ids == ["embedded-evidence"]
+    ]
+    assert rendered[0].text == improved
+    assert rendered[0].writing_variant is not None
+    assert resume.hybrid_diagnostic is not None
+    assert resume.hybrid_diagnostic.rewritten_bullet_count == 1
 
 
 def test_cached_all_rejected_writer_batch_keeps_explicit_rejection_status() -> None:

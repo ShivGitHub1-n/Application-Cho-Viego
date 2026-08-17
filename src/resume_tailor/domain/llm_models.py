@@ -271,6 +271,7 @@ class SkillCompositionResult(ModelResult):
 
 class ApprovedEvidenceGroup(StrictModel):
     entry_id: str
+    authoritative_entry_title: str = ""
     evidence_ids: list[str] = Field(min_length=1, max_length=4)
     source_texts: list[str] = Field(min_length=1, max_length=4)
     technologies: list[str] = Field(default_factory=list)

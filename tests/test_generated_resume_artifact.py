@@ -90,6 +90,42 @@ class _ExactFixedPageFit:
         )
 
 
+class _ContentDensityPageFit:
+    """Controlled exact page budget that still reacts to portfolio content."""
+
+    def evaluate(
+        self,
+        resume: object,
+        *,
+        attempt_exact: bool = True,
+    ) -> PageFitEvaluation:
+        assert hasattr(resume, "experience_bullets")
+        structured = resume
+        bullet_count = sum(
+            len(items)
+            for section in (
+                structured.experience_bullets,
+                structured.project_bullets,
+            )
+            for items in section.values()
+        )
+        entry_count = len(structured.experiences) + len(structured.projects)
+        utilization = 0.57 + (bullet_count * 0.035) + (entry_count * 0.012)
+        fits = utilization <= 0.95
+        return PageFitEvaluation(
+            status=(
+                PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+                if fits
+                else PageUtilizationStatus.OVERFLOW
+            ),
+            page_count=1 if fits else 2,
+            exact=attempt_exact,
+            provider="controlled content-density exact page fit",
+            utilization_ratio=utilization,
+            fits_one_page=fits,
+        )
+
+
 class _FakeClock:
     def __init__(self) -> None:
         self.value = 0.0
@@ -360,6 +396,195 @@ def test_generated_word_order_cannot_create_portfolio_relevance() -> None:
     }
     assert not artifact.selected_bullet_variants
     assert renderer.rendered_resume is artifact.final_resume
+
+
+def _mixed_domain_profile() -> MasterProfile:
+    entries = [
+        ResumeItem(id="motion-lab", title="Mechatronics Engineer", kind="experience"),
+        ResumeItem(id="electronics-lab", title="Hardware Engineer", kind="experience"),
+        ResumeItem(id="digital-lab", title="Digital Engineering Intern", kind="experience"),
+        ResumeItem(id="robot-hand", title="Robotic Hand", kind="project"),
+        ResumeItem(id="motor-fixture", title="Motor Test Fixture", kind="project"),
+        ResumeItem(id="pcb-controller", title="Embedded Controller", kind="project"),
+        ResumeItem(id="resume-app", title="Document Automation App", kind="project"),
+    ]
+    evidence_by_entry = {
+        "motion-lab": [
+            "Designed electromechanical prototypes with brushless motors and actuators.",
+            "Created SolidWorks CAD assemblies and 3D-printed alignment fixtures.",
+            "Debugged embedded C motor controls on physical hardware.",
+            "Integrated wiring harnesses, encoders, and motor drivers.",
+            "Documented hardware validation results and interface requirements.",
+            "Tested the actuator assembly against mechanical requirements.",
+            "Repeated actuator assembly tests against the same mechanical requirements.",
+            "Recorded the same actuator test status for a second design review.",
+        ],
+        "electronics-lab": [
+            "Built and soldered STM32 controller boards with motor-driver circuits.",
+            "Debugged PCB power faults with an oscilloscope and multimeter.",
+            "Assembled bench fixtures for electronics validation.",
+            "Executed reliability tests on embedded hardware.",
+            "Documented schematics, BOM revisions, and root-cause findings.",
+        ],
+        "digital-lab": [
+            "Built Python AI document-classification pipelines and REST APIs.",
+            "Automated cloud deployments and software regression tests.",
+            "Debugged production data services and improved API latency by 30%.",
+            "Created model-evaluation dashboards and technical documentation.",
+        ],
+        "robot-hand": [
+            "Designed a cable-driven robotic hand with servo actuators.",
+            "Built 3D-printed linkages and integrated embedded sensor feedback.",
+            "Validated grasp motion and documented mechanical revisions.",
+        ],
+        "motor-fixture": [
+            "Built a 3D-printed motor fixture with encoder alignment features.",
+            "Soldered motor-driver wiring and measured current on the bench.",
+            "Troubleshot vibration and revised the CAD assembly.",
+        ],
+        "pcb-controller": [
+            "Designed and assembled a PCB for embedded actuator control.",
+            "Validated sensor inputs and debugged power faults on the bench.",
+            "Documented schematic and connector interfaces.",
+        ],
+        "resume-app": [
+            "Built a Python AI document application with REST APIs.",
+            "Automated document validation and cloud deployment.",
+            "Evaluated ranking models and debugged production software workflows.",
+        ],
+    }
+    evidence = [
+        EvidenceItem(
+            id=f"{entry_id}-proof-{index}",
+            entity_id=entry_id,
+            source_text=text,
+        )
+        for entry_id, texts in evidence_by_entry.items()
+        for index, text in enumerate(texts, start=1)
+    ]
+    return MasterProfile(
+        id="mixed-domain-profile",
+        user_id="mixed-domain-user",
+        display_name="Synthetic Candidate",
+        experiences=[item for item in entries if item.kind is EntityKind.EXPERIENCE],
+        projects=[item for item in entries if item.kind is EntityKind.PROJECT],
+        evidence=evidence,
+    )
+
+
+def _mixed_domain_artifact(
+    posting: JobPosting,
+    profile: MasterProfile | None = None,
+) -> GeneratedResumeArtifact:
+    resolved_profile = profile or _mixed_domain_profile()
+    renderer = _FakeArtifactRenderer()
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        resume_composer=DeterministicResumeComposer(_ContentDensityPageFit()),
+        artifact_renderer=renderer,
+        generation_configuration=_configuration(),
+    )
+    service.start_generation()
+    plan = service.create_plan(resolved_profile, posting, TemplateConstraints())
+    artifact = service.build_generated_artifact(plan, resolved_profile, set())
+    assert renderer.rendered_resume is artifact.final_resume
+    return artifact
+
+
+def test_production_artifact_path_reverses_mixed_portfolio_by_posting_domain() -> None:
+    hardware = _mixed_domain_artifact(
+        JobPosting(
+            id="mixed-hardware-posting",
+            title="Mechatronics Engineer Intern",
+            description=(
+                "Build electromechanical prototypes with motors and actuators. Design "
+                "embedded electronics and PCBs. Create mechanical CAD and 3D-printed "
+                "fixtures. Prototype robotic mechanisms with servo feedback. Solder "
+                "assemblies, perform bench hardware testing and "
+                "validation, troubleshoot faults, and maintain engineering documentation."
+            ),
+        )
+    )
+    software = _mixed_domain_artifact(
+        JobPosting(
+            id="mixed-software-posting",
+            title="Software AI Engineer Intern",
+            description=(
+                "Build Python AI applications and REST APIs. Deploy cloud data pipelines "
+                "and automation workflows. Create software regression tests, debug "
+                "production services, evaluate models, build dashboards, and maintain "
+                "technical documentation."
+            ),
+        )
+    )
+
+    hardware_diagnostic = hardware.composition_diagnostic
+    software_diagnostic = software.composition_diagnostic
+    assert hardware_diagnostic is not None
+    assert software_diagnostic is not None
+    assert "motion-lab" in hardware_diagnostic.selected_experience_ids
+    assert len(
+        {"robot-hand", "motor-fixture", "pcb-controller"}
+        & set(hardware_diagnostic.selected_project_ids)
+    ) >= 2
+    assert "digital-lab" not in hardware_diagnostic.selected_experience_ids
+    assert "resume-app" not in hardware_diagnostic.selected_project_ids
+    assert hardware_diagnostic.bullet_counts["motion-lab"] >= 3
+    assert all(
+        hardware_diagnostic.bullet_counts[entry_id] >= 2
+        for entry_id in hardware_diagnostic.selected_project_ids
+    )
+
+    assert "digital-lab" in software_diagnostic.selected_experience_ids
+    assert "resume-app" in software_diagnostic.selected_project_ids
+    assert software_diagnostic.bullet_counts["digital-lab"] >= 3
+    assert software_diagnostic.bullet_counts["resume-app"] >= 2
+    assert software_diagnostic.bullet_counts.get("electronics-lab", 0) == 0
+    assert hardware.pagination_diagnostic.status == "exact"
+    assert software.pagination_diagnostic.status == "exact"
+
+
+def test_production_portfolio_is_invariant_to_redundant_entry_volume() -> None:
+    posting = JobPosting(
+        id="redundant-volume-hardware-posting",
+        title="Mechatronics Engineer Intern",
+        description=(
+            "Build electromechanical motor prototypes, create mechanical CAD and "
+            "3D-printed fixtures, assemble PCBs, solder wiring, and debug embedded "
+            "hardware through bench validation."
+        ),
+    )
+    profile = _mixed_domain_profile()
+    duplicate_source = next(
+        item.source_text
+        for item in profile.evidence
+        if item.id == "motion-lab-proof-6"
+    )
+    grown = profile.model_copy(
+        update={
+            "evidence": [
+                *profile.evidence,
+                *[
+                    EvidenceItem(
+                        id=f"redundant-motion-proof-{index}",
+                        entity_id="motion-lab",
+                        source_text=duplicate_source,
+                    )
+                    for index in range(16)
+                ],
+            ]
+        }
+    )
+
+    baseline = _mixed_domain_artifact(posting, profile).composition_diagnostic
+    expanded = _mixed_domain_artifact(posting, grown).composition_diagnostic
+
+    assert baseline is not None
+    assert expanded is not None
+    assert expanded.selected_experience_ids == baseline.selected_experience_ids
+    assert expanded.selected_project_ids == baseline.selected_project_ids
+    assert expanded.selected_bullet_ids == baseline.selected_bullet_ids
 
 
 def test_production_artifact_path_compacts_legacy_profile_contact_links(
@@ -656,3 +881,99 @@ def test_approved_wording_rebuild_owns_fresh_pagination_and_reuses_writer_cache(
     assert "Validated STM32 control timing at 30 Hz." in rendered_text
     assert download.docx_bytes is rebuilt.docx_bytes
     assert not any(download.generation_call_counts.model_dump().values())
+
+
+def test_approval_makes_rewrite_eligible_but_does_not_force_it_over_source() -> None:
+    profile = MasterProfile.model_validate(
+        {
+            "id": "approval-competition-profile",
+            "user_id": "approval-competition-user",
+            "display_name": "Synthetic Candidate",
+            "experiences": [
+                {
+                    "id": "controls-entry",
+                    "title": "Controls Developer",
+                    "kind": "experience",
+                }
+            ],
+            "evidence": [
+                {
+                    "id": "control-evidence",
+                    "entity_id": "controls-entry",
+                    "source_text": (
+                        "Responsible for validating STM32 motor controls using SPI "
+                        "feedback at 30 Hz."
+                    ),
+                    "technologies": ["STM32", "SPI"],
+                    "outcomes": ["30 Hz"],
+                },
+                {
+                    "id": "fault-evidence",
+                    "entity_id": "controls-entry",
+                    "source_text": "Debugged embedded motor-control timing faults.",
+                },
+            ],
+        }
+    )
+    posting = JobPosting(
+        id="approval-competition-posting",
+        title="Embedded Controls Developer",
+        description="Validate STM32 motor controls with SPI feedback and debug timing faults.",
+    )
+    shortened = "Validated STM32 controls at 30 Hz."
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(
+                bullets=[
+                    BulletRewrite(
+                        entry_id="controls-entry",
+                        final_bullet_text=shortened,
+                        source_evidence_ids=["control-evidence"],
+                        preserved_technologies=["STM32"],
+                        preserved_metrics=["30 Hz"],
+                        evidence_combined=False,
+                        support="strongly_implied",
+                        confidence=0.9,
+                    )
+                ]
+            ),
+        )
+    )
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        hybrid_services=HybridLlmServices(fake, 0, 4, False, False, True),
+        resume_composer=DeterministicResumeComposer(_ExactFixedPageFit()),
+        artifact_renderer=_FakeArtifactRenderer(),
+        generation_configuration=_configuration().model_copy(
+            update={"feature_flags": {"bullet_rewrite": True}}
+        ),
+    )
+    service.start_generation()
+    plan = service.create_plan(profile, posting, TemplateConstraints())
+    initial = service.build_generated_artifact(plan, profile, set())
+    review_id = next(
+        item.variant_id
+        for item in initial.writing_diagnostic.bullet_variants
+        if item.validation_status.value == "review_required"
+    )
+
+    rebuilt = service.build_generated_artifact(
+        plan,
+        profile,
+        {review_id},
+        existing_artifact=initial,
+    )
+    rendered_text = {
+        bullet.text
+        for bullets in rebuilt.final_resume.experience_bullets.values()
+        for bullet in bullets
+    }
+
+    assert shortened not in rendered_text
+    assert (
+        "Responsible for validating STM32 motor controls using SPI feedback at 30 Hz."
+        in rendered_text
+    )
+    assert not rebuilt.selected_bullet_variants

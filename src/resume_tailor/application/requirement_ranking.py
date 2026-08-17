@@ -44,6 +44,26 @@ _INCIDENTAL_MARKERS = re.compile(
 _RAW_TECHNICAL_TOKEN = re.compile(
     r"(?<![\w+#./-])[A-Za-z][A-Za-z0-9+.#/-]{0,11}(?![\w+#./-])"
 )
+_GENERAL_PURPOSE_TECHNICAL_TERMS = frozenset(
+    {
+        "automation",
+        "c",
+        "c++",
+        "control",
+        "controls",
+        "git",
+        "java",
+        "javascript",
+        "linux",
+        "model",
+        "models",
+        "python",
+        "reporting",
+        "software",
+        "testing",
+        "validation",
+    }
+)
 
 
 def extract_posting_requirements(posting: JobPosting) -> PostingRequirementModel:
@@ -206,6 +226,11 @@ def assess_evidence_relationship(
         lexical_direct = (
             bullet_match.admitted and not bullet_match.generic_only
         ) or exact_reviewed_skill
+        if lexical_direct and _general_technology_only_match(
+            bullet_match.meaningful_overlap,
+            requirement_features,
+        ):
+            lexical_direct = False
         has_responsibility_adjacency = bool(bullet_match.responsibility_overlap)
         strong_overlap_context = (
             len(bullet_match.meaningful_overlap) >= 2
@@ -342,6 +367,21 @@ def _posting_segments(description: str) -> list[str]:
     return segments
 
 
+def _general_technology_only_match(
+    overlap: tuple[str, ...],
+    requirement: ReviewedTextFeatures,
+) -> bool:
+    overlap_tokens = {
+        token
+        for phrase in overlap
+        for token in normalize_reviewed_text(phrase).split()
+    }
+    if not overlap_tokens or not overlap_tokens <= _GENERAL_PURPOSE_TECHNICAL_TERMS:
+        return False
+    domain_tokens = set(requirement.meaningful_tokens) - _GENERAL_PURPOSE_TECHNICAL_TERMS
+    return len(domain_tokens) >= 2
+
+
 def _material_requirement_components(text: str) -> list[str]:
     """Return conservative material components for a two-part requirement."""
 
@@ -427,33 +467,111 @@ def _contains_explicit_gui_language(normalized_text: str) -> bool:
 def _split_compound_responsibilities(value: str) -> list[str]:
     """Split action-led clauses while keeping ordinary technical lists intact."""
 
+    separator = r",\s+" if "," in value else r"\s+(?:and|&)\s+"
     fragments = [
-        fragment.strip(" ,")
-        for fragment in re.split(r",\s+|\s+and\s+", value)
+        re.sub(r"^(?:and|&)\s+", "", fragment.strip(" ,"), flags=re.IGNORECASE)
+        for fragment in re.split(separator, value)
         if fragment.strip(" ,")
     ]
-    action_led = [
-        fragment
-        for fragment in fragments
-        if extract_reviewed_text_features(fragment).responsibility_signals
-    ]
-    if len(action_led) < 2:
+    if len(fragments) < 2 or not all(
+        _is_complete_action_clause(item) for item in fragments
+    ):
         return [value]
+    return fragments
 
-    clauses: list[str] = []
-    current = ""
-    for fragment in fragments:
-        signals = extract_reviewed_text_features(fragment).responsibility_signals
-        if signals and current:
-            clauses.append(current)
-            current = fragment
-        elif current:
-            current = f"{current}, {fragment}"
-        else:
-            current = fragment
-    if current:
-        clauses.append(current)
-    return clauses if len(clauses) >= 2 else [value]
+
+def _is_complete_action_clause(value: str) -> bool:
+    """Return whether a fragment starts with an action and retains its object.
+
+    Responsibility feature extraction intentionally recognizes nouns such as
+    ``testing`` and ``reliability``.  That is useful for evidence matching but
+    too broad for grammar: treating those nouns as clause boundaries produced
+    orphan requirements such as ``Architect`` and ``and test reports``.  A
+    splittable coordinated clause must therefore start with a known action and
+    contain material text after that action.
+    """
+
+    normalized = normalize_reviewed_text(value)
+    first, separator, remainder = normalized.partition(" ")
+    if not separator or not remainder.strip():
+        return False
+    return first in {
+        "architect",
+        "architected",
+        "assemble",
+        "assembled",
+        "automate",
+        "automated",
+        "build",
+        "built",
+        "calibrate",
+        "calibrated",
+        "collaborate",
+        "collaborated",
+        "commission",
+        "commissioned",
+        "configure",
+        "configured",
+        "coordinate",
+        "coordinated",
+        "create",
+        "created",
+        "debug",
+        "debugged",
+        "define",
+        "defined",
+        "deploy",
+        "deployed",
+        "design",
+        "designed",
+        "develop",
+        "developed",
+        "diagnose",
+        "diagnosed",
+        "document",
+        "documented",
+        "execute",
+        "executed",
+        "implement",
+        "implemented",
+        "inspect",
+        "inspected",
+        "integrate",
+        "integrated",
+        "investigate",
+        "investigated",
+        "iterate",
+        "maintain",
+        "maintained",
+        "model",
+        "modeled",
+        "monitor",
+        "monitored",
+        "operate",
+        "operated",
+        "perform",
+        "performed",
+        "record",
+        "recorded",
+        "review",
+        "reviewed",
+        "select",
+        "selected",
+        "specify",
+        "specified",
+        "support",
+        "supported",
+        "test",
+        "tested",
+        "translate",
+        "translated",
+        "troubleshoot",
+        "troubleshot",
+        "use",
+        "used",
+        "validate",
+        "validated",
+    }
 
 
 def _looks_like_heading(value: str) -> bool:

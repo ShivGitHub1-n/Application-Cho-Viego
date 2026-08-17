@@ -498,8 +498,10 @@ def test_streamlit_approved_wording_rebuild_resets_widget_state_and_reuses_artif
     rendered_text = "\n".join(
         paragraph.text for paragraph in Document(BytesIO(rebuilt.docx_bytes)).paragraphs
     )
-    assert "Built STM32 embedded firmware, testing sensor interfaces." in rendered_text
-    assert "Validated hardware sensor interfaces through SPI hardware checks." in rendered_text
+    assert "Developed STM32 embedded firmware and tested sensor interfaces." in rendered_text
+    assert "Validated SPI hardware sensor interfaces through hardware checks." in rendered_text
+    assert "Built STM32 embedded firmware, testing sensor interfaces." not in rendered_text
+    assert "Validated hardware sensor interfaces through SPI hardware checks." not in rendered_text
     state.widget_keys.clear()
     frontend_app._apply_pending_generated_content_review_reset()
     assert state["generated_content_reviewed"] is False

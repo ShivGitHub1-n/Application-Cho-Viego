@@ -86,11 +86,13 @@ by the resume route.
 
 Composition recommendations may narrow or reorder candidates already produced by the deterministic optimizer. Evidence-linked bullet rewriting may combine or split same-entry evidence, materially change wording, and use accurate job terminology within the validated line and bullet budgets. Demonstrated skills may be proposed only for existing selected categories and must link to confirmed evidence. The application replays all recommendations through evidence ownership, confirmation, support, grouping, entry-overhead, bullet-count, section-budget, and total-line checks. A failed reconciliation leaves the original deterministic plan unchanged.
 
-After validation, professional experiences compete as bounded coherent packages,
-normally containing two to four independently useful bullets. The model never
-selects a package or supplies employer credibility; deterministic composition
-derives small production/enterprise, recency, duration, and seniority signals
-only from reviewed profile fields and retains page-fit authority.
+After validation, experiences and projects compete as bounded coherent package
+frontiers across all reachable depths. The model never selects a package or
+supplies employer credibility; deterministic composition derives small
+production/enterprise, recency, duration, and seniority signals only from
+reviewed profile fields and retains page-fit authority. The global evidence and
+entry bounds control computation without creating a fixed section or per-entry
+bullet quota.
 
 The provider is explicitly allowed to return no rewrite. A source sentence is
 the preferred result when an alternative only changes synonyms, novelty,
@@ -100,6 +102,12 @@ Source-versus-rewrite scoring charges removal of visible reviewed technologies,
 methods, constraints, test conditions, tradeoffs, and metrics. Compression earns
 bounded value only when it resolves measured line cost or awkward wrapping
 without destructive information loss.
+
+Explicit approval makes review-required wording eligible for comparison; it
+does not force replacement of reviewed source wording. Entry metadata is the
+authority for titles and seniority. If reviewed source prose conflicts with that
+metadata, the source is preserved and the conflict is surfaced, but no generated
+variant may repeat or amplify the conflicting title claim.
 
 Multiple provider evidence IDs may enrich one bullet only when every ID belongs
 to the same entry and the reviewed facts form a connected engineering story.
