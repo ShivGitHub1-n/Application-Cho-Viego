@@ -104,7 +104,11 @@ when the posting requests them as a standalone capability. When those terms
 occur inside a domain-rich requirement, however, they cannot establish direct
 or adjacent coverage unless the reviewed evidence also overlaps at least one
 material contextual anchor from that requirement. This rule is symmetric across
-domains and does not assign priority to an entry or role family.
+domains and does not assign priority to an entry or role family. Entry metadata
+can establish bounded adjacent context only through a material posting anchor;
+a context-neutral metadata match such as Python or automation cannot broadcast
+adjacent authority across the posting's other requirements. Each bullet still
+must carry technical responsibility support before that entry context applies.
 
 The bounded candidate pool is coverage-aware before its global size limit is
 applied. It retains the strongest sufficiently grounded direct representative

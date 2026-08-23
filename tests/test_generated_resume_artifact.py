@@ -472,6 +472,55 @@ def _mixed_domain_profile() -> MasterProfile:
     )
 
 
+def _deep_mixed_domain_profile() -> MasterProfile:
+    payload = _mixed_domain_profile().model_dump(mode="python")
+    entries = {
+        item["id"]: item
+        for item in [*payload["experiences"], *payload["projects"]]
+    }
+    entries["digital-lab"].update(
+        {
+            "technologies": ["Python", "automation", "testing"],
+            "capabilities": ["documentation", "validation"],
+        }
+    )
+    entries["resume-app"].update(
+        {
+            "technologies": ["Python", "automation"],
+            "capabilities": ["documentation", "validation", "testing"],
+        }
+    )
+    payload["evidence"].extend(
+        [
+            {
+                "id": "motion-lab-proof-9",
+                "entity_id": "motion-lab",
+                "source_text": (
+                    "Defined 30+ signals across ADC, DAC, PWM, I2C, UART, and "
+                    "motor-driver interfaces in a controlled interface record."
+                ),
+            },
+            {
+                "id": "motion-lab-proof-10",
+                "entity_id": "motion-lab",
+                "source_text": (
+                    "Verified connector pinouts, wiring continuity, and sensor channels "
+                    "before integrated actuator testing."
+                ),
+            },
+            {
+                "id": "motion-lab-proof-11",
+                "entity_id": "motion-lab",
+                "source_text": (
+                    "Inspected prototype electronics, reworked solder joints, and "
+                    "documented corrective actions from bench debugging."
+                ),
+            },
+        ]
+    )
+    return MasterProfile.model_validate(payload)
+
+
 def _mixed_domain_artifact(
     posting: JobPosting,
     profile: MasterProfile | None = None,
@@ -543,6 +592,43 @@ def test_production_artifact_path_reverses_mixed_portfolio_by_posting_domain() -
     assert software_diagnostic.bullet_counts.get("electronics-lab", 0) == 0
     assert hardware.pagination_diagnostic.status == "exact"
     assert software.pagination_diagnostic.status == "exact"
+
+
+def test_production_artifact_rejects_context_neutral_entry_metadata_broadcast() -> None:
+    artifact = _mixed_domain_artifact(
+        JobPosting(
+            id="deep-hardware-allocation-posting",
+            title="Mechatronics Engineer Intern - Hardware",
+            description=(
+                "Design, assemble, test, and debug electromechanical prototypes using "
+                "motors, PCBs, fixtures, and development hardware. Perform PCB bring-up, "
+                "inspection, soldering, rework, and bench debugging. Create CAD fixtures "
+                "and 3D-printed parts for fit and assembly. Test embedded hardware and "
+                "troubleshoot mechanical, electrical, and embedded systems. Build test "
+                "setups, execute reliability validation, and document engineering results. "
+                "Use Python for hardware control, telemetry, automation, and logging."
+            ),
+        ),
+        _deep_mixed_domain_profile(),
+    )
+    diagnostic = artifact.composition_diagnostic
+    retrieval = artifact.writing_diagnostic.retrieval
+
+    assert diagnostic is not None
+    assert retrieval is not None
+    assert "motion-lab" in diagnostic.selected_experience_ids
+    assert diagnostic.bullet_counts["motion-lab"] >= 3
+    assert "digital-lab" not in diagnostic.selected_experience_ids
+    assert "resume-app" not in diagnostic.selected_project_ids
+    cross_domain = [
+        item
+        for item in [*retrieval.admitted, *retrieval.rejected]
+        if item.entry_id in {"digital-lab", "resume-app"}
+    ]
+    assert cross_domain
+    assert all(not item.direct_requirement_ids for item in cross_domain)
+    assert all(len(item.adjacent_requirement_ids) <= 1 for item in cross_domain)
+    assert max(item.contextual_relevance for item in cross_domain) < 10.0
 
 
 def test_production_portfolio_is_invariant_to_redundant_entry_volume() -> None:

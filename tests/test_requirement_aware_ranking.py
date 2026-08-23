@@ -481,6 +481,56 @@ def test_entry_admission_does_not_transfer_relevance_to_weak_internal_bullet() -
     assert ranked["event-photos"].relationship is EvidenceRelationship.REJECTED
 
 
+def test_entry_metadata_match_does_not_broadcast_authority_across_requirements() -> None:
+    entry = ResumeItem(
+        id="document-automation-entry",
+        title="Document Automation Developer",
+        kind=EntityKind.EXPERIENCE,
+        technologies=["Python", "automation"],
+        capabilities=["testing", "documentation"],
+    )
+    profile = _profile(
+        experiences=[entry],
+        evidence=[
+            EvidenceItem(
+                id="unrelated-cloud-optimization",
+                entity_id=entry.id,
+                source_text=(
+                    "Reduced production AI service latency by 60% through cloud model "
+                    "optimization."
+                ),
+                outcomes=["60% latency reduction"],
+            ),
+            EvidenceItem(
+                id="contextual-hardware-automation",
+                entity_id=entry.id,
+                source_text=(
+                    "Automated embedded-controller telemetry logging with Python on a "
+                    "hardware test rig."
+                ),
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="hardware-automation-posting",
+        title="Mechatronics Hardware Engineer",
+        description=(
+            "Design CAD fixtures for electromechanical prototypes. Perform PCB bring-up "
+            "and bench debugging. Use Python for hardware telemetry automation and logging."
+        ),
+    )
+
+    ranked = _rank(profile, posting)
+
+    unrelated = ranked["unrelated-cloud-optimization"]
+    contextual = ranked["contextual-hardware-automation"]
+    assert unrelated.relationship is EvidenceRelationship.REJECTED
+    assert not unrelated.direct_requirement_ids
+    assert not unrelated.adjacent_requirement_ids
+    assert contextual.relationship is EvidenceRelationship.DIRECT
+    assert contextual.direct_requirement_ids
+
+
 def test_domain_rich_requirement_rejects_context_neutral_cross_domain_overlap() -> None:
     entry = ResumeItem(
         id="data-entry",

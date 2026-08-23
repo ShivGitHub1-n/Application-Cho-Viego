@@ -47,6 +47,8 @@ _RAW_TECHNICAL_TOKEN = re.compile(
 _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS = frozenset(
     {
         "analysis",
+        "automate",
+        "automated",
         "automation",
         "c",
         "c++",
@@ -58,8 +60,10 @@ _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS = frozenset(
         "control",
         "controls",
         "debug",
+        "debugged",
         "debugging",
         "document",
+        "documented",
         "documentation",
         "git",
         "java",
@@ -75,9 +79,13 @@ _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS = frozenset(
         "python",
         "reporting",
         "software",
+        "test",
+        "tests",
         "testing",
         "use",
         "used",
+        "validate",
+        "validated",
         "validation",
     }
 )
@@ -215,16 +223,7 @@ def assess_evidence_relationship(
     primary_entry_context = any(
         requirement.authority
         in {RequirementAuthority.CORE, RequirementAuthority.IMPORTANT}
-        and (
-            match_reviewed_features(
-                entry_features,
-                extract_reviewed_text_features(requirement.text),
-            ).admitted
-            or _has_conservative_term_family(
-                entry_features,
-                extract_reviewed_text_features(requirement.text),
-            )
-        )
+        and _entry_has_material_requirement_context(entry_features, requirement)
         for requirement in requirements.requirements
     )
     title_entry_context = bool(
@@ -434,6 +433,60 @@ def _context_neutral_overlap_misses_requirement_context(
     return bool(contextual_anchors) and not bool(
         contextual_anchors & set(candidate.meaningful_tokens)
     )
+
+
+def _entry_has_material_requirement_context(
+    entry: ReviewedTextFeatures,
+    requirement: PostingRequirement,
+) -> bool:
+    requirement_features = extract_reviewed_text_features(requirement.text)
+    entry_match = match_reviewed_features(entry, requirement_features)
+    if not (
+        entry_match.admitted
+        or _has_conservative_term_family(entry, requirement_features)
+    ):
+        return False
+    neutral_family_overlap = _context_neutral_family_overlap(
+        entry,
+        requirement_features,
+    )
+    return not _context_neutral_overlap_misses_requirement_context(
+        tuple([*entry_match.meaningful_overlap, *neutral_family_overlap]),
+        entry_match.responsibility_overlap,
+        entry,
+        requirement_features,
+    )
+
+
+def _context_neutral_family_overlap(
+    candidate: ReviewedTextFeatures,
+    requirement: ReviewedTextFeatures,
+) -> tuple[str, ...]:
+    candidate_terms = set(candidate.meaningful_tokens) & _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS
+    requirement_terms = (
+        set(requirement.meaningful_tokens) & _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS
+    )
+    return tuple(
+        sorted(
+            requirement_term
+            for requirement_term in requirement_terms
+            if any(
+                _shares_conservative_stem(candidate_term, requirement_term)
+                for candidate_term in candidate_terms
+            )
+        )
+    )
+
+
+def _shares_conservative_stem(first: str, second: str) -> bool:
+    if first == second:
+        return True
+    common = 0
+    for left, right in zip(first, second, strict=False):
+        if left != right:
+            break
+        common += 1
+    return common >= 5 and common / min(len(first), len(second)) >= 0.5
 
 
 def _material_requirement_components(text: str) -> list[str]:
