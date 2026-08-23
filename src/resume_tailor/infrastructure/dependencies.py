@@ -170,6 +170,7 @@ def create_tailor_service(
         model_name=resolved_settings.gemini_model or "unconfigured",
         telemetry=telemetry,
         provider_unavailable_reason=provider_unavailable_reason,
+        enable_application_strategy=resolved_settings.llm_enable_composition,
     )
     cover_letter_service = CoverLetterService(
         language_model=language_model if resolved_settings.llm_enable_cover_letter else None,
@@ -217,6 +218,7 @@ def create_tailor_service(
             feature_flags={
                 "opportunity_analysis": resolved_settings.llm_enable_opportunity_analysis,
                 "semantic_composition": resolved_settings.llm_enable_composition,
+                "application_strategy": resolved_settings.llm_enable_composition,
                 "bullet_rewrite": resolved_settings.llm_enable_bullet_rewrite,
                 "shortening": resolved_settings.llm_enable_shortening,
                 "role_classification": resolved_settings.llm_enable_role_classification,

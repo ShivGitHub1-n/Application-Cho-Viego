@@ -15,6 +15,14 @@ variant retains its original source text and evidence IDs; source text is the
 fallback for disabled, rejected, or unapproved writing. Metadata, education
 details, and skill values are copied from reviewed profile fields.
 
+The composer has two explicit modes. With a validated
+`ApplicationStrategyPlan`, it constructs candidates only from strategist-selected
+reviewed evidence and uses the strategy's critical/high/medium/optional order as
+the primary rollback key. It never reopens unrelated profile evidence. With no
+validated strategy, it runs the established deterministic package/frontier
+search described below. This is the provider-unavailable fallback, not a claim
+that both modes make the same semantic decision.
+
 The complete reviewed same-entry source bundle is also the ranking authority
 for every automatic or explicitly approved variant. Generated text may improve
 visible wording, material structure, and line fit, but its reordered phrases do
@@ -133,6 +141,16 @@ fourth bullet in a highly aligned entry can beat a shallow weak entry. A
 one-bullet project remains valid when its unique value pays for its metadata.
 
 ## Bounded search
+
+The strategist-priority path builds a bounded rollback ladder from the complete
+validated strategy. It removes optional evidence first, then medium, then high,
+then critical, preserving coherent multi-bullet professional entry blocks. It
+evaluates at most the existing 128 estimated states and 12 exact finalists and
+uses the same batched Word/LibreOffice page-count provider. Priority dominates
+tiny density or heuristic-score differences; writing quality, redundancy, line
+cost, and density resolve portfolios with the same retained strategy priority.
+
+The deterministic fallback path uses the two planning stages below.
 
 The search uses two deterministic planning stages before exact pagination.
 A bounded beam compares alternative estimated Template V1 plans; a reserved

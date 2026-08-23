@@ -7,6 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from resume_tailor.domain.application_strategy import ApplicationStrategyPlan
 from resume_tailor.domain.contact import contact_destination_key
 from resume_tailor.domain.hybrid_resume import (
     BulletVariantRecord,
@@ -155,11 +156,7 @@ class ContactInfo(BaseModel):
         seen = {contact_destination_key(item) for item in destinations}
         self.links = [
             *destinations,
-            *[
-                item
-                for item in self.links
-                if contact_destination_key(item) not in seen
-            ],
+            *[item for item in self.links if contact_destination_key(item) not in seen],
         ]
         return self
 
@@ -537,6 +534,7 @@ class TailoringPlan(BaseModel):
     selected_coursework: list[str] = Field(default_factory=list)
     estimated_lines: int = 0
     composition_selection: CompositionSelection | None = None
+    application_strategy: ApplicationStrategyPlan | None = None
     demonstrated_skills: list[GeneratedSkill] = Field(default_factory=list)
     hybrid_diagnostic: HybridResumeDiagnostic | None = None
 
@@ -573,6 +571,7 @@ class StructuredResume(BaseModel):
     contact_line: str | None = None
     contact_items: list[ResumeContactItem] = Field(default_factory=list)
     strategy: ResumeStrategy
+    application_strategy: ApplicationStrategyPlan | None = None
     entity_titles: dict[str, str] = Field(default_factory=dict)
     education: list[EducationRecord] = Field(default_factory=list)
     technical_skills: list[TechnicalSkillCategory] = Field(default_factory=list)

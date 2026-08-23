@@ -5,6 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from resume_tailor.domain.application_strategy import (
+    EvidencePriorityTier,
+    SourceWordingAssessment,
+)
 from resume_tailor.domain.cover_letter import (
     CoverLetterLengthClass,
     CoverLetterNarrativePlan,
@@ -33,6 +37,7 @@ class LlmOperation(StrEnum):
     PROFILE_EXTRACTION = "profile_extraction"
     CLASSIFY_ROLE = "classify_role"
     ANALYZE_OPPORTUNITY = "analyze_opportunity"
+    APPLICATION_STRATEGY = "application_strategy"
     RECOMMEND_COMPOSITION = "recommend_composition"
     RECOMMEND_SKILL_COMPOSITION = "recommend_skill_composition"
     REWRITE_BULLETS = "rewrite_bullets"
@@ -191,6 +196,100 @@ class EligibleEntry(StrictModel):
     title: str
     entry_cost_lines: int = Field(ge=0)
     evidence: list[EligibleEvidence] = Field(default_factory=list)
+
+
+class StrategyRequirementInput(StrictModel):
+    requirement_id: str
+    text: str
+    authority: str
+    importance: float = Field(ge=0)
+
+
+class StrategyEvidenceInput(StrictModel):
+    evidence_id: str
+    source_text: str
+    technologies: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    outcomes: list[str] = Field(default_factory=list)
+    estimated_lines: int = Field(gt=0)
+    deterministic_relationship: str
+    supported_requirement_ids: list[str] = Field(default_factory=list)
+
+
+class StrategyEntryInput(StrictModel):
+    entry_id: str
+    entry_kind: str
+    authoritative_title: str
+    organization: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    entry_cost_lines: int = Field(ge=0)
+    evidence: list[StrategyEvidenceInput] = Field(default_factory=list)
+
+
+class StrategySkillInput(StrictModel):
+    category: str
+    values: list[str] = Field(default_factory=list)
+
+
+class ApplicationStrategyConstraintsInput(StrictModel):
+    maximum_selected_entries: int = Field(gt=0)
+    maximum_selected_evidence: int = Field(gt=0)
+    maximum_total_lines: int = Field(gt=0)
+    maximum_experience_lines: int = Field(gt=0)
+    maximum_project_lines: int = Field(gt=0)
+    maximum_skill_lines: int = Field(gt=0)
+
+
+class ApplicationStrategyRequest(StrictModel):
+    posting_id: str
+    title: str
+    normalized_full_posting: str
+    requirements: list[StrategyRequirementInput] = Field(default_factory=list)
+    entries: list[StrategyEntryInput] = Field(min_length=1)
+    reviewed_skills: list[StrategySkillInput] = Field(default_factory=list)
+    constraints: ApplicationStrategyConstraintsInput
+    correction_notes: list[str] = Field(default_factory=list)
+
+
+class ProposedStrategyRolePriority(StrictModel):
+    theme: str = Field(min_length=1, max_length=180)
+    requirement_ids: list[str] = Field(default_factory=list)
+
+
+class ProposedStrategyEvidence(StrictModel):
+    evidence_id: str
+    priority: EvidencePriorityTier
+    requirement_ids: list[str] = Field(default_factory=list)
+    source_wording: SourceWordingAssessment = SourceWordingAssessment.STRONG
+
+
+class ProposedStrategyEntry(StrictModel):
+    entry_id: str
+    reason: str = Field(min_length=1, max_length=400)
+    desired_depth: int = Field(ge=1, le=8)
+    selected_evidence: list[ProposedStrategyEvidence] = Field(min_length=1, max_length=8)
+    alternative_evidence: list[ProposedStrategyEvidence] = Field(
+        default_factory=list,
+        max_length=8,
+    )
+
+
+class ProposedLowPriorityEntry(StrictModel):
+    entry_id: str
+    reason: str = Field(min_length=1, max_length=300)
+
+
+class ApplicationStrategyOutput(StrictModel):
+    application_thesis: str = Field(min_length=1, max_length=500)
+    role_priorities: list[ProposedStrategyRolePriority] = Field(default_factory=list)
+    selected_entries: list[ProposedStrategyEntry] = Field(min_length=1)
+    low_priority_entries: list[ProposedLowPriorityEntry] = Field(default_factory=list)
+    global_evidence_priority: list[str] = Field(min_length=1)
+
+
+class ApplicationStrategyResult(ModelResult):
+    output: ApplicationStrategyOutput
 
 
 class CompositionRecommendationRequest(StrictModel):
@@ -404,9 +503,7 @@ class CoverLetterDraftParagraph(StrictModel):
     company_research_ids: list[str] = Field(default_factory=list, max_length=3)
     narrative_thread_id: str | None = None
     length_class: CoverLetterLengthClass = CoverLetterLengthClass.STANDARD
-    source_bound_sentences: list[CoverLetterSentenceAuthority] = Field(
-        default_factory=list
-    )
+    source_bound_sentences: list[CoverLetterSentenceAuthority] = Field(default_factory=list)
 
     @field_validator("purpose", mode="before")
     @classmethod

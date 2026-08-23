@@ -35,6 +35,21 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
             "exactly from the supplied title or description, with no paraphrasing or invented text."
         ),
         LlmOperation.ANALYZE_OPPORTUNITY: "Analyze the opportunity and profile coverage summary.",
+        LlmOperation.APPLICATION_STRATEGY: (
+            "Act as the application strategist for one complete resume. Read the full posting and "
+            "the complete bounded reviewed evidence bank, then choose a coherent one-page portfolio "
+            "using only supplied entry and evidence IDs. Reason about the application as a whole: "
+            "role priorities, direct domain fit, technical depth, distinctness, credibility, "
+            "complementary multidisciplinary value, redundancy, and scarce page space. Generic shared "
+            "words such as testing, Python, automation, documentation, systems, or debugging do not by "
+            "themselves make cross-domain evidence strong. Select evidence because its demonstrated work "
+            "supports the posting context. Provide an application thesis, ordered role priorities, "
+            "selected entries with desired depth and ranked evidence, useful same-entry alternatives, "
+            "and concise reasons for meaningful lower-priority entries. Treat authoritative_title as the "
+            "only title/seniority authority. Do not select skills or invent requirements, metrics, tools, "
+            "leadership, facts, entries, or evidence. The selected portfolio should normally be substantial "
+            "enough for one page while staying within the supplied structural limits."
+        ),
         LlmOperation.RECOMMEND_COMPOSITION: "Recommend evidence selection using only supplied IDs.",
         LlmOperation.RECOMMEND_SKILL_COMPOSITION: (
             "Select and order supplied reviewed skills, and optionally propose demonstrated skills "

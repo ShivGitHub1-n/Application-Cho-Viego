@@ -1,3 +1,8 @@
+from resume_tailor.application.application_strategy import (
+    ApplicationStrategyValidationError,
+    DeterministicApplicationStrategyReconciler,
+    DeterministicApplicationStrategyValidator,
+)
 from resume_tailor.application.composition import (
     CompositionReconciliationError,
     DeterministicCompositionReconciler,
@@ -24,6 +29,8 @@ class DeterministicPlanIntegrityValidator:
         self._optimizer = optimizer
         self._composition_reconciler = DeterministicCompositionReconciler()
         self._skill_composition_reconciler = DeterministicSkillCompositionReconciler()
+        self._application_strategy_validator = DeterministicApplicationStrategyValidator()
+        self._application_strategy_reconciler = DeterministicApplicationStrategyReconciler()
         self._evidence_retriever = evidence_retriever
 
     def validate(self, plan: TailoringPlan, profile: MasterProfile) -> None:
@@ -31,11 +38,31 @@ class DeterministicPlanIntegrityValidator:
         if not failures:
             trusted = self._optimizer.create_plan(profile, plan.posting, plan.constraints)
             if self._evidence_retriever is not None:
+                retrieval = self._evidence_retriever.retrieve(profile, plan.posting)
                 trusted = apply_generic_technical_fallback(
                     trusted,
                     profile,
-                    self._evidence_retriever.retrieve(profile, plan.posting),
+                    retrieval,
                 )
+            else:
+                retrieval = None
+            if plan.application_strategy is not None:
+                if retrieval is None:
+                    failures.append("application strategy requires retrieval validation")
+                else:
+                    try:
+                        self._application_strategy_validator.validate_persisted(
+                            plan.application_strategy,
+                            profile,
+                            retrieval,
+                        )
+                        trusted = self._application_strategy_reconciler.reconcile(
+                            trusted,
+                            profile,
+                            plan.application_strategy,
+                        )
+                    except ApplicationStrategyValidationError as error:
+                        failures.append(f"invalid application strategy: {error}")
             if plan.composition_selection is not None:
                 try:
                     trusted = self._composition_reconciler.reconcile(
@@ -99,6 +126,7 @@ class DeterministicPlanIntegrityValidator:
             "selected_projects",
             "estimated_lines",
             "composition_selection",
+            "application_strategy",
             "demonstrated_skills",
         )
         for field in comparable_fields:

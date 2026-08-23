@@ -39,7 +39,12 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   adjacency. A future lexical-plus-embedding or external RAG adapter can
   implement the same contract without changing the planner or writer.
 - The optimizer's `OpportunityAnalyzer` dependency is the single role-classification boundary for resume tailoring. When explicitly enabled, the hybrid analyzer may resolve a validated Gemini primary family over deterministic posting signals; default and fallback behavior remains the deterministic analyzer.
-- `ResumeLanguageModel` exposes typed profile extraction, role classification, opportunity analysis, composition recommendation, bullet rewriting, shortening, and cover-letter drafting. Provider adapters return typed schemas and never receive authority over evidence, budgets, or rendering.
+- `ResumeLanguageModel` exposes typed profile extraction, role classification,
+  application strategy, legacy advisory analysis, bullet rewriting, shortening,
+  and cover-letter drafting. Provider adapters return typed schemas. The
+  application strategist has semantic portfolio authority only over supplied
+  reviewed entry/evidence IDs; it never receives factual, structural,
+  pagination, persistence, or rendering authority.
 - `ResumeRenderer` maps structured resume content to a versioned template; it owns all styling.
   Template V1 opens the packaged, content-neutral `template_v1.docx` and
   populates or clones its semantic OOXML prototypes. The accompanying JSON
@@ -84,23 +89,37 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
 
 The MVP persists the reviewed `MasterProfile` through the `MasterProfileRepository` port; the local implementation stores schema-validated JSON payloads in SQLite and replaces records by stable profile ID. A missing or corrupt record is reported explicitly. Tailoring plans and generated documents remain derived session state and are invalidated when the active profile or pasted posting changes. A `TailoringPlan` carries the posting and template constraints used to create it. Before document writing, the application reconstructs the deterministic plan from those inputs and the supplied profile, then rejects changes to output-bearing plan fields. This protects both API and UI document construction without treating a client-supplied support label or claim as trusted. It is not a substitute for server-side plan storage or signed plans once plans need durable identity, authorization, or cross-version compatibility.
 
-Gemini composition is advisory and evidence-grounded. The application may
-narrow or reorder optimizer-selected candidates. Resume writing now uses an
-entry-balanced shortlist after deterministic retrieval and an initial
-source-text composition. The shortlist retains selected direct evidence,
-strong adjacent evidence, intrinsically strong complementary evidence, and
-credible alternative entries before applying the global 24-evidence bound.
-There is no default per-entry shortlist quota; entry depth is limited by the
-reviewed evidence and the global bound. One primary batch writes only that
-shortlist. Validated variants are cached and reused during the final
-deterministic page-fit search. This corrects the former production handoff in which
-`DeterministicResumeComposer` rebuilt selected bullets from
-`EvidenceItem.source_text` and therefore discarded validated rewrites produced
-earlier in the request.
+When semantic composition is enabled, Gemini application strategy is
+evidence-grounded and portfolio-authoritative. One typed strategist request
+receives the normalized full posting, every eligible confirmed evidence atom,
+authoritative entry metadata, deterministic evidence/requirement relationships,
+reviewed skill context, and structural bounds. It returns an application thesis,
+ordered role priorities, selected entries, desired depth, selected and fallback
+evidence IDs, global evidence priority, and meaningful low-priority omissions.
+The deterministic validator removes unknown, duplicated, cross-entry,
+unconfirmed, structurally impossible, title-conflicting, or unsupported
+requirement references item by item. A valid remainder survives; the system does
+not replace it with unrelated heuristic selections.
+
+The validated `ApplicationStrategyPlan` is persisted on the tailoring plan and
+structured resume and is included in artifact identity. It defines the only
+bullet evidence eligible for the writer and the primary page-fit portfolio.
+This fixes the former handoff where an advisory recommendation saw only already
+narrowed deterministic candidates, then the composer reopened the full profile
+and re-decided the portfolio. When the strategist is unavailable or its valid
+remainder is empty, the existing deterministic retrieval, package frontier, and
+page-fit search remains the explicit fallback.
+
+Resume writing makes one bounded batch over only strategist-selected evidence.
+Validated variants are cached and reused during page fitting. Source wording
+remains a first-class candidate and wins when a rewrite is not materially
+clearer, tighter, or more readable. Generated wording continues to derive all
+relevance and requirement authority from the reviewed evidence bundle.
 
 The hybrid authority split is explicit:
 
-- retrieval and semantic planning may rank evidence, but cannot create facts;
+- the application strategist may choose a semantic portfolio only from supplied
+  reviewed entry/evidence IDs and cannot create facts;
 - the Gemini writer may return only authorized source evidence IDs, rewritten
   text, and a bounded length class through a shallow transport contract;
 - the adapter maps those IDs back to the shortlist and reconstructs the rich
@@ -120,20 +139,25 @@ The hybrid authority split is explicit:
   signals from its complete reviewed same-entry source bundle. Generated word
   order may affect readability and line fit, but cannot create selection
   authority. Explicit approval makes a review-required variant eligible; it
-  does not force that wording to replace a stronger source candidate. The
-  optimizer builds a coherent package at every reachable depth and remains
-  authoritative for final entry selection, structure,
-  duplication, readability-adjusted metadata-plus-bullet page cost, page fit,
-  and export;
+  does not force that wording to replace a stronger source candidate;
+- in Gemini strategy mode, deterministic page fitting evaluates bounded
+  strategy-only rollback states and removes optional, then medium, then high or
+  critical evidence only as exact one-page fit requires; within equal priority,
+  readability, redundancy, line cost, and quality remain deterministic;
+- in fallback mode, the existing optimizer remains authoritative for final entry
+  selection and its full deterministic package frontier;
+- deterministic code remains authoritative for structure, duplication,
+  metadata-plus-bullet page cost, exact page fit, and export in both modes;
 - Template V1 alone owns DOCX formatting.
 
 Cache identity includes profile and posting fingerprints, evidence bundles,
 ordered shortlist IDs, exact source text, prompt, writing-policy and contract
 versions, relevant writer flags, provider, and model. Page-fit thresholds are
 deliberately excluded, so a validated wording variant is not regenerated merely
-because a layout budget changes. The production writer makes one primary request
-and permits one additional request only when the typed provider response is
-malformed. Timeouts, network failures, grounding rejections, and safety failures
+because a layout budget changes. Normal strategist-enabled generation makes one
+strategist request and one writer request. The pair shares one additional repair
+request, used only when a typed provider response is malformed. Timeouts, network
+failures, grounding rejections, and safety failures
 do not enter a retry loop. The Gemini SDK retry count is explicitly one attempt.
 Provider, parsing, validation, request, repair, and cache diagnostics are typed.
 Per-rewrite diagnostics retain only the authorized evidence IDs and reviewed
@@ -153,12 +177,14 @@ sanitized provider/model/feature configuration and rebuilds its session-scoped
 service when that configuration changes, avoiding a provider-disabled service
 surviving an environment update without retaining credentials in session state.
 
-Authoritative entry metadata also bounds generated title claims. If reviewed
-source prose asserts a different title or seniority, composition leaves that
-canonical source untouched but removes the conflicting phrase from relevance
-authority and emits a sanitized claim-integrity diagnostic. A generated
-variant that repeats or introduces the conflict is rejected; approval cannot
-override authoritative entry metadata.
+Authoritative entry metadata also bounds title claims. If reviewed source prose
+asserts a different title or seniority, the canonical profile evidence remains
+untouched, the conflicting phrase is removed from relevance authority, and a
+sanitized claim-integrity diagnostic is emitted. In strategist mode, a
+deterministic derived display candidate deletes only that conflicting self-title
+so the supported technical remainder stays usable without rendering title
+inflation. A generated variant that repeats or introduces the conflict is
+rejected; approval cannot override authoritative entry metadata.
 
 Every material review-required variant in the bounded writer shortlist is
 carried to the approval surface, including alternatives that were absent from

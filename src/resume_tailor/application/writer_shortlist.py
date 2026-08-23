@@ -32,9 +32,7 @@ def build_writer_shortlist(
 
     estimator = line_estimator or TemplateV1BulletLineEstimator()
     evidence_by_id = {item.id: item for item in profile.evidence if item.confirmed}
-    entry_titles = {
-        item.id: item.title for item in [*profile.experiences, *profile.projects]
-    }
+    entry_titles = {item.id: item.title for item in [*profile.experiences, *profile.projects]}
     selected_source_ids = {
         evidence_id
         for section in (resume.experience_bullets, resume.project_bullets)
@@ -42,12 +40,23 @@ def build_writer_shortlist(
         for bullet in bullets
         for evidence_id in bullet.evidence_ids
     }
+    strategy_evidence_ids = (
+        resume.application_strategy.selected_evidence_ids
+        if resume.application_strategy is not None
+        else []
+    )
+    strategy_evidence_set = set(strategy_evidence_ids)
+    retrieval_candidates = (
+        [*retrieval.admitted, *retrieval.rejected] if strategy_evidence_set else retrieval.admitted
+    )
     eligible = [
         item
-        for item in retrieval.admitted
+        for item in retrieval_candidates
         if item.evidence_id in evidence_by_id
+        and (not strategy_evidence_set or item.evidence_id in strategy_evidence_set)
         and (
-            item.relationship is not EvidenceRelationship.COMPLEMENTARY
+            bool(strategy_evidence_set)
+            or item.relationship is not EvidenceRelationship.COMPLEMENTARY
             or item.intrinsic_evidence_strength >= 15.0
         )
     ]
@@ -60,12 +69,20 @@ def build_writer_shortlist(
     best_by_entry: dict[str, RetrievedEvidence] = {}
     for item in eligible:
         best_by_entry.setdefault(item.entry_id, item)
-    credible_alternatives = sorted(
-        best_by_entry.values(),
-        key=_shortlist_sort_key,
+    credible_alternatives = (
+        []
+        if strategy_evidence_set
+        else sorted(
+            best_by_entry.values(),
+            key=_shortlist_sort_key,
+        )
     )
     remaining = sorted(eligible, key=_shortlist_sort_key)
-    ordered = _deduplicate_evidence([*selected_first, *credible_alternatives, *remaining])
+    ordered = (
+        [by_id[evidence_id] for evidence_id in strategy_evidence_ids if evidence_id in by_id]
+        if strategy_evidence_set
+        else _deduplicate_evidence([*selected_first, *credible_alternatives, *remaining])
+    )
 
     selected: list[RetrievedEvidence] = []
     entry_counts: Counter[str] = Counter()
@@ -74,8 +91,7 @@ def build_writer_shortlist(
             break
         if (
             policy.maximum_shortlisted_evidence_per_entry is not None
-            and entry_counts[item.entry_id]
-            >= policy.maximum_shortlisted_evidence_per_entry
+            and entry_counts[item.entry_id] >= policy.maximum_shortlisted_evidence_per_entry
         ):
             continue
         selected.append(item)
@@ -101,6 +117,7 @@ def build_writer_shortlist(
                 item.relationship,
                 item.intrinsic_evidence_strength,
                 selected=item.evidence_id in selected_ids,
+                strategy_selected=item.evidence_id in strategy_evidence_set,
             ),
         )
         for item in eligible
@@ -196,10 +213,13 @@ def _selection_reason(
     intrinsic_strength: float,
     *,
     selected: bool,
+    strategy_selected: bool = False,
 ) -> str:
     if not selected:
         return "Excluded by the bounded writer shortlist after stronger or more distinct evidence."
     reasons: list[str] = []
+    if strategy_selected:
+        reasons.append("was selected by the validated application strategy")
     if evidence_id in selected_source_ids:
         reasons.append("present in the initial deterministic composition")
     if evidence_id in entry_first_ids:

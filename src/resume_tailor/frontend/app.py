@@ -425,6 +425,7 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
         stage_by_name = {item.stage.value: item for item in writing.provider_stages}
         stage_labels = []
         for name, label in (
+            ("application_strategist", "strategy"),
             ("semantic_planner", "planner"),
             ("skill_recommender", "skills"),
             ("composition_recommender", "composition"),
@@ -434,9 +435,7 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
             if stage is not None:
                 stage_labels.append(f"{label} {stage.status.value}")
         st.caption(
-            "Résumé AI: "
-            + " · ".join(stage_labels)
-            + " · deterministic recomposition applied"
+            "Résumé AI: " + " · ".join(stage_labels) + " · deterministic recomposition applied"
         )
     st.caption(
         f"Request timeout: {provider.request_timeout_seconds:g}s · "
@@ -689,9 +688,7 @@ def _profile_options(profile_repository: Any) -> list[tuple[str, str]]:
     return [(profile.id, profile.display_name) for profile in profiles]
 
 
-def _activate_profile(
-    profile_id: str, profile_repository: SQLiteMasterProfileRepository
-) -> None:
+def _activate_profile(profile_id: str, profile_repository: SQLiteMasterProfileRepository) -> None:
     """Load a shell-selected reviewed profile through canonical storage authority."""
 
     try:
@@ -705,9 +702,7 @@ def _activate_profile(
         st.session_state["profile_id"] = ""
         st.session_state.pop("jobs_profile_id", None)
         _queue_profile_id_input("")
-        st.session_state["profile_load_status"] = (
-            "The selected profile could not be loaded safely."
-        )
+        st.session_state["profile_load_status"] = "The selected profile could not be loaded safely."
         return
     st.session_state["profile"] = profile
     st.session_state["profile_id"] = profile.id
@@ -2321,7 +2316,11 @@ def _render_settings_page(
             + ("Enabled" if settings.llm_enable_role_classification else "Disabled")
         )
     with st.container(border=True):
-        st.markdown("**Gemini resume writer**")
+        st.markdown("**Gemini resume strategy and writer**")
+        st.write(
+            "Application strategist: "
+            + ("Enabled" if settings.llm_enable_composition else "Disabled")
+        )
         st.write(
             "Bullet rewriting: " + ("Enabled" if settings.llm_enable_bullet_rewrite else "Disabled")
         )
@@ -2339,9 +2338,10 @@ def _render_settings_page(
             f"request timeout: {settings.llm_timeout_seconds}s"
         )
         st.caption(
-            "Semantic opportunity and composition calls: "
-            f"{'enabled' if settings.llm_enable_opportunity_analysis else 'disabled'} / "
-            f"{'enabled' if settings.llm_enable_composition else 'disabled'}"
+            "Legacy opportunity analysis: "
+            f"{'enabled' if settings.llm_enable_opportunity_analysis else 'disabled'}; "
+            "when the strategist is enabled, its single call replaces separate opportunity, "
+            "skill, and advisory-composition calls."
         )
     report = repository.migration_report
     if report is not None:
@@ -2379,9 +2379,7 @@ if (
     != tailor_service_fingerprint
 ):
     st.session_state["_tailor_service"] = create_tailor_service()
-    st.session_state["_tailor_service_configuration_fingerprint"] = (
-        tailor_service_fingerprint
-    )
+    st.session_state["_tailor_service_configuration_fingerprint"] = tailor_service_fingerprint
 if "_profile_repository" not in st.session_state:
     st.session_state["_profile_repository"] = create_profile_repository()
 service = st.session_state["_tailor_service"]
@@ -2417,9 +2415,7 @@ active_route = normalize_route(
         or st.session_state.get("job_discovery_profile_id")
         or st.session_state.get("profile_id"),
         profile_options=profile_options,
-        on_profile_change=lambda profile_id: _activate_profile(
-            profile_id, profile_repository
-        ),
+        on_profile_change=lambda profile_id: _activate_profile(profile_id, profile_repository),
     )
 )
 

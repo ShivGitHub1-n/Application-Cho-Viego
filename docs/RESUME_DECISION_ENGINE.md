@@ -6,18 +6,20 @@ The engine optimizes the resume as one constrained document, not as independent 
 
 ## Process
 
-1. Classify the posting across supported engineering role families for strategy
-   diagnostics, while calculating composition relevance directly from the
-   posting title and complete description.
+1. Normalize the full posting and retrieve a typed relationship view over the
+   complete confirmed evidence bank.
 2. Assess profile fit separately using direct evidence and limited declared-skill support.
-3. Extract weighted role signals: core responsibilities, technologies, outcomes, seniority, domain, and differentiators.
-4. Score evidence packages for relevance, impact, credibility, coverage, entry-opening cost, and space cost.
-5. Allocate a dynamic, template-aware content budget across sections.
-5. Create a plan: include, de-emphasize, remove, rewrite, reorder, or request clarification.
-6. Select reviewed evidence through bounded page-fill search.
-7. When enabled, write a bounded set of evidence-linked variants once, validate
-   them claim by claim, and rerun deterministic page fit without further
-   provider calls.
+3. When configured, ask one typed Gemini strategist to reason about the complete
+   application portfolio and choose only supplied reviewed entry/evidence IDs.
+4. Validate ownership, confirmation, provenance, requirement attribution, title
+   integrity, duplicates, and structural bounds; preserve the valid remainder.
+5. When Gemini strategy is unavailable or unusable, retain the existing
+   deterministic requirement/package-selection fallback.
+6. Ask one bounded writer request to improve only strategist-selected evidence,
+   then validate every generated claim and compare it with its reviewed source.
+7. Fit the validated strategy by removing lower-priority evidence first, while
+   exact pagination, metadata, duplication, document structure, and export remain
+   deterministic and fail closed.
 
 The MVP returns one recommended strategy. It retains alternatives only for counterfactual explanation, testing, and debugging. A posting outside the recognized engineering taxonomy returns an explicit unsupported result; a recognized posting with no relevant direct profile evidence returns an insufficient-fit result.
 
@@ -57,14 +59,12 @@ the rebuilt artifact. Download preparation only reuses the stored bytes and
 does not run generation work. A failed rebuild leaves the prior valid artifact
 and its bytes available for retry.
 
-The initial source composition is not final portfolio authority when writing is
-enabled. An entry-balanced writer shortlist includes selected evidence and
-credible alternative experiences or projects before the provider call. After
-claim validation, final composition removes the initial-plan preference and
-compares source and written variants across those entries. Writing may therefore
-change which entry wins, but only through supported posting emphasis,
-intrinsic evidence strength, distinct portfolio contribution, readability, and
-page cost. Employer reputation and other external popularity signals are absent.
+In Gemini strategy mode, the validated `ApplicationStrategyPlan` is final
+semantic portfolio authority before page fit. The writer receives only its
+selected evidence and cannot add entries, evidence, requirement support, or
+selection authority. In deterministic fallback mode, the existing
+entry-balanced shortlist and full package frontier remain available. Employer
+reputation and other external popularity signals are absent in both modes.
 For both automatic and explicitly approved variants, the complete reviewed
 same-entry source bundle remains the authority for admission, relationship,
 requirement coverage, and technical-signal matching. Generated word order and

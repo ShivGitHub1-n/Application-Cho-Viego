@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 from resume_tailor.domain.hybrid_resume import EvidenceRetrievalResult
 from resume_tailor.domain.llm_models import (
+    ApplicationStrategyRequest,
+    ApplicationStrategyResult,
     BulletRewriteRequest,
     BulletRewriteResult,
     BulletShorteningRequest,
@@ -95,6 +97,11 @@ class ResumeLanguageModel(Protocol):
         self,
         request: OpportunityAnalysisRequest,
     ) -> OpportunityAnalysisResult: ...
+
+    def recommend_application_strategy(
+        self,
+        request: ApplicationStrategyRequest,
+    ) -> ApplicationStrategyResult: ...
 
     def recommend_composition(
         self, request: CompositionRecommendationRequest

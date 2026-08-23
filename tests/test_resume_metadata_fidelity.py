@@ -35,7 +35,6 @@ from resume_tailor.infrastructure.optimization import (
 )
 from resume_tailor.infrastructure.rendering import (
     PageCountMeasurement,
-    PageCountVerificationError,
     diagnose_docx_page_utilization,
 )
 from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
@@ -45,11 +44,6 @@ from tests.convergence_cases import (
     rich_mixed_case,
     software_cloud_case,
 )
-
-
-class FailingExactPageProvider:
-    def measure(self, docx_path: Path) -> PageCountMeasurement:
-        raise PageCountVerificationError(f"Controlled exact provider failure for {docx_path.name}")
 
 
 class FixedPageFit:
@@ -74,6 +68,16 @@ class FixedPageFit:
         )
 
 
+class AlwaysOnePageProvider:
+    def measure(self, docx_path: Path) -> PageCountMeasurement:
+        return PageCountMeasurement(
+            page_count=1,
+            exact=True,
+            confidence="exact",
+            provider=f"controlled exact metadata provider ({docx_path.name})",
+        )
+
+
 def _service(
     *,
     bounds: CompositionSearchBounds | None = None,
@@ -82,7 +86,7 @@ def _service(
         DeterministicResumeOptimizer(),
         EvidenceBoundResumeWriter(),
         resume_composer=DeterministicResumeComposer(
-            TemplateV1PageFitEvaluator(FailingExactPageProvider()),
+            TemplateV1PageFitEvaluator(AlwaysOnePageProvider()),
             bounds=bounds,
         ),
     )

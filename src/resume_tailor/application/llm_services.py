@@ -10,6 +10,11 @@ from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel
 
+from resume_tailor.application.application_strategy import (
+    ApplicationStrategyValidationError,
+    DeterministicApplicationStrategyReconciler,
+    DeterministicApplicationStrategyValidator,
+)
 from resume_tailor.application.composition import (
     CompositionReconciliationError,
     DeterministicCompositionReconciler,
@@ -68,6 +73,9 @@ from resume_tailor.domain.hybrid_resume import (
     WriterRewriteDiagnostic,
 )
 from resume_tailor.domain.llm_models import (
+    ApplicationStrategyConstraintsInput,
+    ApplicationStrategyRequest,
+    ApplicationStrategyResult,
     ApprovedEvidenceGroup,
     BulletRewrite,
     BulletRewriteClaim,
@@ -88,6 +96,10 @@ from resume_tailor.domain.llm_models import (
     ProfileExtractionRequest,
     ProfileExtractionResult,
     SkillCompositionRequest,
+    StrategyEntryInput,
+    StrategyEvidenceInput,
+    StrategyRequirementInput,
+    StrategySkillInput,
 )
 from resume_tailor.domain.models import (
     ClaimCandidate,
@@ -130,6 +142,7 @@ class HybridLlmServices:
         writing_policy: ResumeWritingPolicy = DEFAULT_RESUME_WRITING_POLICY,
         telemetry: GenerationTelemetry | None = None,
         provider_unavailable_reason: str | None = None,
+        enable_application_strategy: bool = False,
     ) -> None:
         self._language_model = language_model
         self._retry_count = retry_count
@@ -137,6 +150,7 @@ class HybridLlmServices:
         self._enable_opportunity_analysis = enable_opportunity_analysis
         self._enable_composition = enable_composition
         self._enable_bullet_rewrite = enable_bullet_rewrite
+        self._enable_application_strategy = enable_application_strategy
         self._composition_reconciler = (
             composition_reconciler or DeterministicCompositionReconciler()
         )
@@ -171,6 +185,8 @@ class HybridLlmServices:
         self._last_retry_failure_kind: str | None = None
         self._last_writer_pipeline_issue: WriterPipelineIssue | None = None
         self._provider_unavailable_reason = provider_unavailable_reason
+        self._application_strategy_validator = DeterministicApplicationStrategyValidator()
+        self._application_strategy_reconciler = DeterministicApplicationStrategyReconciler()
 
     def set_telemetry(self, telemetry: GenerationTelemetry) -> None:
         self._telemetry = telemetry
@@ -180,7 +196,12 @@ class HybridLlmServices:
         return self._language_model is not None and self._enable_bullet_rewrite
 
     def enrich_plan(
-        self, plan: TailoringPlan, profile: MasterProfile, posting: JobPosting
+        self,
+        plan: TailoringPlan,
+        profile: MasterProfile,
+        posting: JobPosting,
+        *,
+        retrieval: EvidenceRetrievalResult | None = None,
     ) -> TailoringPlan:
         generation_key = self._generation_key(plan)
         self._generation_call_counts[generation_key] = 0
@@ -191,10 +212,27 @@ class HybridLlmServices:
             self._last_planning_cache_hits = 0
             self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
             self._last_planning_reason = (
-                "Semantic planning was disabled or unavailable; deterministic "
+                "Strategy: Deterministic fallback because the Gemini strategist was "
+                "disabled or unavailable."
+                if self._enable_application_strategy
+                else "Semantic planning was disabled or unavailable; deterministic "
                 "planning remained authoritative."
             )
             unavailable = self._language_model is None
+            self._record_stage(
+                ResumeProviderStage.APPLICATION_STRATEGIST,
+                (
+                    ResumeProviderStageStatus.UNAVAILABLE
+                    if self._enable_application_strategy and unavailable
+                    else ResumeProviderStageStatus.SKIPPED
+                ),
+                0,
+                (
+                    "Configured strategist provider is unavailable."
+                    if self._enable_application_strategy and unavailable
+                    else "Application strategy is disabled or no tailoring strategy is available."
+                ),
+            )
             for stage, enabled in (
                 (ResumeProviderStage.SEMANTIC_PLANNER, self._enable_opportunity_analysis),
                 (ResumeProviderStage.SKILL_RECOMMENDER, self._enable_composition),
@@ -215,6 +253,20 @@ class HybridLlmServices:
                     ),
                 )
             return plan
+        if self._enable_application_strategy:
+            return self._enrich_with_application_strategy(
+                generation_key,
+                plan,
+                profile,
+                posting,
+                retrieval,
+            )
+        self._record_stage(
+            ResumeProviderStage.APPLICATION_STRATEGIST,
+            ResumeProviderStageStatus.SKIPPED,
+            0,
+            "The legacy advisory composition path is configured for this service.",
+        )
         enriched = plan
         report = enriched.report.model_copy(deep=True)
         if self._enable_opportunity_analysis:
@@ -418,6 +470,182 @@ class HybridLlmServices:
             else "Semantic planning was disabled; deterministic planning remained authoritative."
         )
         return enriched
+
+    def _enrich_with_application_strategy(
+        self,
+        generation_key: str,
+        plan: TailoringPlan,
+        profile: MasterProfile,
+        posting: JobPosting,
+        retrieval: EvidenceRetrievalResult | None,
+    ) -> TailoringPlan:
+        if retrieval is None:
+            self._record_stage(
+                ResumeProviderStage.APPLICATION_STRATEGIST,
+                ResumeProviderStageStatus.REJECTED,
+                0,
+                "Complete reviewed retrieval context was unavailable; deterministic "
+                "fallback retained.",
+            )
+            self._record_strategy_sibling_stages()
+            self._last_planning_provider_calls = 0
+            self._last_planning_cache_hits = 0
+            self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
+            self._last_planning_reason = (
+                "Strategy: Deterministic fallback because complete reviewed evidence context "
+                "was unavailable."
+            )
+            return plan
+
+        try:
+            request = self._application_strategy_request(plan, profile, posting, retrieval)
+        except ValueError as error:
+            self._last_validation_failures = [str(error)]
+            self._record_stage(
+                ResumeProviderStage.APPLICATION_STRATEGIST,
+                ResumeProviderStageStatus.REJECTED,
+                0,
+                "No complete eligible reviewed evidence bank was available; deterministic "
+                "fallback retained.",
+            )
+            self._record_strategy_sibling_stages()
+            self._last_planning_provider_calls = 0
+            self._last_planning_cache_hits = 0
+            self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
+            self._last_planning_reason = (
+                "Strategy: Deterministic fallback because no eligible reviewed evidence "
+                "bank was available."
+            )
+            return plan
+        result = self._execute_strategy_request(
+            generation_key,
+            self._language_model.recommend_application_strategy,
+            request,
+        )
+        calls = self._generation_call_counts.get(generation_key, 0)
+        cache_hits = self._generation_cache_hits.get(generation_key, 0)
+        if result is None:
+            self._record_stage(
+                ResumeProviderStage.APPLICATION_STRATEGIST,
+                ResumeProviderStageStatus.REJECTED,
+                calls,
+                "Gemini strategy was unavailable or malformed; deterministic fallback retained.",
+            )
+            enriched = plan
+        else:
+            try:
+                validated = self._application_strategy_validator.validate(
+                    result.output,
+                    profile,
+                    retrieval,
+                    plan,
+                )
+                enriched = self._application_strategy_reconciler.reconcile(
+                    plan,
+                    profile,
+                    validated,
+                )
+            except ApplicationStrategyValidationError as error:
+                self._last_validation_failures = [str(error)]
+                enriched = plan
+            self._record_stage(
+                ResumeProviderStage.APPLICATION_STRATEGIST,
+                (
+                    ResumeProviderStageStatus.APPLIED
+                    if enriched.application_strategy is not None
+                    else ResumeProviderStageStatus.REJECTED
+                ),
+                calls,
+                (
+                    "Gemini selected a portfolio from the complete reviewed evidence bank; "
+                    "deterministic evidence and structural validation accepted the usable plan."
+                    if enriched.application_strategy is not None
+                    else "Gemini returned no usable reviewed-evidence portfolio; deterministic "
+                    "fallback retained."
+                ),
+            )
+        self._record_strategy_sibling_stages()
+        self._last_planning_provider_calls = calls
+        self._last_planning_cache_hits = cache_hits
+        self._last_planning_status = (
+            HybridPlanningStatus.STRATEGY_APPLIED
+            if enriched.application_strategy is not None
+            else HybridPlanningStatus.ADVISORY_REJECTED
+            if calls
+            else HybridPlanningStatus.DETERMINISTIC_ONLY
+        )
+        self._last_planning_reason = (
+            "Strategy: Gemini. The validated reviewed-evidence portfolio is the primary "
+            "semantic input to writing and page fitting."
+            if enriched.application_strategy is not None
+            else "Strategy: Deterministic fallback. Gemini strategy was unavailable or rejected."
+        )
+        return enriched
+
+    def _record_strategy_sibling_stages(self) -> None:
+        for stage, reason in (
+            (
+                ResumeProviderStage.SEMANTIC_PLANNER,
+                "Opportunity analysis is incorporated into the single application strategist call.",
+            ),
+            (
+                ResumeProviderStage.SKILL_RECOMMENDER,
+                "Reviewed skill authority remains deterministic; no separate Gemini skill "
+                "call ran.",
+            ),
+            (
+                ResumeProviderStage.COMPOSITION_RECOMMENDER,
+                "Legacy advisory composition is replaced by the validated application strategy.",
+            ),
+        ):
+            self._record_stage(stage, ResumeProviderStageStatus.SKIPPED, 0, reason)
+
+    def _execute_strategy_request(
+        self,
+        generation_key: str,
+        operation: Callable[[ApplicationStrategyRequest], ApplicationStrategyResult],
+        request: ApplicationStrategyRequest,
+    ) -> ApplicationStrategyResult | None:
+        """Run one strategy request and at most one malformed-output repair."""
+
+        maximum_requests = min(self._max_calls, 1 + min(1, self._retry_count))
+        current_request = request
+        for attempt_index in range(maximum_requests):
+            self._telemetry.increment("provider_calls")
+            if attempt_index:
+                self._telemetry.increment("provider_retries")
+            self._generation_call_counts[generation_key] = (
+                self._generation_call_counts.get(generation_key, 0) + 1
+            )
+            try:
+                with self._telemetry.measure(GenerationStage.PROVIDER_REQUEST):
+                    result = operation(current_request)
+                if result.metadata.cache_hit:
+                    self._generation_cache_hits[generation_key] = (
+                        self._generation_cache_hits.get(generation_key, 0) + 1
+                    )
+                return result
+            except LanguageModelError as error:
+                self._last_retry_failure_kind = error.kind.value
+                if (
+                    error.kind is not LanguageModelErrorKind.MALFORMED_RESPONSE
+                    or attempt_index + 1 >= maximum_requests
+                ):
+                    return None
+            except ValueError as error:
+                self._last_retry_failure_kind = "malformed_output"
+                if attempt_index + 1 >= maximum_requests:
+                    return None
+                self._last_validation_failures = [str(error)]
+            current_request = current_request.model_copy(
+                update={
+                    "correction_notes": [
+                        "The prior response was malformed. Return only valid JSON matching "
+                        "the supplied application-strategy schema and supplied IDs."
+                    ]
+                }
+            )
+        return None
 
     def diagnostic_for_retrieval(
         self,
@@ -735,8 +963,7 @@ class HybridLlmServices:
         ]
         selected_count = len(selected_ids)
         mapping_failure_count = sum(
-            item.provider_contract_mapping_result
-            is not ProviderRewriteMappingStatus.MAPPED
+            item.provider_contract_mapping_result is not ProviderRewriteMappingStatus.MAPPED
             for item in rewrite_diagnostics
         )
         if not variants and not rejected and not mapping_failure_count:
@@ -752,8 +979,7 @@ class HybridLlmServices:
                     for item in selected_variants
                 )
                 or any(
-                    item.provider_contract_mapping_result
-                    is not ProviderRewriteMappingStatus.MAPPED
+                    item.provider_contract_mapping_result is not ProviderRewriteMappingStatus.MAPPED
                     for item in rewrite_diagnostics
                 )
                 else WriterExecutionStatus.WRITER_SUCCEEDED
@@ -892,6 +1118,11 @@ class HybridLlmServices:
                 ResumeProviderStage.DETERMINISTIC_RECOMPOSITION,
             }
         ]
+        strategy_applied = any(
+            item.stage is ResumeProviderStage.APPLICATION_STRATEGIST
+            and item.status is ResumeProviderStageStatus.APPLIED
+            for item in stages
+        )
         stages.extend(
             [
                 ResumeProviderStageDiagnostic(
@@ -905,7 +1136,10 @@ class HybridLlmServices:
                     status=ResumeProviderStageStatus.APPLIED,
                     call_count=0,
                     reason=(
-                        "Deterministic composition and exact page-fit selection retained "
+                        "Deterministic validation and exact page fitting preserved the "
+                        "validated strategist portfolio while enforcing structural limits."
+                        if strategy_applied
+                        else "Deterministic composition and exact page-fit selection retained "
                         "final authority."
                     ),
                 ),
@@ -1052,9 +1286,7 @@ class HybridLlmServices:
         profile: MasterProfile,
     ) -> list[ApprovedEvidenceGroup]:
         evidence_by_id = {item.id: item for item in profile.evidence if item.confirmed}
-        entry_titles = {
-            item.id: item.title for item in [*profile.experiences, *profile.projects]
-        }
+        entry_titles = {item.id: item.title for item in [*profile.experiences, *profile.projects]}
         selected_ids = [
             evidence_id
             for bullet in _resume_bullets(resume)
@@ -1113,9 +1345,7 @@ class HybridLlmServices:
             entry_kinds or {},
         )
         self._last_validation_failures.extend(
-            detail
-            for item in rewrite_diagnostics
-            for detail in item.validator_rejection_details
+            detail for item in rewrite_diagnostics for detail in item.validator_rejection_details
         )
         mapped_by_bullet_index = {
             outcome.mapped_bullet_index: outcome
@@ -1364,14 +1594,12 @@ class HybridLlmServices:
         accepted.sort(key=_variant_sort_key)
         rejected.sort(key=lambda item: item.variant_id)
         usable_count = sum(
-            item.validation_status is BulletValidationStatus.VALIDATED
-            and item.material_improvement
+            item.validation_status is BulletValidationStatus.VALIDATED and item.material_improvement
             for item in accepted
         )
         has_individual_failure = any(
             item.validation_status is not BulletValidationStatus.VALIDATED
-            or item.provider_contract_mapping_result
-            is not ProviderRewriteMappingStatus.MAPPED
+            or item.provider_contract_mapping_result is not ProviderRewriteMappingStatus.MAPPED
             for item in rewrite_diagnostics
         )
         rewrite_diagnostics = [
@@ -1693,6 +1921,11 @@ class HybridLlmServices:
             self._writing_policy.maximum_provider_batches
             + self._writing_policy.maximum_malformed_repairs,
         )
+        if self._enable_application_strategy:
+            maximum_requests = min(
+                maximum_requests,
+                max(1, 3 - self._last_planning_provider_calls),
+            )
         current_request = request
         for attempt_index in range(maximum_requests):
             self._telemetry.increment("provider_calls")
@@ -1853,6 +2086,97 @@ class HybridLlmServices:
     @staticmethod
     def _generation_key(plan: TailoringPlan) -> str:
         return f"{plan.profile_id}:{plan.profile_version}:{plan.posting_id}"
+
+    @staticmethod
+    def _application_strategy_request(
+        plan: TailoringPlan,
+        profile: MasterProfile,
+        posting: JobPosting,
+        retrieval: EvidenceRetrievalResult,
+    ) -> ApplicationStrategyRequest:
+        retrieved = {item.evidence_id: item for item in [*retrieval.admitted, *retrieval.rejected]}
+        evidence_by_entry: defaultdict[str, list[StrategyEvidenceInput]] = defaultdict(list)
+        for item in profile.evidence:
+            if not item.confirmed:
+                continue
+            relationship = retrieved.get(item.id)
+            evidence_by_entry[item.entity_id].append(
+                StrategyEvidenceInput(
+                    evidence_id=item.id,
+                    source_text=item.source_text,
+                    technologies=item.technologies,
+                    capabilities=item.capabilities,
+                    outcomes=item.outcomes,
+                    estimated_lines=max(1, (len(item.source_text) + 89) // 90),
+                    deterministic_relationship=(
+                        relationship.relationship.value
+                        if relationship is not None
+                        else EvidenceRelationship.REJECTED.value
+                    ),
+                    supported_requirement_ids=(
+                        list(
+                            dict.fromkeys(
+                                [
+                                    *relationship.direct_requirement_ids,
+                                    *relationship.adjacent_requirement_ids,
+                                    *relationship.complementary_requirement_ids,
+                                ]
+                            )
+                        )
+                        if relationship is not None
+                        else []
+                    ),
+                )
+            )
+        entries = [
+            StrategyEntryInput(
+                entry_id=entry.id,
+                entry_kind=entry.kind.value,
+                authoritative_title=entry.title,
+                organization=entry.organization,
+                start_date=entry.start_date,
+                end_date=entry.end_date,
+                entry_cost_lines=(
+                    plan.constraints.experience_entry_overhead_lines
+                    if entry.kind.value == "experience"
+                    else plan.constraints.project_entry_overhead_lines
+                ),
+                evidence=evidence_by_entry.get(entry.id, []),
+            )
+            for entry in [*profile.experiences, *profile.projects]
+            if evidence_by_entry.get(entry.id)
+        ]
+        return ApplicationStrategyRequest(
+            posting_id=posting.id,
+            title=posting.title,
+            normalized_full_posting=posting.description,
+            requirements=[
+                StrategyRequirementInput(
+                    requirement_id=requirement.id,
+                    text=requirement.text,
+                    authority=requirement.authority.value,
+                    importance=requirement.importance,
+                )
+                for requirement in retrieval.posting_requirements
+                if requirement.authority is not RequirementAuthority.INCIDENTAL
+            ],
+            entries=entries,
+            reviewed_skills=[
+                StrategySkillInput(
+                    category=category.category,
+                    values=list(category.values),
+                )
+                for category in profile.technical_skills
+            ],
+            constraints=ApplicationStrategyConstraintsInput(
+                maximum_selected_entries=7,
+                maximum_selected_evidence=24,
+                maximum_total_lines=plan.constraints.max_total_lines,
+                maximum_experience_lines=plan.constraints.max_experience_lines,
+                maximum_project_lines=plan.constraints.max_project_lines,
+                maximum_skill_lines=plan.constraints.max_skill_lines,
+            ),
+        )
 
     @staticmethod
     def _composition_request(
@@ -2180,15 +2504,11 @@ def _mapping_rewrite_diagnostics(
                 provider_contract_mapping_result=outcome.mapping_status,
                 validator_rejection_codes=outcome.failure_codes,
                 validator_rejection_details=outcome.failure_details,
-                normalized_unsupported_terms=list(
-                    comparison.normalized_unsupported_terms
-                ),
+                normalized_unsupported_terms=list(comparison.normalized_unsupported_terms),
                 ownership_comparison=comparison.ownership_comparison,
                 metric_comparison=comparison.metric_comparison,
                 causal_outcome_comparison=comparison.causal_outcome_comparison,
-                singular_plural_scope_comparison=(
-                    comparison.singular_plural_scope_comparison
-                ),
+                singular_plural_scope_comparison=(comparison.singular_plural_scope_comparison),
                 validation_status=BulletValidationStatus.REJECTED,
                 batch_effect="pending_aggregate_result",
             )

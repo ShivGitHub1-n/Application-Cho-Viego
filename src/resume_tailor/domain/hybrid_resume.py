@@ -31,11 +31,13 @@ class RetrievalAdmissionStatus(StrEnum):
 class HybridPlanningStatus(StrEnum):
     DISABLED = "disabled"
     DETERMINISTIC_ONLY = "deterministic_only"
+    STRATEGY_APPLIED = "strategy_applied"
     ADVISORY_APPLIED = "advisory_applied"
     ADVISORY_REJECTED = "advisory_rejected"
 
 
 class ResumeProviderStage(StrEnum):
+    APPLICATION_STRATEGIST = "application_strategist"
     SEMANTIC_PLANNER = "semantic_planner"
     SKILL_RECOMMENDER = "skill_recommender"
     COMPOSITION_RECOMMENDER = "composition_recommender"

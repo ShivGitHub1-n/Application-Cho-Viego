@@ -19,6 +19,9 @@ from resume_tailor.domain.hybrid_resume import (
     WriterPipelineStage,
 )
 from resume_tailor.domain.llm_models import (
+    ApplicationStrategyOutput,
+    ApplicationStrategyRequest,
+    ApplicationStrategyResult,
     BulletRewriteOutput,
     BulletRewriteRequest,
     BulletRewriteResult,
@@ -128,6 +131,17 @@ class GeminiResumeLanguageModel:
             OpportunityAnalysisResult,
         )
 
+    def recommend_application_strategy(
+        self,
+        request: ApplicationStrategyRequest,
+    ) -> ApplicationStrategyResult:
+        return self._generate(
+            LlmOperation.APPLICATION_STRATEGY,
+            request,
+            ApplicationStrategyOutput,
+            ApplicationStrategyResult,
+        )
+
     def classify_role(self, request: RoleClassificationRequest) -> RoleClassificationResult:
         return self._generate(
             LlmOperation.CLASSIFY_ROLE,
@@ -220,9 +234,7 @@ class GeminiResumeLanguageModel:
         try:
             if operation is LlmOperation.REWRITE_BULLETS:
                 provider_output_type: type[BaseModel] = GeminiProviderWriterOutput
-                schema_transform = transform_gemini_schema(
-                    GEMINI_WRITER_RESPONSE_SCHEMA
-                )
+                schema_transform = transform_gemini_schema(GEMINI_WRITER_RESPONSE_SCHEMA)
             else:
                 provider_output_type = output_type
                 schema_transform = gemini_schema_transform(
@@ -254,6 +266,7 @@ class GeminiResumeLanguageModel:
                 config=provider_config,
                 schema_transform=schema_transform,
             )
+
             def generate() -> Any:
                 return self._client.models.generate_content(
                     model=self._model,
@@ -292,8 +305,7 @@ class GeminiResumeLanguageModel:
                             stage=WriterPipelineStage.CLAIM_VALIDATION,
                             provider_error_kind=LanguageModelErrorKind.VALIDATION.value,
                             sanitized_detail=(
-                                "Provider writer response failed authorized evidence "
-                                "mapping."
+                                "Provider writer response failed authorized evidence mapping."
                             ),
                         ),
                     ) from error
@@ -445,9 +457,7 @@ class GeminiResumeLanguageModel:
                         text_present=True,
                     ),
                 ) from error
-        top_level_keys = (
-            sorted(str(key) for key in parsed)[:40] if isinstance(parsed, dict) else []
-        )
+        top_level_keys = sorted(str(key) for key in parsed)[:40] if isinstance(parsed, dict) else []
         try:
             if isinstance(parsed, output_type):
                 return parsed
@@ -549,11 +559,7 @@ class GeminiResumeLanguageModel:
             kind = LanguageModelErrorKind.RATE_LIMITED
             public_message = "Gemini rate limit reached."
             failure_code = WriterPipelineFailureCode.PROVIDER_TRANSPORT_OR_SDK_ERROR
-        elif (
-            "timeout" in message
-            or "timed out" in message
-            or "timeout" in exception_name
-        ):
+        elif "timeout" in message or "timed out" in message or "timeout" in exception_name:
             kind = LanguageModelErrorKind.TIMEOUT
             public_message = "Gemini request timed out."
             failure_code = WriterPipelineFailureCode.PROVIDER_TIMEOUT
@@ -615,9 +621,7 @@ class GeminiResumeLanguageModel:
             token in combined for token in ("too large", "too deep", "complex", "nesting")
         ):
             return WriterPipelineFailureCode.SCHEMA_TOO_LARGE_OR_DEEP
-        if request_shape is not None and any(
-            finding.startswith("schema_") for finding in findings
-        ):
+        if request_shape is not None and any(finding.startswith("schema_") for finding in findings):
             return WriterPipelineFailureCode.SCHEMA_TOO_LARGE_OR_DEEP
         if field_violations:
             return WriterPipelineFailureCode.INVALID_MODEL_OR_CONFIG
@@ -641,9 +645,7 @@ class GeminiResumeLanguageModel:
             field_path = value.get("field") or value.get("fieldPath")
             description = value.get("description") or value.get("reason")
             safe_path = GeminiResumeLanguageModel._safe_field_path(field_path)
-            safe_description = GeminiResumeLanguageModel._safe_violation_description(
-                description
-            )
+            safe_description = GeminiResumeLanguageModel._safe_violation_description(description)
             if safe_path and safe_description:
                 candidate = ProviderFieldViolation(
                     field_path=safe_path,

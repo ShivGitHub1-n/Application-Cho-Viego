@@ -408,6 +408,14 @@ def _render_strategy(streamlit_module: Any, plan: Any | None) -> None:
         return
     streamlit_module.write(strategy.rationale)
     streamlit_module.caption(f"Primary focus: {strategy.primary_focus}")
+    streamlit_module.caption(
+        "Strategy: Gemini"
+        if getattr(plan, "application_strategy", None) is not None
+        else "Strategy: Deterministic fallback"
+    )
+    application_strategy = getattr(plan, "application_strategy", None)
+    if application_strategy is not None:
+        streamlit_module.write(application_strategy.application_thesis)
     report = plan.report
     if report.profile_fit and report.profile_fit.status.value != "sufficient":
         streamlit_module.warning(report.profile_fit.reason)
@@ -599,6 +607,23 @@ def _render_export(
                 "The stored resume artifact is stale. Return to Resume review and rebuild it."
             )
             return
+        hybrid = artifact.writing_diagnostic
+        strategy_status = (
+            "Gemini"
+            if getattr(artifact.final_resume, "application_strategy", None) is not None
+            else "Deterministic fallback"
+        )
+        rewritten = hybrid.rewritten_bullet_count if hybrid is not None else 0
+        writing_status = (
+            f"Gemini · {rewritten} improvement(s) applied" if rewritten else "Source retained"
+        )
+        pagination_status = (
+            "1 page verified" if artifact.pagination_diagnostic.status == "exact" else "Unverified"
+        )
+        streamlit_module.caption(
+            f"Strategy: {strategy_status} · Writing: {writing_status} · "
+            f"Validation: Passed · Pagination: {pagination_status}"
+        )
         if streamlit_module.button(
             "Verify and prepare export", key="resume-verify-export", type="primary"
         ):

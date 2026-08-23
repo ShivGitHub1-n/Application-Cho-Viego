@@ -744,6 +744,7 @@ class EvidenceBoundResumeWriter:
             contact_line=" | ".join(item.display_text for item in contact_items) or None,
             contact_items=contact_items,
             strategy=plan.strategy,
+            application_strategy=plan.application_strategy,
             entity_titles={item.id: item.title for item in profile.experiences + profile.projects},
             education=plan.education,
             technical_skills=technical_skills,

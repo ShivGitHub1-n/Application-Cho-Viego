@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 
 from resume_tailor.domain.llm_models import (
+    ApplicationStrategyRequest,
+    ApplicationStrategyResult,
     BulletRewriteRequest,
     BulletRewriteResult,
     BulletShorteningRequest,
@@ -35,6 +37,12 @@ class FakeResumeLanguageModel:
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
         return self._next("analyze_opportunity", request)
+
+    def recommend_application_strategy(
+        self,
+        request: ApplicationStrategyRequest,
+    ) -> ApplicationStrategyResult:
+        return self._next("recommend_application_strategy", request)
 
     def classify_role(self, request: RoleClassificationRequest) -> RoleClassificationResult:
         return self._next("classify_role", request)

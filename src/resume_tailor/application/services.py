@@ -122,7 +122,12 @@ class TailorResumeService:
             return plan
         with self._telemetry.measure(GenerationStage.SEMANTIC_PLANNING):
             self._telemetry.increment("semantic_plans")
-            return self._hybrid_services.enrich_plan(plan, profile, posting)
+            return self._hybrid_services.enrich_plan(
+                plan,
+                profile,
+                posting,
+                retrieval=retrieval,
+            )
 
     def extract_profile_draft(
         self,
@@ -258,8 +263,7 @@ class TailorResumeService:
                 f"{rewritten_bullet_count} validated materially improved rewrite(s) "
                 "survived deterministic portfolio and page-fit selection; unsafe or "
                 "review-gated siblings were isolated."
-                if writer_execution_status
-                is WriterExecutionStatus.WRITER_PARTIALLY_SUCCEEDED
+                if writer_execution_status is WriterExecutionStatus.WRITER_PARTIALLY_SUCCEEDED
                 else f"{rewritten_bullet_count} validated materially improved rewrite(s) "
                 "survived deterministic portfolio and page-fit selection."
             )
@@ -362,9 +366,7 @@ class TailorResumeService:
                         "fallback_bullet_count": (
                             source_bullet_count if hybrid.rewrite_enabled else 0
                         ),
-                        "source_alternatives_available": len(
-                            hybrid.shortlisted_evidence_ids
-                        ),
+                        "source_alternatives_available": len(hybrid.shortlisted_evidence_ids),
                         "rewrites_returned": len(hybrid.rewrite_diagnostics),
                         "rewrites_validated": sum(
                             item.validation_status.value == "validated"
