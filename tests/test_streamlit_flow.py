@@ -111,6 +111,38 @@ def _workflow_state() -> dict[str, object]:
     }
 
 
+def test_streamlit_rebuilds_cached_service_when_provider_configuration_changes(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    constructions = 0
+
+    def create_service():
+        nonlocal constructions
+        constructions += 1
+        return TailorResumeService(
+            DeterministicResumeOptimizer(),
+            EvidenceBoundResumeWriter(),
+        )
+
+    monkeypatch.setattr(dependencies, "create_tailor_service", create_service)
+    monkeypatch.setattr(
+        dependencies,
+        "create_profile_repository",
+        lambda: SQLiteMasterProfileRepository(tmp_path / "provider-config.sqlite3"),
+    )
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+    app = AppTest.from_file(str(app_path)).run()
+    assert constructions == 1
+
+    app.run()
+    assert constructions == 1
+
+    monkeypatch.setenv("LLM_ENABLE_COVER_LETTER", "false")
+    app.run()
+    assert constructions == 2
+
+
 def test_initial_workflow_has_no_active_posting_and_cover_letter_is_guarded() -> None:
     state: dict[str, object] = {}
 

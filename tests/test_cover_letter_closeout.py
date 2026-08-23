@@ -11,10 +11,21 @@ from resume_tailor.application.workflow_state import (
     COVER_LETTER_ARTIFACT_KEY,
     set_active_application_context,
 )
-from resume_tailor.domain.cover_letter import CoverLetterQualityGateStatus
+from resume_tailor.domain.cover_letter import (
+    CoverLetterProviderFailureStage,
+    CoverLetterProviderStatus,
+    CoverLetterQualityGateStatus,
+)
+from resume_tailor.domain.hybrid_resume import (
+    WriterPipelineFailureCode,
+    WriterPipelineIssue,
+    WriterPipelineStage,
+)
 from resume_tailor.domain.llm_models import (
     CoverLetterDraftOutput,
     CoverLetterDraftResult,
+    LanguageModelError,
+    LanguageModelErrorKind,
     LlmOperation,
     ModelCallMetadata,
 )
@@ -25,6 +36,7 @@ from resume_tailor.domain.models import (
     MasterProfile,
     ResumeItem,
 )
+from resume_tailor.frontend.cover_letter_view import _writer_status
 from tests.cover_letter_helpers import (
     ControlledCoverLetterRenderer,
     cover_letter_case,
@@ -43,6 +55,22 @@ class _OneShotProvider:
         return self.result
 
 
+class _MalformedProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def draft_cover_letter(self, _request):
+        self.calls += 1
+        raise LanguageModelError(
+            LanguageModelErrorKind.MALFORMED_RESPONSE,
+            "sanitized malformed response",
+            diagnostic=WriterPipelineIssue(
+                code=WriterPipelineFailureCode.TYPED_SCHEMA_MISMATCH,
+                stage=WriterPipelineStage.TYPED_SCHEMA_VALIDATION,
+            ),
+        )
+
+
 def test_cover_letter_generation_is_independent_of_resume_plan_and_artifact() -> None:
     profile, posting, _ = rich_cover_letter_case()
     service = CoverLetterService(
@@ -58,12 +86,37 @@ def test_cover_letter_generation_is_independent_of_resume_plan_and_artifact() ->
     assert artifact.page_fit.exact_pagination
 
 
+def test_malformed_provider_reason_retains_typed_parse_stage_after_one_repair() -> None:
+    profile, posting, plan = rich_cover_letter_case()
+    provider = _MalformedProvider()
+    service = CoverLetterService(
+        language_model=provider,
+        renderer=ControlledCoverLetterRenderer([0.82, 0.84, 0.86], exact=True),
+        provider_name="fake",
+        model_name="fake-model",
+    )
+
+    artifact = service.generate_artifact(profile, posting, plan)
+
+    assert provider.calls == 2
+    assert artifact.provider_diagnostic.status is CoverLetterProviderStatus.MALFORMED_OUTPUT
+    assert artifact.provider_diagnostic.failure_stage is (
+        CoverLetterProviderFailureStage.RESPONSE_PARSING
+    )
+    assert artifact.provider_diagnostic.failure_code == "typed_schema_mismatch"
+    assert not artifact.provider_diagnostic.structured_parsing_succeeded
+    assert artifact.provider_diagnostic.request_count == 2
+    assert artifact.provider_diagnostic.repair_count == 1
+    assert _writer_status(artifact) == "Fallback — response parsing failed"
+
+
 def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_strict() -> None:
     profile, posting, _ = cover_letter_case()
     conflicting = profile.evidence[0].model_copy(
         update={
             "source_text": (
-                "As Lead Firmware Engineer, built STM32 firmware and tested SPI sensor "
+                "As Lead Firmware Engineer, led the hardware safety workstream reviewing "
+                "subordinate designs, built STM32 firmware, and tested SPI sensor "
                 "communication at 30 FPS."
             )
         }
@@ -77,6 +130,9 @@ def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_stri
 
     assert selected.source_text.startswith("As Lead Firmware Engineer")
     assert "Lead Firmware Engineer" not in (selected.writer_text or "")
+    assert "led the hardware safety workstream reviewing subordinate designs" in (
+        selected.writer_text or ""
+    )
     assert selected.excluded_title_claims == ["Lead Firmware Engineer"]
 
     service = CoverLetterService(renderer=ControlledCoverLetterRenderer(exact=True))
@@ -166,6 +222,37 @@ def test_invalid_provider_paragraph_is_not_spliced_into_a_fallback_letter() -> N
         "unsupported CUDA fleet" not in paragraph.text
         for paragraph in artifact.letter.paragraphs
     )
+    assert artifact.provider_diagnostic.status is CoverLetterProviderStatus.VALIDATION_FALLBACK
+    assert artifact.provider_diagnostic.failure_stage is (
+        CoverLetterProviderFailureStage.CLAIM_VALIDATION
+    )
+    assert artifact.provider_diagnostic.structured_parsing_succeeded
+    assert artifact.provider_diagnostic.semantic_validation_succeeded is False
+
+
+def test_fallback_normalizes_posting_subjects_and_never_uses_titles_as_skills() -> None:
+    profile, posting, _ = rich_cover_letter_case()
+    posting = posting.model_copy(
+        update={
+            "description": (
+                "The intern will work across mechanical, electrical, and embedded hardware "
+                "tasks. The candidate will test integrated prototypes and document results."
+            )
+        }
+    )
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan=None)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
+    text = " ".join(paragraph.text for paragraph in output.paragraphs).casefold()
+
+    assert "work behind the intern will" not in text
+    assert "approach that follows the intern will" not in text
+    assert "direct experience with mechatronics engineer" not in text
+    assert "the useful bridge is" not in text
+    assert "digital engineering intern" not in text
 
 
 def test_software_reverse_control_builds_a_software_narrative_plan() -> None:

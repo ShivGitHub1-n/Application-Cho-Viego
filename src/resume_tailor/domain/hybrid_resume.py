@@ -35,6 +35,30 @@ class HybridPlanningStatus(StrEnum):
     ADVISORY_REJECTED = "advisory_rejected"
 
 
+class ResumeProviderStage(StrEnum):
+    SEMANTIC_PLANNER = "semantic_planner"
+    SKILL_RECOMMENDER = "skill_recommender"
+    COMPOSITION_RECOMMENDER = "composition_recommender"
+    BULLET_WRITER = "bullet_writer"
+    DETERMINISTIC_RECOMPOSITION = "deterministic_recomposition"
+
+
+class ResumeProviderStageStatus(StrEnum):
+    APPLIED = "applied"
+    USED = "used"
+    UNAVAILABLE = "unavailable"
+    REJECTED = "rejected"
+    SKIPPED = "skipped"
+    SOURCE_RETAINED = "source_retained"
+
+
+class ResumeProviderStageDiagnostic(BaseModel):
+    stage: ResumeProviderStage
+    status: ResumeProviderStageStatus
+    call_count: int = Field(default=0, ge=0)
+    reason: str = Field(min_length=1, max_length=300)
+
+
 class WriterExecutionStatus(StrEnum):
     REWRITING_DISABLED = "rewriting_disabled"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
@@ -328,6 +352,7 @@ class HybridResumeDiagnostic(BaseModel):
     exact_pagination: bool = False
     page_verification_provider: str | None = None
     underfill_reason: str | None = None
+    provider_stages: list[ResumeProviderStageDiagnostic] = Field(default_factory=list)
 
 
 __all__ = [
@@ -341,6 +366,9 @@ __all__ = [
     "GroundingFailureCode",
     "HybridPlanningStatus",
     "HybridResumeDiagnostic",
+    "ResumeProviderStage",
+    "ResumeProviderStageDiagnostic",
+    "ResumeProviderStageStatus",
     "RESUME_WRITING_CONTRACT_VERSION",
     "RESUME_WRITING_POLICY_VERSION",
     "RESUME_WRITING_PROMPT_VERSION",

@@ -252,13 +252,12 @@ def _render_status(
         for gate in artifact.quality_gates
         if gate.gate in {"candidate_grounding", "company_grounding", "resume_consistency"}
     )
-    fallback_used = artifact.provider_diagnostic.fallback_reason is not None
     columns = st.columns(4)
     columns[0].metric(
         "Research",
         artifact.company_research.status.value.replace("_", " ").title(),
     )
-    columns[1].metric("Writer", "Fallback" if fallback_used else "Gemini")
+    columns[1].metric("Writer", _writer_status(artifact))
     columns[2].metric("Claims", "Passed" if passed_claims else "Review required")
     columns[3].metric("Page use", f"{artifact.page_fit.estimated_utilization:.0%}")
     st.caption(
@@ -267,6 +266,26 @@ def _render_status(
         f"{'Current' if artifact_current else 'Stale'} · "
         f"{artifact.page_fit.estimated_remaining_lines} estimated lines remaining"
     )
+
+
+def _writer_status(artifact: GeneratedCoverLetterArtifact) -> str:
+    diagnostic = artifact.provider_diagnostic
+    if diagnostic.provider_candidate_selected and not diagnostic.fallback_reason:
+        return "Gemini"
+    reason = diagnostic.fallback_reason
+    if reason is None:
+        return "Gemini"
+    labels = {
+        "provider_disabled": "provider disabled",
+        "credentials_absent": "provider unavailable",
+        "provider_malformed_after_repair": "response parsing failed",
+        "provider_timeout": "provider timed out",
+        "provider_rate_limit": "provider rate limited",
+        "provider_unavailable": "provider unavailable",
+        "all_generated_paragraphs_rejected": "response failed validation",
+        "provider_page_fit_rejected": "provider draft did not fit",
+    }
+    return "Fallback — " + labels.get(reason.value, "provider draft not used")
 
 
 def _render_letter(artifact: GeneratedCoverLetterArtifact) -> None:

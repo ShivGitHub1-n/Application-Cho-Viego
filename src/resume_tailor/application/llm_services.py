@@ -58,6 +58,9 @@ from resume_tailor.domain.hybrid_resume import (
     ProviderRequestShapeDiagnostic,
     ProviderRewriteMappingOutcome,
     ProviderRewriteMappingStatus,
+    ResumeProviderStage,
+    ResumeProviderStageDiagnostic,
+    ResumeProviderStageStatus,
     WriterExecutionStatus,
     WriterPipelineFailureCode,
     WriterPipelineIssue,
@@ -164,6 +167,7 @@ class HybridLlmServices:
         self._last_planning_cache_hits = 0
         self._last_planning_status = HybridPlanningStatus.DETERMINISTIC_ONLY
         self._last_planning_reason = "Deterministic planning remained authoritative."
+        self._last_provider_stages: list[ResumeProviderStageDiagnostic] = []
         self._last_retry_failure_kind: str | None = None
         self._last_writer_pipeline_issue: WriterPipelineIssue | None = None
         self._provider_unavailable_reason = provider_unavailable_reason
@@ -181,6 +185,7 @@ class HybridLlmServices:
         generation_key = self._generation_key(plan)
         self._generation_call_counts[generation_key] = 0
         self._generation_cache_hits[generation_key] = 0
+        self._last_provider_stages = []
         if self._language_model is None or plan.strategy is None:
             self._last_planning_provider_calls = 0
             self._last_planning_cache_hits = 0
@@ -189,10 +194,31 @@ class HybridLlmServices:
                 "Semantic planning was disabled or unavailable; deterministic "
                 "planning remained authoritative."
             )
+            unavailable = self._language_model is None
+            for stage, enabled in (
+                (ResumeProviderStage.SEMANTIC_PLANNER, self._enable_opportunity_analysis),
+                (ResumeProviderStage.SKILL_RECOMMENDER, self._enable_composition),
+                (ResumeProviderStage.COMPOSITION_RECOMMENDER, self._enable_composition),
+            ):
+                self._record_stage(
+                    stage,
+                    (
+                        ResumeProviderStageStatus.UNAVAILABLE
+                        if enabled and unavailable
+                        else ResumeProviderStageStatus.SKIPPED
+                    ),
+                    0,
+                    (
+                        "Configured provider is unavailable."
+                        if enabled and unavailable
+                        else "Stage is disabled or no tailoring strategy is available."
+                    ),
+                )
             return plan
         enriched = plan
         report = enriched.report.model_copy(deep=True)
         if self._enable_opportunity_analysis:
+            calls_before = self._generation_call_counts[generation_key]
             opportunity_request = OpportunityAnalysisRequest(
                 posting_id=posting.id,
                 title=posting.title,
@@ -230,10 +256,33 @@ class HybridLlmServices:
                 report.assumptions.append(
                     f"LLM opportunity focus: {opportunity_result.output.primary_focus}"
                 )
+            self._record_stage(
+                ResumeProviderStage.SEMANTIC_PLANNER,
+                (
+                    ResumeProviderStageStatus.USED
+                    if opportunity_result is not None
+                    else ResumeProviderStageStatus.REJECTED
+                ),
+                self._generation_call_counts[generation_key] - calls_before,
+                (
+                    "Gemini opportunity analysis returned typed advisory context."
+                    if opportunity_result is not None
+                    else "Provider output was unavailable or rejected; deterministic "
+                    "analysis remained."
+                ),
+            )
+        else:
+            self._record_stage(
+                ResumeProviderStage.SEMANTIC_PLANNER,
+                ResumeProviderStageStatus.SKIPPED,
+                0,
+                "Semantic opportunity analysis is disabled.",
+            )
         enriched = plan.model_copy(update={"report": report})
         if self._enable_composition and enriched.ranked_skill_categories:
             skill_request = self._skill_composition_request(enriched, profile)
             if skill_request is not None:
+                calls_before = self._generation_call_counts[generation_key]
                 skill_result = self._retry(
                     generation_key,
                     self._language_model.recommend_skill_composition,
@@ -251,7 +300,41 @@ class HybridLlmServices:
                     enriched = self._skill_fallback(
                         enriched, "Provider or schema failure; deterministic selection preserved."
                     )
+                skill_applied = any(
+                    decision.action == "gemini_skill_composition_applied"
+                    for decision in enriched.report.decisions
+                )
+                self._record_stage(
+                    ResumeProviderStage.SKILL_RECOMMENDER,
+                    (
+                        ResumeProviderStageStatus.APPLIED
+                        if skill_applied
+                        else ResumeProviderStageStatus.REJECTED
+                    ),
+                    self._generation_call_counts[generation_key] - calls_before,
+                    (
+                        "Gemini skill recommendations passed deterministic reconciliation."
+                        if skill_applied
+                        else "Skill recommendations were unavailable or rejected; "
+                        "reviewed skills remained."
+                    ),
+                )
+            else:
+                self._record_stage(
+                    ResumeProviderStage.SKILL_RECOMMENDER,
+                    ResumeProviderStageStatus.SKIPPED,
+                    0,
+                    "No eligible reviewed skill request was available.",
+                )
+        else:
+            self._record_stage(
+                ResumeProviderStage.SKILL_RECOMMENDER,
+                ResumeProviderStageStatus.SKIPPED,
+                0,
+                "Skill recommendation is disabled or no ranked skill categories are available.",
+            )
         if self._enable_composition:
+            calls_before = self._generation_call_counts[generation_key]
             composition_request = self._composition_request(plan, profile)
             composition_result = self._retry(
                 generation_key,
@@ -284,6 +367,31 @@ class HybridLlmServices:
                     enriched = self._composition_reconciler.reconcile(enriched, profile, selection)
                 except CompositionReconciliationError:
                     pass
+            composition_applied = any(
+                decision.action == "composition_applied" for decision in enriched.report.decisions
+            )
+            self._record_stage(
+                ResumeProviderStage.COMPOSITION_RECOMMENDER,
+                (
+                    ResumeProviderStageStatus.APPLIED
+                    if composition_applied
+                    else ResumeProviderStageStatus.REJECTED
+                ),
+                self._generation_call_counts[generation_key] - calls_before,
+                (
+                    "Gemini composition advice passed deterministic reconciliation."
+                    if composition_applied
+                    else "Composition advice was unavailable or rejected; deterministic "
+                    "composition remained."
+                ),
+            )
+        else:
+            self._record_stage(
+                ResumeProviderStage.COMPOSITION_RECOMMENDER,
+                ResumeProviderStageStatus.SKIPPED,
+                0,
+                "Composition recommendation is disabled.",
+            )
         self._last_planning_provider_calls = self._generation_call_counts.get(
             generation_key,
             0,
@@ -321,6 +429,7 @@ class HybridLlmServices:
             planning_reason=self._last_planning_reason,
             provider_call_count=self._last_planning_provider_calls,
             provider_cache_hits=self._last_planning_cache_hits,
+            provider_stages=list(self._last_provider_stages),
         )
 
     def rewrite_composed_resume(
@@ -347,6 +456,12 @@ class HybridLlmServices:
                             "provider_cache_hits": self._last_planning_cache_hits,
                             "deterministic_fallback_used": True,
                             "layout_input": "reviewed_source_bullets",
+                            "provider_stages": self._provider_stages_with_writer(
+                                diagnostic,
+                                ResumeProviderStageStatus.SKIPPED,
+                                0,
+                                "Bullet rewriting is disabled; reviewed source wording was used.",
+                            ),
                         }
                     )
                 }
@@ -387,6 +502,13 @@ class HybridLlmServices:
                             "writer_shortlist": shortlist_diagnostics,
                             "shortlisted_entry_ids": shortlisted_entry_ids,
                             "shortlisted_evidence_ids": shortlisted_evidence_ids,
+                            "provider_stages": self._provider_stages_with_writer(
+                                diagnostic,
+                                ResumeProviderStageStatus.UNAVAILABLE,
+                                0,
+                                "Configured writer provider is unavailable; source wording "
+                                "was used.",
+                            ),
                         }
                     )
                 }
@@ -406,6 +528,12 @@ class HybridLlmServices:
                             "writer_shortlist": shortlist_diagnostics,
                             "shortlisted_entry_ids": shortlisted_entry_ids,
                             "shortlisted_evidence_ids": shortlisted_evidence_ids,
+                            "provider_stages": self._provider_stages_with_writer(
+                                diagnostic,
+                                ResumeProviderStageStatus.SKIPPED,
+                                0,
+                                "No reviewed evidence was eligible for the writer shortlist.",
+                            ),
                         }
                     )
                 }
@@ -526,6 +654,13 @@ class HybridLlmServices:
                                 "writer_shortlist": shortlist_diagnostics,
                                 "shortlisted_entry_ids": shortlisted_entry_ids,
                                 "shortlisted_evidence_ids": shortlisted_evidence_ids,
+                                "provider_stages": self._provider_stages_with_writer(
+                                    diagnostic,
+                                    ResumeProviderStageStatus.REJECTED,
+                                    provider_calls,
+                                    "The writer request failed before an eligible variant "
+                                    "was available.",
+                                ),
                             }
                         )
                     }
@@ -699,10 +834,84 @@ class HybridLlmServices:
                             item.validation_status is BulletValidationStatus.REVIEW_REQUIRED
                             for item in rewrite_diagnostics
                         ),
+                        "provider_stages": self._provider_stages_with_writer(
+                            diagnostic,
+                            (
+                                ResumeProviderStageStatus.APPLIED
+                                if selected_count
+                                else ResumeProviderStageStatus.SOURCE_RETAINED
+                                if variants
+                                else ResumeProviderStageStatus.REJECTED
+                            ),
+                            provider_calls,
+                            (
+                                "Validated Gemini wording was selected by deterministic "
+                                "recomposition."
+                                if selected_count
+                                else "Validated Gemini wording was considered, but source "
+                                "wording scored better."
+                                if variants
+                                else "No Gemini wording variant passed the deterministic "
+                                "writing contract."
+                            ),
+                        ),
                     }
                 )
             }
         )
+
+    def _record_stage(
+        self,
+        stage: ResumeProviderStage,
+        status: ResumeProviderStageStatus,
+        call_count: int,
+        reason: str,
+    ) -> None:
+        self._last_provider_stages.append(
+            ResumeProviderStageDiagnostic(
+                stage=stage,
+                status=status,
+                call_count=call_count,
+                reason=reason,
+            )
+        )
+
+    @staticmethod
+    def _provider_stages_with_writer(
+        diagnostic: HybridResumeDiagnostic,
+        status: ResumeProviderStageStatus,
+        call_count: int,
+        reason: str,
+    ) -> list[ResumeProviderStageDiagnostic]:
+        stages = [
+            item
+            for item in diagnostic.provider_stages
+            if item.stage
+            not in {
+                ResumeProviderStage.BULLET_WRITER,
+                ResumeProviderStage.DETERMINISTIC_RECOMPOSITION,
+            }
+        ]
+        stages.extend(
+            [
+                ResumeProviderStageDiagnostic(
+                    stage=ResumeProviderStage.BULLET_WRITER,
+                    status=status,
+                    call_count=call_count,
+                    reason=reason,
+                ),
+                ResumeProviderStageDiagnostic(
+                    stage=ResumeProviderStage.DETERMINISTIC_RECOMPOSITION,
+                    status=ResumeProviderStageStatus.APPLIED,
+                    call_count=0,
+                    reason=(
+                        "Deterministic composition and exact page-fit selection retained "
+                        "final authority."
+                    ),
+                ),
+            ]
+        )
+        return stages
 
     def extract_profile_draft(
         self,

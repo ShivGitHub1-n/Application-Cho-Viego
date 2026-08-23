@@ -16,6 +16,8 @@ from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.hybrid_resume import (
     BulletValidationStatus,
     HybridPlanningStatus,
+    ResumeProviderStage,
+    ResumeProviderStageStatus,
     RetrievalAdmissionStatus,
     WriterExecutionStatus,
 )
@@ -186,6 +188,19 @@ def test_production_page_fill_retains_strong_sources_and_reuses_writer_cache() -
     )
     assert second.hybrid_diagnostic.provider_cache_hits == 1
     assert fake.calls["rewrite_bullets"] == 1
+    stages = {
+        item.stage: item for item in first.hybrid_diagnostic.provider_stages
+    }
+    assert stages[ResumeProviderStage.SEMANTIC_PLANNER].status is (
+        ResumeProviderStageStatus.SKIPPED
+    )
+    assert stages[ResumeProviderStage.BULLET_WRITER].status is (
+        ResumeProviderStageStatus.SOURCE_RETAINED
+    )
+    assert stages[ResumeProviderStage.BULLET_WRITER].call_count == 1
+    assert stages[ResumeProviderStage.DETERMINISTIC_RECOMPOSITION].status is (
+        ResumeProviderStageStatus.APPLIED
+    )
 
 
 def test_cosmetic_action_verb_rewrite_does_not_displace_stronger_source() -> None:
@@ -386,6 +401,12 @@ def test_enabled_rewriting_reports_provider_unavailable_explicitly() -> None:
     )
     assert resume.hybrid_diagnostic.provider_call_count == 0
     assert resume.hybrid_diagnostic.fallback_bullet_count == 2
+    stages = {
+        item.stage: item for item in resume.hybrid_diagnostic.provider_stages
+    }
+    assert stages[ResumeProviderStage.BULLET_WRITER].status is (
+        ResumeProviderStageStatus.UNAVAILABLE
+    )
 
 
 def test_llm_disabled_uses_source_text_and_zero_provider_calls() -> None:
@@ -509,6 +530,22 @@ def test_semantic_planning_is_bounded_advice_and_counted_in_final_diagnostic() -
     assert resume.hybrid_diagnostic.writing_status is (HybridPlanningStatus.DETERMINISTIC_ONLY)
     assert resume.hybrid_diagnostic.provider_call_count == 1
     assert fake.calls["recommend_composition"] == 1
+    stages = {
+        item.stage: item for item in resume.hybrid_diagnostic.provider_stages
+    }
+    assert stages[ResumeProviderStage.COMPOSITION_RECOMMENDER].status is (
+        ResumeProviderStageStatus.APPLIED
+    )
+    assert stages[ResumeProviderStage.COMPOSITION_RECOMMENDER].call_count == 1
+    assert stages[ResumeProviderStage.SKILL_RECOMMENDER].status is (
+        ResumeProviderStageStatus.SKIPPED
+    )
+    assert stages[ResumeProviderStage.BULLET_WRITER].status is (
+        ResumeProviderStageStatus.SKIPPED
+    )
+    assert stages[ResumeProviderStage.DETERMINISTIC_RECOMPOSITION].status is (
+        ResumeProviderStageStatus.APPLIED
+    )
 
 
 @pytest.mark.parametrize(

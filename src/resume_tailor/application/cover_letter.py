@@ -49,6 +49,7 @@ from resume_tailor.domain.cover_letter import (
     CoverLetterPageFitStatus,
     CoverLetterParagraphPurpose,
     CoverLetterProviderDiagnostic,
+    CoverLetterProviderFailureStage,
     CoverLetterProviderStatus,
     CoverLetterQualityGateResult,
     CoverLetterQualityGateStatus,
@@ -237,6 +238,7 @@ class CoverLetterService:
 
         quality_started = self._clock()
         candidates: list[CoverLetter] = []
+        candidate_sources: list[str] = []
         candidate_quality_ranks: list[int] = []
         candidate_validations: list[CoverLetterValidationResult] = []
         candidate_diagnostics: list[CoverLetterCandidateValidationDiagnostic] = []
@@ -275,6 +277,7 @@ class CoverLetterService:
                     resolved_date_text,
                 )
             )
+            candidate_sources.append(candidate.generation_source)
             candidate_quality_ranks.append(
                 0 if candidate.generation_source.startswith("provider") else 1
             )
@@ -316,6 +319,7 @@ class CoverLetterService:
                         resolved_date_text,
                     )
                 )
+                candidate_sources.append(source_bound.generation_source)
                 candidate_quality_ranks.append(1)
                 candidate_validations.append(source_bound_validation)
                 outputs.append(source_bound)
@@ -344,6 +348,7 @@ class CoverLetterService:
         )
         timings.append(self._timing(GenerationStage.COVER_LETTER_PAGE_FIT, fit_started))
         selected_index = int(fitted.diagnostic.selected_candidate_id.rsplit(":", 1)[-1])
+        selected_source = candidate_sources[selected_index]
         selected_validation = candidate_validations[selected_index]
         gates = [
             *selected_validation.quality_gates,
@@ -375,7 +380,23 @@ class CoverLetterService:
         )
         provider_diagnostic = provider_diagnostic.model_copy(
             update={
-                "fallback_reason": fallback_reason or provider_diagnostic.fallback_reason,
+                "fallback_reason": (
+                    fallback_reason
+                    or provider_diagnostic.fallback_reason
+                    or (
+                        CoverLetterFallbackReason.PROVIDER_PAGE_FIT_REJECTED
+                        if provider_result is not None
+                        and not selected_source.startswith("provider")
+                        else None
+                    )
+                ),
+                "semantic_validation_succeeded": (
+                    None
+                    if provider_result is None
+                    else fallback_reason
+                    is not CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+                ),
+                "provider_candidate_selected": selected_source.startswith("provider"),
                 **(
                     {
                         "status": CoverLetterProviderStatus.VALIDATION_FALLBACK,
@@ -383,6 +404,29 @@ class CoverLetterService:
                             "Provider prose failed semantic validation; locally grounded "
                             "deterministic paragraphs were selected."
                         ),
+                    }
+                    if fallback_reason is CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+                    else {}
+                ),
+                **(
+                    {
+                        "failure_stage": CoverLetterProviderFailureStage.PAGE_FIT,
+                        "failure_code": "provider_candidate_not_selected",
+                        "safe_detail": (
+                            "Provider prose passed semantic validation but did not win exact "
+                            "one-page finalist selection; deterministic prose was selected."
+                        ),
+                    }
+                    if provider_result is not None
+                    and fallback_reason
+                    is not CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+                    and not selected_source.startswith("provider")
+                    else {}
+                ),
+                **(
+                    {
+                        "failure_stage": CoverLetterProviderFailureStage.CLAIM_VALIDATION,
+                        "failure_code": CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED.value,
                     }
                     if fallback_reason is CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
                     else {}
@@ -636,6 +680,7 @@ class CoverLetterService:
                 cache_hit_count=1,
                 elapsed_seconds=max(0.0, self._clock() - started),
                 finish_reason=cached.metadata.finish_reason,
+                structured_parsing_succeeded=True,
                 safe_detail="Validated provider response reused from the cover-letter cache.",
             )
         if self._language_model is None:
@@ -657,6 +702,8 @@ class CoverLetterService:
                 cache_hit_count=0,
                 elapsed_seconds=max(0.0, self._clock() - started),
                 fallback_reason=reason,
+                failure_stage=CoverLetterProviderFailureStage.REQUEST,
+                failure_code=reason.value,
                 safe_detail=self._provider_unavailable_reason
                 or "Cover-letter provider is disabled.",
             )
@@ -679,7 +726,7 @@ class CoverLetterService:
                 try:
                     calls += 1
                     result = self._language_model.draft_cover_letter(repair)
-                except LanguageModelError:
+                except LanguageModelError as repair_error:
                     return None, self._provider_failure(
                         started,
                         calls,
@@ -687,6 +734,7 @@ class CoverLetterService:
                         CoverLetterProviderStatus.MALFORMED_OUTPUT,
                         CoverLetterFallbackReason.PROVIDER_MALFORMED_AFTER_REPAIR,
                         "Provider output remained malformed after one repair request.",
+                        error=repair_error,
                     )
             else:
                 return None, self._provider_error_diagnostic(started, calls, error)
@@ -705,6 +753,7 @@ class CoverLetterService:
             cache_hit_count=1 if cache_hit else 0,
             elapsed_seconds=max(0.0, self._clock() - started),
             finish_reason=result.metadata.finish_reason,
+            structured_parsing_succeeded=True,
             safe_detail="Provider returned typed paragraph content for local validation.",
         )
 
@@ -850,6 +899,7 @@ class CoverLetterService:
             CoverLetterProviderStatus.REQUEST_FAILED,
             fallback,
             f"Provider failed with typed status {error.kind.value}; deterministic fallback used.",
+            error=error,
         )
 
     def _provider_failure(
@@ -860,7 +910,10 @@ class CoverLetterService:
         status: CoverLetterProviderStatus,
         fallback: CoverLetterFallbackReason,
         detail: str,
+        *,
+        error: LanguageModelError | None = None,
     ) -> CoverLetterProviderDiagnostic:
+        issue = error.diagnostic if error is not None else None
         return CoverLetterProviderDiagnostic(
             provider=self._provider_name,
             model=self._model_name,
@@ -870,6 +923,18 @@ class CoverLetterService:
             cache_hit_count=0,
             elapsed_seconds=max(0.0, self._clock() - started),
             fallback_reason=fallback,
+            failure_stage=(
+                CoverLetterProviderFailureStage.RESPONSE_PARSING
+                if status is CoverLetterProviderStatus.MALFORMED_OUTPUT
+                else CoverLetterProviderFailureStage.REQUEST
+            ),
+            failure_code=(
+                issue.code.value
+                if issue is not None
+                else error.kind.value
+                if error is not None
+                else fallback.value
+            ),
             safe_detail=detail,
         )
 

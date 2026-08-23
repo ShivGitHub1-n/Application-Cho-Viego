@@ -101,6 +101,15 @@ spliced paragraph-by-paragraph into a deterministic letter. Provider
 timeouts, rate limits, configuration failures, malformed output after repair,
 or fully rejected prose use deterministic grounded variants.
 
+The Gemini response schema excludes deterministic `source_bound_sentences`;
+those sentence-authority objects are created only by the local fallback. A
+provider diagnostic separately records request, response-parsing,
+claim-validation, and page-fit failure stages, whether structured parsing and
+semantic validation succeeded, whether the provider candidate was selected,
+and the bounded request/repair count. The normal workspace reduces this to a
+concise Gemini or fallback reason while the advanced surface retains the typed,
+sanitized detail.
+
 ## Validation and quality gates
 
 Each paragraph is checked locally. Unknown evidence references, changed
@@ -146,9 +155,14 @@ The cover letter has its own semantic correspondence template. Fixed tokens are
 1-inch margins, Calibri 11-point body text, 1.10 line spacing, 8-point paragraph
 spacing, a 16-point candidate name, and 10-point contact text. Page fitting
 selects only among already validated content variants. It does not change
-facts, generate prose, fetch research, or call Gemini. It prefers 76–90%
-estimated utilization, accepts a balanced 70–94%, and exposes severe underfill,
+facts, generate prose, fetch research, or call Gemini. It prefers 82–90%
+estimated utilization, accepts a balanced 76–94%, and exposes severe underfill,
 overflow, and blank trailing pages as failures.
+
+Narrative-quality rank is evaluated before small utilization differences. An
+excellent valid 81% candidate therefore beats weaker prose at 87%; among
+comparably strong candidates, the fitter prefers the professional band and a
+target near 86%. Exact one-page pagination remains the hard authority.
 
 Link labels use recognizable host or profile names without a redundant generic
 `Website` label, while the original hyperlinks remain intact. The sign-off is

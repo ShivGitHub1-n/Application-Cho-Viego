@@ -67,6 +67,34 @@ def test_more_grounded_evidence_wins_when_preferred_candidates_are_equivalent(
     assert "strong-company-relevant-evidence" in fitted.diagnostic.candidates[1].evidence_ids
 
 
+def test_narrative_quality_beats_a_small_preferred_density_difference(
+    tmp_path: Path,
+) -> None:
+    strong = _letter()
+    merely_denser = _with_evidence(strong, "density-only-evidence")
+    renderer = ControlledCoverLetterRenderer([0.81, 0.87])
+
+    fitted = CoverLetterPageFitter(renderer).fit(
+        [strong, merely_denser],
+        tmp_path,
+        narrative_quality_ranks=[0, 1],
+    )
+
+    assert fitted.letter is strong
+    assert fitted.diagnostic.estimated_utilization == 0.81
+    assert fitted.diagnostic.status is CoverLetterPageFitStatus.ACCEPTABLE_DENSITY
+
+
+def test_cover_letter_utilization_bands_are_82_to_90_and_76_to_94() -> None:
+    profile = _letter().layout_profile
+
+    assert profile.preferred_utilization_floor == 0.82
+    assert profile.preferred_utilization_ceiling == 0.90
+    assert profile.acceptable_utilization_floor == 0.76
+    assert profile.acceptable_utilization_ceiling == 0.94
+    assert profile.target_utilization == 0.86
+
+
 def test_exact_pagination_failure_preserves_unverified_status(tmp_path: Path) -> None:
     renderer = ControlledCoverLetterRenderer([0.94], exact=False)
 

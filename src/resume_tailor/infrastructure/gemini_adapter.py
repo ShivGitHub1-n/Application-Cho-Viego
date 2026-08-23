@@ -230,6 +230,8 @@ class GeminiResumeLanguageModel:
                     excluded_properties=(
                         {"description", "bullets", "bullet_points"}
                         if operation == LlmOperation.PROFILE_EXTRACTION
+                        else {"source_bound_sentences"}
+                        if operation == LlmOperation.COVER_LETTER_DRAFT
                         else None
                     ),
                 )

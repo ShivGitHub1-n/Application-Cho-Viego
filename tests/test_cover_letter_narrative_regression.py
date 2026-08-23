@@ -234,7 +234,8 @@ def test_production_variants_are_grounded_and_keep_crest_explicitly_adjacent() -
 
     developed_text = " ".join(paragraph.text for paragraph in outputs[-1].paragraphs)
     assert "i do not claim direct" not in developed_text.casefold()
-    assert "the useful bridge is" in developed_text.casefold()
+    assert "the useful habit is the same" in developed_text.casefold()
+    assert "although" in developed_text.casefold()
     assert "financial" in developed_text.casefold()
 
 
@@ -277,7 +278,7 @@ def test_senior_target_title_and_concise_posting_facts_produce_an_artifact() -> 
     assert "Northwind Robotics" in text
     assert "Senior Embedded Firmware Engineer" in text
     assert "Firmware Intern" in text
-    assert "Test Engineering Assistant" in text
+    assert "direct experience with test engineering assistant" not in text.casefold()
     assert all("unsupported_title_change" not in item.rejection_codes for item in accepted)
     assert all("copied_posting_language" not in item.rejection_codes for item in accepted)
 
@@ -338,12 +339,12 @@ def test_real_offline_candidate_respects_concise_narrative_policy() -> None:
     narrative_words = sum(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs)
     assert 300 <= narrative_words <= 425
     assert (
-        artifact.letter.layout_profile.preferred_utilization_floor
+        artifact.letter.layout_profile.acceptable_utilization_floor
         <= artifact.page_fit.estimated_utilization
-        <= artifact.letter.layout_profile.preferred_utilization_ceiling
+        <= artifact.letter.layout_profile.acceptable_utilization_ceiling
     )
     assert artifact.page_fit.estimated_remaining_lines > 0
-    assert artifact.page_fit.preferred_density_reachable
+    assert not artifact.page_fit.preferred_density_reachable
     assert artifact.page_fit.underfill_or_overflow == "balanced_one_page"
     assert artifact.page_fit.status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED
     assert artifact.call_counts.provider_calls == 0

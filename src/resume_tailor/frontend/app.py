@@ -421,6 +421,23 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
         f"{provider.cache_hit_count} cache hit(s) · Pagination: {pagination.status} · "
         f"Utilization: {utilization}"
     )
+    if writing is not None and writing.provider_stages:
+        stage_by_name = {item.stage.value: item for item in writing.provider_stages}
+        stage_labels = []
+        for name, label in (
+            ("semantic_planner", "planner"),
+            ("skill_recommender", "skills"),
+            ("composition_recommender", "composition"),
+            ("bullet_writer", "writer"),
+        ):
+            stage = stage_by_name.get(name)
+            if stage is not None:
+                stage_labels.append(f"{label} {stage.status.value}")
+        st.caption(
+            "Résumé AI: "
+            + " · ".join(stage_labels)
+            + " · deterministic recomposition applied"
+        )
     st.caption(
         f"Request timeout: {provider.request_timeout_seconds:g}s · "
         f"provider: {provider.provider_elapsed_seconds:.3f}s · "
@@ -592,6 +609,28 @@ def _render_artifact_summary(artifact: GeneratedResumeArtifact) -> None:
 
 def _comma_text(value: list[str]) -> str:
     return ", ".join(value)
+
+
+def _tailor_service_configuration_fingerprint(settings: Settings) -> str:
+    """Hash provider composition inputs without retaining credentials."""
+
+    payload = {
+        "provider": settings.llm_provider,
+        "model": settings.gemini_model,
+        "credential_configured": bool(settings.gemini_api_key),
+        "temperature": settings.llm_temperature,
+        "max_output_tokens": settings.llm_max_output_tokens,
+        "bullet_output_tokens": settings.llm_bullet_rewrite_max_output_tokens,
+        "timeout_seconds": settings.llm_timeout_seconds,
+        "retry_count": settings.llm_retry_count,
+        "max_calls": settings.llm_max_calls_per_generation,
+        "role_classification": settings.llm_enable_role_classification,
+        "opportunity_analysis": settings.llm_enable_opportunity_analysis,
+        "composition": settings.llm_enable_composition,
+        "bullet_rewrite": settings.llm_enable_bullet_rewrite,
+        "cover_letter": settings.llm_enable_cover_letter,
+    }
+    return sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def _clear_cover_letter_state() -> None:
@@ -1720,6 +1759,12 @@ def _render_composition_diagnostic(resume: StructuredResume) -> None:
                 f"cache hits: {hybrid.provider_cache_hits} · "
                 f"layout input: {hybrid.layout_input.replace('_', ' ')}"
             )
+            for stage in hybrid.provider_stages:
+                st.caption(
+                    f"{stage.stage.value.replace('_', ' ').title()}: "
+                    f"{stage.status.value.replace('_', ' ')} · "
+                    f"{stage.call_count} call(s) · {stage.reason}"
+                )
             st.caption(
                 f"Source alternatives: {hybrid.source_alternatives_available} · "
                 f"rewrites returned: {hybrid.rewrites_returned} · "
@@ -2327,8 +2372,16 @@ def _render_settings_page(
 
 initialize_frontend_state(_state())
 settings = Settings()
-if "_tailor_service" not in st.session_state:
+tailor_service_fingerprint = _tailor_service_configuration_fingerprint(settings)
+if (
+    "_tailor_service" not in st.session_state
+    or st.session_state.get("_tailor_service_configuration_fingerprint")
+    != tailor_service_fingerprint
+):
     st.session_state["_tailor_service"] = create_tailor_service()
+    st.session_state["_tailor_service_configuration_fingerprint"] = (
+        tailor_service_fingerprint
+    )
 if "_profile_repository" not in st.session_state:
     st.session_state["_profile_repository"] = create_profile_repository()
 service = st.session_state["_tailor_service"]

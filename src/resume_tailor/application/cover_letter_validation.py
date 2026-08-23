@@ -1918,7 +1918,6 @@ class DeterministicCoverLetterComposer:
                 text=self._narrative_closing(
                     connection_records,
                     posting,
-                    posting_concepts,
                 ),
                 evidence_ids=[item.id for item in connection_records],
                 posting_fact_ids=posting_fact_ids,
@@ -1947,7 +1946,7 @@ class DeterministicCoverLetterComposer:
         return " ".join(
             [
                 f"What stood out to me about the {posting.title} role{destination} "
-                f"is the work behind {role_focus}.",
+                f"is how it brings together {role_focus}.",
                 (
                     f"My experience with {candidate_focus} has taught me to connect "
                     "implementation to test behavior."
@@ -1985,14 +1984,14 @@ class DeterministicCoverLetterComposer:
             "behavior in the assembled system."
         )
         if adjacent:
-            sentences.extend(
-                [
-                    (
-                        f"The useful bridge is {self._joined(focuses[:2])}: the domain may "
-                        "differ, but the transferable habit is concrete: keep implementation "
-                        "decisions tied to observable system behavior."
-                    ),
-                ]
+            focus_text = (
+                f"{focuses[0]} and {focuses[1]} involve different systems"
+                if len(focuses) >= 2
+                else f"{focuses[0]} comes from a different system"
+            )
+            sentences.append(
+                f"Although {focus_text}, the useful habit is the same: keep implementation "
+                "decisions tied to observable system behavior."
             )
         else:
             sentences.append(
@@ -2060,14 +2059,12 @@ class DeterministicCoverLetterComposer:
         self,
         evidence: list[CoverLetterEvidenceRecord],
         posting: JobPosting,
-        posting_concepts: list[str],
     ) -> str:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
         candidate_focus = self._joined(
             [self._thread_focus(item) for item in evidence[:2]]
         )
-        role_focus = self._joined(posting_concepts[:2])
         return " ".join(
             [
                 (
@@ -2075,12 +2072,12 @@ class DeterministicCoverLetterComposer:
                     "testable decisions."
                 ),
                 (
-                    f"That is why the {posting.title} work{destination} feels like a natural "
+                    f"That is why this {posting.title} role{destination} feels like a natural "
                     "next problem for me."
                 ),
                 (
-                    f"I can contribute experience with {candidate_focus}, along with an "
-                    f"approach that follows {role_focus} through implementation and testing."
+                    f"I can contribute experience with {candidate_focus} and a habit of "
+                    "carrying design choices through implementation and testing."
                 ),
                 "I would welcome a conversation about the work and the decisions behind it.",
             ]
@@ -2102,7 +2099,7 @@ class DeterministicCoverLetterComposer:
         )
         if action is None:
             focus = cls._thread_focus(record)
-            return f"The {title} work gave me direct experience with {focus}."
+            return f"That work gave me practical experience with {focus}."
         normalized_source = " ".join(writer_text.split()).strip(" .,:;-")
         project_label = title if title.casefold().endswith("project") else f"{title} project"
         if (
@@ -2115,8 +2112,8 @@ class DeterministicCoverLetterComposer:
                 else cls._thread_focus(record)
             )
             if record.kind is CoverLetterEvidenceKind.PROJECT:
-                return f"The {project_label} gave me direct experience with {focus}."
-            return f"My {title} work gave me direct experience with {focus}."
+                return f"The {project_label} gave me practical experience with {focus}."
+            return f"That work gave me practical experience with {focus}."
         action_terms = re.findall(r"[a-z0-9+#-]+", action.casefold())
         missing_technologies = []
         for technology in record.technologies:
@@ -2478,6 +2475,14 @@ class DeterministicCoverLetterComposer:
             cleaned,
             flags=re.IGNORECASE,
         )
+        cleaned = re.sub(
+            r"^(?:the|an?|this)\s+(?:intern|candidate|engineer|applicant|team member|person)\s+"
+            r"(?:will|would|must|should|is expected to|is responsible for)\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"^work(?:ing)?\s+(?:across|on)\s+", "", cleaned, flags=re.IGNORECASE)
         working = re.fullmatch(r"work(?:ing)? with (.+?) to (.+)", cleaned, re.IGNORECASE)
         if working is not None:
             partners = cls._normalize_partner_terms(working.group(1))
@@ -2509,11 +2514,11 @@ class DeterministicCoverLetterComposer:
             "build": "development of",
             "collaborate": "collaboration with",
             "create": "development of",
-            "define": "definition of",
+            "define": "defining",
             "design": "design of",
             "develop": "development of",
             "diagnose": "diagnosis of",
-            "execute": "execution of",
+            "execute": "executing",
             "implement": "implementation of",
             "improve": "improvement of",
             "integrate": "integration of",
@@ -2528,7 +2533,7 @@ class DeterministicCoverLetterComposer:
             "support": "support for",
             "test": "testing of",
             "translate": "translation of",
-            "troubleshoot": "troubleshooting of",
+            "troubleshoot": "troubleshooting",
             "validate": "validation of",
             "work": "work on",
         }
@@ -2770,13 +2775,23 @@ class DeterministicCoverLetterComposer:
             for record in records
             for value in (
                 *record.technologies,
+                *record.outcomes,
                 *cls._technical_phrases(record.source_text),
             )
         ]
+        title_terms = {
+            term
+            for record in records
+            for term in CoverLetterValidator._content_terms(record.entry_title or "")
+        }
         unique = [
             value
             for value in dict.fromkeys(values)
             if value
+            and not (
+                CoverLetterValidator._content_terms(value)
+                and CoverLetterValidator._content_terms(value) <= title_terms
+            )
             and not re.fullmatch(
                 r"[<>~]?\d+(?:[.,]\d+)?(?:%|ms|fps|hz|khz|mhz|gb|mb)?",
                 value.casefold(),
@@ -2784,8 +2799,7 @@ class DeterministicCoverLetterComposer:
         ]
         if unique:
             return unique[0]
-        title = records[0].entry_title or "hands-on engineering"
-        return title.casefold()
+        return "hands-on engineering work"
 
     @staticmethod
     def _clean_focus(value: str) -> str:

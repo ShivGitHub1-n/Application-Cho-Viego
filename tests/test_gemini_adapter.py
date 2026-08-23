@@ -16,6 +16,7 @@ from resume_tailor.domain.llm_models import (
     BulletRewriteRequest,
     BulletShorteningOutput,
     CompositionRecommendationOutput,
+    CoverLetterDraftOutput,
     LanguageModelError,
     LanguageModelErrorKind,
     LlmOperation,
@@ -199,6 +200,18 @@ def test_provider_schema_omits_local_constraints_but_keeps_contract_shape() -> N
         "evidence_combined",
         "confidence",
     }
+
+
+def test_cover_letter_provider_schema_excludes_local_sentence_authority() -> None:
+    transform = gemini_schema_transform(
+        CoverLetterDraftOutput,
+        excluded_properties={"source_bound_sentences"},
+    )
+
+    schema_text = str(transform.schema)
+    assert "source_bound_sentences" not in schema_text
+    paragraph_schema = transform.schema["properties"]["paragraphs"]["items"]
+    assert set(paragraph_schema["required"]) == {"purpose", "text"}
     with pytest.raises(ValidationError):
         BulletRewriteOutput.model_validate(
             {

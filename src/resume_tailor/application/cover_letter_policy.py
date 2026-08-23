@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v10"
-COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v3"
+COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v11"
+COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v4"
 COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v8"
-COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v5:standard-business-brief"
+COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v6:standard-business-brief"
 
 COVER_LETTER_WRITING_CONSTRAINTS = (
     "Write one coherent narrative answering why this company, why this candidate, "

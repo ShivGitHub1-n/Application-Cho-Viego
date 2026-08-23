@@ -111,6 +111,14 @@ class CoverLetterFallbackReason(StrEnum):
     ALL_PARAGRAPHS_REJECTED = "all_generated_paragraphs_rejected"
     RESEARCH_UNAVAILABLE = "research_unavailable"
     COMPANY_FACT_NOT_VERIFIED = "company_fact_not_verified"
+    PROVIDER_PAGE_FIT_REJECTED = "provider_page_fit_rejected"
+
+
+class CoverLetterProviderFailureStage(StrEnum):
+    REQUEST = "request"
+    RESPONSE_PARSING = "response_parsing"
+    CLAIM_VALIDATION = "claim_validation"
+    PAGE_FIT = "page_fit"
 
 
 class CoverLetterPageFitStatus(StrEnum):
@@ -199,7 +207,7 @@ class CoverLetterParagraph(BaseModel):
 class CoverLetterLayoutProfile(BaseModel):
     """Standard-business-brief tokens with a restrained correspondence header override."""
 
-    profile_id: str = "cover-letter-correspondence-v5"
+    profile_id: str = "cover-letter-correspondence-v6"
     preset_name: str = "standard_business_brief"
     header_pattern: str = "proposal_centerpiece_minimal_correspondence_override"
     page_width_inches: float = 8.5
@@ -220,11 +228,11 @@ class CoverLetterLayoutProfile(BaseModel):
     contact_spacing_pt: float = 2.0
     signoff_spacing_pt: float = 2.0
     contact_separator: str = " | "
-    preferred_utilization_floor: float = 0.76
+    preferred_utilization_floor: float = 0.82
     preferred_utilization_ceiling: float = 0.90
-    acceptable_utilization_floor: float = 0.70
+    acceptable_utilization_floor: float = 0.76
     acceptable_utilization_ceiling: float = 0.94
-    target_utilization: float = 0.84
+    target_utilization: float = 0.86
 
     @property
     def usable_width_inches(self) -> float:
@@ -326,6 +334,11 @@ class CoverLetterProviderDiagnostic(BaseModel):
     elapsed_seconds: float = Field(ge=0)
     finish_reason: str | None = None
     fallback_reason: CoverLetterFallbackReason | None = None
+    failure_stage: CoverLetterProviderFailureStage | None = None
+    failure_code: str | None = Field(default=None, max_length=120)
+    structured_parsing_succeeded: bool = False
+    semantic_validation_succeeded: bool | None = None
+    provider_candidate_selected: bool = False
     safe_detail: str
 
 

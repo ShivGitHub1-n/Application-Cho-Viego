@@ -487,7 +487,9 @@ class TailorResumeService:
             provider=configuration.provider,
             model=configuration.model,
             status=provider_status,
-            call_count=counts.provider_calls,
+            call_count=(
+                writing.provider_call_count if writing is not None else counts.provider_calls
+            ),
             retry_count=counts.provider_retries,
             cache_hit_count=writing.provider_cache_hits if writing is not None else 0,
             request_timeout_seconds=configuration.provider_timeout_seconds,

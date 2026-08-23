@@ -144,6 +144,15 @@ is reported as `writer_partially_succeeded` when a validated sibling reaches
 selection; complete source fallback requires zero usable validated rewrites.
 With all LLM features disabled, no provider is constructed or called.
 
+Résumé artifacts expose typed status for opportunity planning, skill
+recommendation, composition recommendation, bullet writing, and final
+deterministic recomposition, including bounded per-stage call counts. These
+statuses describe participation rather than authority: deterministic
+recomposition and exact page fit remain final. Streamlit fingerprints the
+sanitized provider/model/feature configuration and rebuilds its session-scoped
+service when that configuration changes, avoiding a provider-disabled service
+surviving an environment update without retaining credentials in session state.
+
 Authoritative entry metadata also bounds generated title claims. If reviewed
 source prose asserts a different title or seniority, composition leaves that
 canonical source untouched but removes the conflicting phrase from relevance
@@ -203,11 +212,14 @@ configuration, local grounding primitives, timing models, and approval
 patterns, but selects narrative evidence independently of the generated
 résumé. Cover-letter-only services own bounded company research, a typed
 narrative plan, title-safe writer inputs, paragraph and whole-letter validation,
-quality-aware finalist ordering, and a preferred 76–90% page-utilization band.
+quality-aware finalist ordering, a preferred 82–90% page-utilization band, and
+an acceptable 76–94% band. Narrative quality remains ahead of small density
+differences.
 Exact final pagination remains mandatory. The provider returns a minimal
 paragraph/ID contract; provenance, diagnostics, research attribution, cache
 state, artifact identity, DOCX formatting, and page fitting are reconstructed
-locally. See
+locally. Provider-visible cover-letter schemas exclude deterministic sentence
+authority objects, which are reconstructed only by local fallback paths. See
 [COVER_LETTER_WORKFLOW.md](COVER_LETTER_WORKFLOW.md).
 
 The versioned writing policy is centralized in
