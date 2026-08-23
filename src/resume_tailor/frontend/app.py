@@ -15,6 +15,7 @@ from resume_tailor.frontend.cover_letters_page import (
     CoverLettersDependencies,
     render_cover_letters_page,
 )
+from resume_tailor.frontend.jobs_filter_view import clear_browse_state
 from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
 from resume_tailor.frontend.profile_page import ProfilePageDependencies, render_profile_page
 from resume_tailor.frontend.resume_studio_page import (
@@ -56,7 +57,24 @@ def create_jobs_experience(
 
 
 def _clear_tailoring_state() -> None:
-    invalidate_derived_workflow(cast(MutableMapping[str, object], st.session_state))
+    state = cast(MutableMapping[str, object], st.session_state)
+    invalidate_derived_workflow(state)
+    clear_browse_state(state)
+    for key in (
+        "jobs_tailored_selected_job_id",
+        "jobs_explore_selected_job_id",
+        "jobs_saved_selected_id",
+        "jobs_selected_explore_sector",
+    ):
+        state.pop(key, None)
+
+
+def _profile_options(profile_repository: Any) -> list[tuple[str, str]]:
+    try:
+        profiles = profile_repository.list_all()
+    except (ProfileStoreError, CorruptStoredProfileError):
+        return []
+    return [(profile.id, profile.display_name) for profile in profiles]
 
 
 def _clear_cover_letter_state() -> None:
@@ -121,6 +139,7 @@ def _render_application() -> None:
     tailor_service = create_tailor_service()
     profile_repository = create_profile_repository()
     active_profile = _active_profile(profile_repository)
+    profile_options = _profile_options(profile_repository)
     active_route = normalize_route(
         render_application_shell(
             st,
@@ -128,6 +147,8 @@ def _render_application() -> None:
             active_profile_id=getattr(active_profile, "id", None)
             or st.session_state.get("jobs_profile_id")
             or st.session_state.get("profile_id"),
+            profile_options=profile_options,
+            on_profile_change=lambda _profile_id: _clear_tailoring_state(),
         )
     )
     if active_route is AppRoute.CAREER_PROFILE:

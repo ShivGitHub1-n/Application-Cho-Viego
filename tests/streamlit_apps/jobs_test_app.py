@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import streamlit as st
 
+from resume_tailor.application.job_discovery.filtering import BrowseSeniority
 from resume_tailor.domain.job_discovery.models import (
     EligibilityStatus,
     FitGrade,
@@ -21,12 +22,17 @@ from resume_tailor.domain.job_discovery.models import (
 from resume_tailor.domain.job_discovery.queries import FeedKind
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.frontend.app_shell import render_application_shell
+from resume_tailor.frontend.jobs_filter_view import clear_browse_state
 from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
 
 st.set_page_config(page_title="Jobs visual harness", layout="wide")
 
 SCENARIOS = (
     "visible-grades",
+    "visual-tailored-active",
+    "visual-tailored-expanded",
+    "visual-explore-detail",
+    "visual-saved-filtering",
     "excluded-results",
     "partial-source-warning",
     "all-sources-failure",
@@ -76,6 +82,7 @@ class OfflineRecommendation:
     visibility: RecommendationVisibility
     first_seen_label: str = "First seen unknown"
     checked_label: str = "Not checked recently"
+    browse_seniority: BrowseSeniority = BrowseSeniority.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -123,6 +130,8 @@ class OfflineSaved:
     checked_at: datetime | None
     source_id: str
     snapshot: object | None = None
+    posted_at: datetime | None = None
+    browse_seniority: BrowseSeniority = BrowseSeniority.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -171,6 +180,9 @@ class OfflineJobsExperience:
                     "gaps": ["A long material gap statement " * 4],
                 }
             )
+
+    def now(self) -> datetime:
+        return datetime(2026, 7, 28, tzinfo=UTC)
 
     def list_reviewed_profiles(self):
         if self.scenario == "no-reviewed-profile":
@@ -225,7 +237,6 @@ class OfflineJobsExperience:
     def load_feed(
         self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
     ) -> OfflineFeed:
-        del sector
         warnings = (
             ["One approved source returned a partial response."]
             if self.scenario == "partial-source-warning"
@@ -244,7 +255,10 @@ class OfflineJobsExperience:
             return OfflineFeed(
                 feed_kind, [], 1, warnings, "completed", datetime(2026, 7, 28, tzinfo=UTC)
             )
-        visible = [self.visible[1]] if feed_kind is FeedKind.EXPLORE else self.visible
+        if feed_kind is FeedKind.EXPLORE:
+            visible = [self.visible[1 if sector == "Software Engineering" else 2]]
+        else:
+            visible = self.visible
         return OfflineFeed(
             feed_kind,
             visible,
@@ -271,7 +285,10 @@ class OfflineJobsExperience:
     def get_job_detail(
         self, profile_id: str, feed_kind: FeedKind, job_id: str, *, sector: str | None = None
     ) -> OfflineDetail | None:
-        del sector
+        if feed_kind is FeedKind.EXPLORE:
+            expected_job_id = "good-1" if sector == "Software Engineering" else "weak-1"
+            if job_id != expected_job_id:
+                return None
         for item in [*self.visible, *self.excluded]:
             if item.job_id == job_id:
                 return OfflineDetail(
@@ -284,7 +301,11 @@ class OfflineJobsExperience:
         return None
 
     def list_saved_jobs(self) -> list[OfflineSaved]:
-        if self.scenario not in {"saved-available", "saved-unavailable"}:
+        if self.scenario not in {
+            "saved-available",
+            "saved-unavailable",
+            "visual-saved-filtering",
+        }:
             return []
         availability = "available" if self.scenario == "saved-available" else "unavailable"
         return [
@@ -301,6 +322,9 @@ class OfflineJobsExperience:
                 availability,
                 datetime(2026, 7, 28, tzinfo=UTC),
                 "offline",
+                None,
+                datetime(2026, 7, 27, tzinfo=UTC),
+                BrowseSeniority.MID_LEVEL,
             )
         ]
 
@@ -322,6 +346,12 @@ class OfflineJobsExperience:
             FitGrade.GOOD: "Good Role",
             FitGrade.WEAK: "Weak Role",
             FitGrade.DONT_MATCH: "Don’t Match Role",
+        }[grade]
+        browse_seniority = {
+            FitGrade.EXCELLENT: BrowseSeniority.SENIOR,
+            FitGrade.GOOD: BrowseSeniority.MID_LEVEL,
+            FitGrade.WEAK: BrowseSeniority.JUNIOR,
+            FitGrade.DONT_MATCH: BrowseSeniority.UNKNOWN,
         }[grade]
         return OfflineRecommendation(
             job_id,
@@ -359,6 +389,7 @@ class OfflineJobsExperience:
             RecommendationVisibility.EXCLUDED
             if grade is FitGrade.DONT_MATCH
             else RecommendationVisibility.VISIBLE,
+            browse_seniority=browse_seniority,
         )
 
 
@@ -369,6 +400,43 @@ def render_offline_scenario() -> None:
     scenario_holder["value"] = st.selectbox(
         "Offline scenario", list(SCENARIOS), key="offline-scenario-selector"
     )
+    _apply_visual_preset(scenario_holder["value"])
+
+
+def _apply_visual_preset(scenario: str) -> None:
+    state = st.session_state
+    if state.get("jobs-visual-preset-applied") == scenario:
+        return
+    clear_browse_state(state)
+    state.pop("jobs-active-section", None)
+    state.pop("jobs_pending_section", None)
+    if scenario == "visual-tailored-active":
+        state["jobs_pending_section"] = "Tailored for you"
+        state["jobs-search-tailored"] = "role"
+        state["jobs-filter-seniority-tailored"] = ["Senior"]
+        state["jobs-filter-location-tailored"] = ["Toronto, ON"]
+        state["jobs-filter-arrangement-tailored"] = ["Hybrid"]
+        state["jobs-filter-date-tailored"] = "Past week"
+    elif scenario == "visual-tailored-expanded":
+        state["jobs_pending_section"] = "Tailored for you"
+        state["jobs-filter-open-tailored"] = True
+        state["jobs-filter-seniority-tailored"] = ["Mid-level"]
+        state["jobs-filter-location-tailored"] = ["Toronto, ON"]
+        state["jobs-filter-arrangement-tailored"] = ["Hybrid"]
+        state["jobs-filter-date-tailored"] = "Past week"
+    elif scenario == "visual-explore-detail":
+        state["jobs_pending_section"] = "Explore sectors"
+        state["jobs-explore-sector"] = "Software Engineering"
+        state["jobs-search-explore"] = "good"
+        state["jobs-filter-arrangement-explore"] = ["Hybrid"]
+        state["jobs-filter-date-explore"] = "Past month"
+    elif scenario == "visual-saved-filtering":
+        state["jobs_pending_section"] = "Saved"
+        state["jobs-search-saved"] = "immutable"
+        state["jobs-filter-location-saved"] = ["Toronto, ON"]
+        state["jobs-filter-arrangement-saved"] = ["Hybrid"]
+        state["jobs-filter-date-saved"] = "Past month"
+    state["jobs-visual-preset-applied"] = scenario
 
 
 st.session_state.setdefault("app_active_page", "Jobs")
@@ -376,6 +444,8 @@ render_application_shell(
     st,
     active_profile_label="Avery Engineer",
     active_profile_id="profile-1",
+    profile_options=[("profile-1", "Avery Engineer"), ("profile-2", "Second Engineer")],
+    on_profile_change=lambda _profile_id: clear_browse_state(st.session_state),
     development_ui=render_offline_scenario,
 )
 if scenario_holder["value"] == "database-unavailable":

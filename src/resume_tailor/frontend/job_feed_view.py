@@ -85,6 +85,7 @@ def render_feed(
     expanded_excluded: bool,
     excluded: Sequence[RecommendationView],
     on_toggle_excluded: Callable[[], Sequence[RecommendationView] | None],
+    base_visible_count: int | None = None,
 ) -> str | None:
     """Render Tailored and Explore with native containers and controls."""
 
@@ -93,7 +94,11 @@ def render_feed(
         selected_job_id = visible[0].job_id
         on_select(selected_job_id)
     if not visible:
-        _render_empty_feed(streamlit_module, feed.excluded_count)
+        _render_empty_feed(
+            streamlit_module,
+            feed.excluded_count,
+            no_match=base_visible_count is not None and base_visible_count > 0,
+        )
         _render_excluded_results(
             feed.excluded_count,
             expanded_excluded,
@@ -320,13 +325,21 @@ def _render_list(streamlit_module: Any, title: str, values: Sequence[str]) -> No
         streamlit_module.caption("Unavailable.")
 
 
-def _render_empty_feed(streamlit_module: Any, excluded_count: int) -> None:
+def _render_empty_feed(
+    streamlit_module: Any, excluded_count: int, *, no_match: bool = False
+) -> None:
     with streamlit_module.container(border=True, key="jobs-feed-empty-state"):
         streamlit_module.subheader(
-            "All retrieved jobs were excluded" if excluded_count else "No jobs available yet"
+            "No jobs match your search and filters."
+            if no_match
+            else "All retrieved jobs were excluded"
+            if excluded_count
+            else "No jobs available yet"
         )
         streamlit_module.write(
-            "Expand excluded results when you want to review them."
+            "Use Clear all or adjust the search and filters."
+            if no_match
+            else "Expand excluded results when you want to review them."
             if excluded_count
             else "Refresh approved sources to retrieve recommendations for this feed."
         )

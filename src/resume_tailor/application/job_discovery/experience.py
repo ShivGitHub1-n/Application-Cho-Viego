@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from resume_tailor.application.job_discovery.confirmation import (
     ConfirmJobSearchPreferencesService,
 )
+from resume_tailor.application.job_discovery.filtering import (
+    BrowseSeniority,
+    classify_browse_seniority,
+)
 from resume_tailor.application.job_discovery.handoff import TailoringHandoff
 from resume_tailor.application.job_discovery.preferences import (
     SuggestJobSearchPreferencesService,
@@ -98,6 +102,7 @@ class RecommendationView(BaseModel):
     saved: bool = False
     primary_role_family: str | None = None
     visibility: RecommendationVisibility
+    browse_seniority: BrowseSeniority = BrowseSeniority.UNKNOWN
 
 
 class JobDetailView(RecommendationView):
@@ -141,6 +146,8 @@ class SavedJobView(BaseModel):
     checked_at: datetime | None
     source_id: str
     snapshot: SavedJob
+    posted_at: datetime | None = None
+    browse_seniority: BrowseSeniority = BrowseSeniority.UNKNOWN
 
 
 class JobsExperienceService:
@@ -165,6 +172,11 @@ class JobsExperienceService:
 
     def list_reviewed_profiles(self) -> ReviewedProfileQueryResult:
         return self._profiles.list_reviewed_profiles()
+
+    def now(self) -> datetime:
+        """Return the application clock used for deterministic browse projections."""
+
+        return self._now()
 
     def suggest_preferences(self, profile_id: str) -> JobSearchPreferenceSuggestion:
         return self._services.suggest_preferences.suggest(
@@ -350,6 +362,10 @@ def _recommendation_view(
             recommendation.primary_role_family.value if recommendation.primary_role_family else None
         ),
         visibility=recommendation.visibility,
+        browse_seniority=classify_browse_seniority(
+            job.title if job else recommendation.job_id,
+            job.requirements.job_level if job else None,
+        ),
     )
 
 
@@ -369,6 +385,10 @@ def _saved_view(saved: SavedJob) -> SavedJobView:
         checked_at=saved.checked_at,
         source_id=snapshot.source.source_id,
         snapshot=saved,
+        posted_at=snapshot.posted_at,
+        browse_seniority=classify_browse_seniority(
+            snapshot.title, snapshot.requirements.job_level
+        ),
     )
 
 

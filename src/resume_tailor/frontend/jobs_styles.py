@@ -45,16 +45,17 @@ def jobs_css() -> str:
   --jobs-eligibility-unknown: var(--pw-state-review);
   --jobs-eligibility-ineligible: var(--pw-state-critical);
   margin-inline: auto;
-  max-width: 75rem;
+  max-width: 65.125rem;
 }}
 .st-key-jobs-page > [data-testid="stElementContainer"] > [data-testid="stVerticalBlock"] {{
-  gap: .85rem;
+  gap: .6rem;
 }}
 .st-key-jobs-header {{
   border-bottom: 1px solid var(--jobs-border);
-  padding: .35rem 0 1rem;
+  padding: .15rem 0 .85rem;
 }}
-.st-key-jobs-header-controls [data-testid="stHorizontalBlock"] {{ align-items: end; }}
+.st-key-jobs-header [data-testid="stHorizontalBlock"] {{ align-items: start; }}
+.st-key-jobs-header [data-testid="stButton"] button {{ min-height: 2.375rem; }}
 .st-key-jobs-header-status,
 .st-key-jobs-page [data-testid="stCaptionContainer"] {{ color: var(--jobs-text-muted); }}
 
@@ -69,11 +70,25 @@ def jobs_css() -> str:
   gap: 1.25rem;
   margin: 0;
 }}
+.st-key-jobs-section-nav [data-testid="stButtonGroup"] button {{
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  color: var(--jobs-text-secondary) !important;
+  font-size: .8125rem;
+  font-weight: 500;
+  min-height: 2.25rem;
+  padding: .25rem .75rem;
+}}
+.st-key-jobs-section-nav [data-testid="stButtonGroup"] button[aria-pressed="true"] {{
+  background: color-mix(in srgb, var(--jobs-eligibility-eligible) 20%, transparent) !important;
+  color: var(--jobs-eligibility-eligible) !important;
+  font-weight: 600;
+}}
 .st-key-jobs-section-nav [data-variant="pills"] {{
   background: transparent !important;
   border: 0 !important;
-  border-bottom: 3px solid transparent !important;
-  border-radius: 0 !important;
+  border-radius: 999px !important;
   box-shadow: none !important;
   color: var(--jobs-text-secondary) !important;
   font-size: .8125rem;
@@ -89,23 +104,23 @@ def jobs_css() -> str:
   color: var(--jobs-text) !important;
 }}
 .st-key-jobs-section-nav [data-variant="pills"][data-selected] {{
-  background: transparent !important;
-  border-bottom-color: var(--jobs-accent) !important;
+  background: color-mix(in srgb, var(--jobs-eligibility-eligible) 20%, transparent) !important;
+  border-color: transparent !important;
   color: var(--jobs-accent) !important;
   font-weight: 600;
 }}
 .st-key-jobs-section-nav [data-variant="pills"][aria-pressed="true"] {{
-  background: transparent !important;
-  border-bottom-color: var(--jobs-accent) !important;
+  background: color-mix(in srgb, var(--jobs-eligibility-eligible) 20%, transparent) !important;
+  border-color: transparent !important;
   color: var(--jobs-accent) !important;
   font-weight: 600;
 }}
 .st-key-jobs-section-nav [data-variant="pills"][data-selected]:hover {{
-  background: transparent !important;
+  background: color-mix(in srgb, var(--jobs-eligibility-eligible) 20%, transparent) !important;
   color: var(--jobs-accent) !important;
 }}
 .st-key-jobs-section-nav [data-variant="pills"][aria-pressed="true"]:hover {{
-  background: transparent !important;
+  background: color-mix(in srgb, var(--jobs-eligibility-eligible) 20%, transparent) !important;
   color: var(--jobs-accent) !important;
 }}
 .st-key-jobs-section-nav [data-variant="pills"]:focus-visible {{
@@ -137,6 +152,59 @@ def jobs_css() -> str:
   color: var(--jobs-text-muted);
   font-size: .6875rem;
   margin-left: auto;
+}}
+.st-key-jobs-page [class*="st-key-jobs-result-count-"] {{
+  text-align: right;
+  white-space: nowrap;
+}}
+.st-key-jobs-page [class*="st-key-jobs-active-filters-"] {{
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: .05rem 0;
+}}
+.st-key-jobs-page [class*="st-key-jobs-active-filters-"] > [data-testid="stElementContainer"] {{
+  flex: 0 0 auto;
+  width: auto !important;
+}}
+.st-key-jobs-page [data-testid="stTextInput"] input {{
+  min-height: 2.625rem;
+}}
+.st-key-jobs-page [class*="st-key-jobs-filter-toggle-"] button {{
+  min-height: 2.625rem;
+}}
+.st-key-jobs-page [class*="st-key-jobs-filter-panel-"] {{
+  background: var(--jobs-surface);
+  border: 1px solid var(--jobs-border);
+  border-radius: 12px;
+  padding: .9rem 1rem;
+}}
+.st-key-jobs-page [class*="st-key-jobs-filter-panel-"] [data-testid="stWidgetLabel"] p {{
+  color: var(--jobs-text-muted);
+  font-size: .625rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}}
+.st-key-jobs-page [data-testid="stMultiSelect"] [data-baseweb="tag"] {{
+  background: color-mix(in srgb, var(--jobs-accent) 22%, var(--jobs-surface)) !important;
+  border: 1px solid var(--jobs-accent) !important;
+  color: var(--jobs-text) !important;
+}}
+.st-key-jobs-page [data-testid="stMultiSelect"] [data-baseweb="tag"] svg {{
+  fill: var(--jobs-text) !important;
+}}
+.st-key-jobs-page [class*="st-key-jobs-chip-"] button,
+.st-key-jobs-page [class*="st-key-jobs-clear-all-"] button {{
+  border-radius: 999px;
+  font-size: .6875rem;
+  min-height: 1.625rem;
+  padding: .2rem .75rem;
+}}
+.st-key-jobs-page [class*="st-key-jobs-clear-all-"] button {{
+  background: transparent;
+  border-color: transparent;
+  color: var(--jobs-accent);
 }}
 .st-key-jobs-page .jobs-sort-note {{
   color: var(--jobs-text-muted);

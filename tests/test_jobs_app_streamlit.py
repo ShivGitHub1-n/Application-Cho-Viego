@@ -26,6 +26,22 @@ def test_offline_jobs_harness_renders_only_the_jobs_workspace() -> None:
     assert any("Provisional" in item.value for item in app.caption)
 
 
+def test_jobs_header_uses_the_page_eleven_workspace_composition() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+
+    assert not any(item.value == "Job discovery" for item in app.subheader)
+    assert not any(item.label == "Reviewed profile" for item in app.selectbox)
+    assert any(item.label == "Active profile" for item in app.selectbox)
+
+
+def test_visual_acceptance_fixture_keeps_a_senior_result_populated() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.button(key="jobs-filter-toggle-tailored").click().run()
+    app.multiselect(key="jobs-filter-seniority-tailored").set_value(["Senior"]).run()
+
+    assert any("1 of 3 jobs" in item.value for item in app.caption)
+
+
 def test_offline_jobs_harness_selection_uses_contextual_keys_and_persists() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
     assert app.session_state["jobs_tailored_selected_job_id"] == "excellent-1"
@@ -102,12 +118,8 @@ def test_offline_jobs_harness_switches_to_explore_without_copying_tailored_selec
     app = AppTest.from_file(str(HARNESS)).run()
     app.pills(key="jobs-active-section").set_value("Explore sectors").run()
 
-    rendered = (
-        [item.value for item in app.header]
-        + [item.value for item in app.subheader]
-        + [item.value for item in app.markdown]
-    )
-    assert any("Explore sectors" in item for item in rendered)
+    assert app.pills(key="jobs-active-section").value == "Explore sectors"
+    assert app.selectbox(key="jobs-explore-sector").label == "Explore sector"
     assert not any("Tailored selected detail" in item.value for item in app.markdown)
 
 
@@ -237,3 +249,93 @@ def test_preferences_use_grouped_desktop_panels() -> None:
     assert any("Work constraints" in value for value in markdown)
     assert any("Companies and authorization" in value for value in markdown)
     assert app.radio == []
+
+
+def test_jobs_search_state_is_independent_between_tailored_and_explore() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.text_input(key="jobs-search-tailored").set_value("Good").run()
+
+    app.pills(key="jobs-active-section").set_value("Explore sectors").run()
+
+    assert app.text_input(key="jobs-search-explore").value == ""
+    assert app.session_state["jobs-browse-state-tailored"].query == "Good"
+    app.text_input(key="jobs-search-explore").set_value("does-not-exist").run()
+    assert any(
+        "No jobs match your search and filters." in item.value for item in app.subheader
+    )
+
+    app.pills(key="jobs-active-section").set_value("Tailored for you").run()
+    assert app.text_input(key="jobs-search-tailored").value == "Good"
+    assert any(item.value == "Good Role" for item in app.subheader)
+
+
+def test_jobs_expanded_filter_panel_exposes_grouped_controls_and_reset() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.button(key="jobs-filter-toggle-tailored").click().run()
+
+    assert app.multiselect(key="jobs-filter-seniority-tailored").options
+    assert app.multiselect(key="jobs-filter-location-tailored").options == ["Toronto, ON"]
+    assert app.multiselect(key="jobs-filter-arrangement-tailored").options
+    assert app.selectbox(key="jobs-filter-date-tailored").options[-1] == "Any time"
+
+    app.multiselect(key="jobs-filter-seniority-tailored").set_value(["Senior"]).run()
+    assert any("Senior" in item.label for item in app.button if "jobs-chip-tailored" in item.key)
+    app.button(key="jobs-clear-all-tailored").click().run()
+    assert app.multiselect(key="jobs-filter-seniority-tailored").value == []
+
+
+def test_saved_search_filters_snapshot_list_and_reports_filtered_count() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="offline-scenario-selector").set_value("saved-available").run()
+    app.pills(key="jobs-active-section").set_value("Saved").run()
+
+    app.text_input(key="jobs-search-saved").set_value("immutable").run()
+
+    assert any("1 of 1 saved snapshots" in item.value for item in app.caption)
+    app.text_input(key="jobs-search-saved").set_value("missing").run()
+    assert any(
+        "No jobs match your search and filters." in item.value for item in app.subheader
+    )
+
+
+def test_explore_detail_stays_in_the_active_sector_after_switching() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.pills(key="jobs-active-section").set_value("Explore sectors").run()
+    assert any(item.value == "Good Role" for item in app.subheader)
+
+    sectors = app.selectbox(key="jobs-explore-sector").options
+    alternate_sector = next(sector for sector in sectors if sector != "Software Engineering")
+    app.selectbox(key="jobs-explore-sector").set_value(alternate_sector).run()
+
+    assert app.session_state["jobs_selected_explore_sector"] == alternate_sector
+    assert app.session_state["jobs_explore_selected_job_id"] == "weak-1"
+    assert any(item.value == "Weak Role" for item in app.subheader)
+    assert not any(item.value == "Good Role" for item in app.subheader)
+
+
+def test_explore_filters_survive_sector_switch_without_selection_leak() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.pills(key="jobs-active-section").set_value("Explore sectors").run()
+    app.button(key="jobs-filter-toggle-explore").click().run()
+    app.multiselect(key="jobs-filter-seniority-explore").set_value(["Senior"]).run()
+    app.text_input(key="jobs-search-explore").set_value("Good").run()
+
+    sectors = app.selectbox(key="jobs-explore-sector").options
+    alternate_sector = next(sector for sector in sectors if sector != "Software Engineering")
+    app.selectbox(key="jobs-explore-sector").set_value(alternate_sector).run()
+
+    assert app.text_input(key="jobs-search-explore").value == "Good"
+    assert app.multiselect(key="jobs-filter-seniority-explore").value == ["Senior"]
+    assert "jobs_explore_selected_job_id" not in app.session_state
+    assert any(
+        "No jobs match your search and filters." in item.value for item in app.subheader
+    )
+
+
+def test_profile_change_clears_profile_specific_browse_state() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.text_input(key="jobs-search-tailored").set_value("Good").run()
+    app.selectbox(key="jobs-profile-selector").set_value("profile-2").run()
+
+    assert app.text_input(key="jobs-search-tailored").value == ""
+    assert app.session_state["jobs-browse-state-tailored"].query == ""

@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from streamlit.testing.v1 import AppTest
+
 from resume_tailor.domain.job_discovery.models import (
     DiscoveryRunStatus,
     JobLevel,
@@ -254,11 +256,14 @@ def test_profile_switch_loads_profile_specific_confirmed_preferences():
     assert fake_st.input_values["Target titles"] == "Second Profile Role"
 
 
-def test_job_discovery_view_is_composed_from_app():
-    app_source = (
-        Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
-    ).read_text(encoding="utf-8")
-    assert "render_job_discovery_view" in app_source
+def test_production_jobs_route_renders_the_current_jobs_workspace():
+    app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+    app = AppTest.from_file(str(app_path)).run(timeout=30)
+    app.button(key="pw-route-sidebar-jobs").click().run(timeout=30)
+
+    assert app.exception == []
+    assert any(item.value == "Jobs" for item in app.title)
+    assert not any("Structured master-profile editor" in item.value for item in app.header)
 
 
 def test_view_composes_profile_suggestion_edit_confirmation_and_refresh():
