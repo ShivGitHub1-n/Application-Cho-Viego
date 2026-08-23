@@ -345,21 +345,22 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     ):
         assert key not in app.session_state
 
-    app.radio(key="navigation_selection").set_value("Profile").run()
-    app.text_input(key="profile_id_input").input(profile.id).run()
-    next(button for button in app.button if button.label == "Load saved profile").click().run()
+    app.button(key="pw-route-sidebar-career_profile").click().run()
+    app.selectbox(key="profile-reviewed-selector").select(profile.id).run()
+    app.button(key="profile-reviewed-load").click().run()
     loaded_profile = app.session_state["profile"]
     assert loaded_profile.id == profile.id
     assert content_fingerprint(loaded_profile) == content_fingerprint(profile)
 
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
-    app.text_input(key="job_title_input").input("Mechatronics Integration Engineer")
-    app.text_area(key="job_description_input").input(
+    app.button(key="pw-route-sidebar-resume_studio").click().run()
+    app.text_input(key="_resume_studio_job_title_widget").input(
+        "Mechatronics Integration Engineer"
+    )
+    app.text_area(key="_resume_studio_job_description_widget").input(
         POSTING_FIXTURE.read_text(encoding="utf-8")
     )
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run(timeout=30)
+    app.button(key="resume-create-strategy").click().run(timeout=30)
+    app.button(key="resume-to-evidence").click().run()
 
     posting = app.session_state["posting"]
     assert isinstance(posting, JobPosting)
@@ -374,7 +375,14 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
         timeout=60
     )
     resume_artifact = app.session_state["generated_resume_artifact"]
-    streamlit_trace = app.session_state["resume_decision_trace"]
+    streamlit_trace = app.session_state["_tailor_service"].resume_decision_trace(
+        resume_artifact,
+        loaded_profile,
+        posting,
+        app.session_state["plan"],
+        profile_source="application_profile_repository",
+        posting_source="streamlit_job_intake",
+    )
     assert resume_artifact.fingerprint_inputs.normalized_posting_fingerprint == (
         posting_fingerprint
     )
@@ -433,7 +441,7 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
         resume_artifact.final_resume.composition_diagnostic.selected_bullet_ids
     )
 
-    app.radio(key="navigation_selection").set_value("Cover Letter").run()
+    app.button(key="pw-route-sidebar-cover_letters").click().run()
     company_input = next(item for item in app.text_input if item.label == "Company")
     assert company_input.value == "TITAN Haptics"
     company_input.input("")
@@ -542,14 +550,14 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     assert adapters.research_fetcher.calls == 0
     assert not adapters.provider_constructions
 
-    app.radio(key="navigation_selection").set_value("Tailor Resume").run()
+    app.button(key="pw-route-sidebar-resume_studio").click().run()
+    app.session_state["resume_studio_pending_stage"] = "Job context"
+    app.run()
     changed_description = POSTING_FIXTURE.read_text(encoding="utf-8") + (
         "\n- Validate an additional hardware interface."
     )
-    app.text_area(key="job_description_input").input(changed_description)
-    next(
-        button for button in app.button if button.label == "Recommend resume strategy"
-    ).click().run(timeout=30)
+    app.text_area(key="_resume_studio_job_description_widget").input(changed_description)
+    app.button(key="resume-create-strategy").click().run(timeout=30)
 
     changed_posting = app.session_state["posting"]
     assert isinstance(changed_posting, JobPosting)

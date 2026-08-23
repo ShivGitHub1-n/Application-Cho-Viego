@@ -2901,11 +2901,17 @@ class DeterministicResumeComposer:
             for requirement_id in other.direct_requirement_ids
         }
         unique_direct = set(candidate.direct_requirement_ids) - other_requirement_ids
+        has_specific_direct_phrase = any(
+            len(phrase.split()) >= 3 for phrase in candidate.meaningful_overlap
+        )
         if (
             candidate.relationship is EvidenceRelationship.DIRECT
             and unique_direct
             and candidate.contextual_relevance >= 30.0
-            and candidate.intrinsic_evidence_strength >= 25.0
+            and (
+                candidate.intrinsic_evidence_strength >= 25.0
+                or has_specific_direct_phrase
+            )
         ):
             return ExperienceSingleBulletExceptionReason.UNIQUE_DIRECT_REQUIREMENT_COVERAGE
         if (

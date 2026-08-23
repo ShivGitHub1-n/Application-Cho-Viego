@@ -80,7 +80,9 @@ one-bullet professional block requires a typed exception for user priority,
 uniquely important direct requirement coverage, or exceptional reviewed central
 value; a one-bullet project remains eligible when its evidence pays the same
 activation and line costs. There is no default entry-type or per-entry bullet
-quota.
+quota. Unique direct coverage may use the typed one-bullet exception when the
+reviewed evidence supplies either sufficient intrinsic depth or a specific
+multi-word requirement phrase; generic single-token overlap cannot qualify.
 Package scores use direct and adjacent coverage, intrinsic technical evidence,
 validated writing quality, reviewed production/enterprise context, bounded
 duration and recency, seniority, distinctness, redundancy, and page cost.
@@ -96,6 +98,13 @@ Every reviewed bullet is then assessed independently as direct, adjacent,
 complementary, incidental, or rejected evidence. Generic action words and entry
 labels do not independently establish bullet relevance, and selected entries do
 not transfer their strongest bullet's authority to weaker internal bullets.
+Context-neutral transferable terms such as testing, debugging, documentation,
+automation, logging, pipelines, or a general-purpose language retain authority
+when the posting requests them as a standalone capability. When those terms
+occur inside a domain-rich requirement, however, they cannot establish direct
+or adjacent coverage unless the reviewed evidence also overlaps at least one
+material contextual anchor from that requirement. This rule is symmetric across
+domains and does not assign priority to an entry or role family.
 
 The bounded candidate pool is coverage-aware before its global size limit is
 applied. It retains the strongest sufficiently grounded direct representative

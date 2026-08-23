@@ -371,6 +371,47 @@ def _mixed_domain_profile() -> MasterProfile:
     )
 
 
+def _contextual_hardware_posting() -> JobPosting:
+    return JobPosting(
+        id="contextual-hardware-posting",
+        title="Mechatronics Hardware Engineer",
+        description=(
+            "Use Python for hardware control, telemetry, automation, and logging. "
+            "Perform mechanical and electrical testing, validation, debugging, and "
+            "documentation. Design CAD fixtures and assemble electromechanical "
+            "prototypes."
+        ),
+    )
+
+
+def _profile_with_generic_cross_domain_volume(*, entry_count: int) -> MasterProfile:
+    payload = _mixed_domain_profile().model_dump(mode="python")
+    templates = (
+        "Built Python ETL automation pipelines with validation and business reporting.",
+        "Debugged data pipelines with logging and technical documentation.",
+        "Validated software automation workflows with Python analysis.",
+        "Documented pipeline testing and collaborative software delivery.",
+    )
+    for index in range(entry_count):
+        entry_id = f"generic-software-role-{index}"
+        payload["experiences"].append(
+            {
+                "id": entry_id,
+                "title": "Business Software Engineer",
+                "kind": "experience",
+            }
+        )
+        payload["evidence"].extend(
+            {
+                "id": f"generic-software-{index}-{bullet_index}",
+                "entity_id": entry_id,
+                "source_text": text,
+            }
+            for bullet_index, text in enumerate(templates)
+        )
+    return MasterProfile.model_validate(payload)
+
+
 def test_mixed_hardware_posting_allocates_by_marginal_domain_coverage() -> None:
     posting = JobPosting(
         id="mixed-hardware-posting",
@@ -426,6 +467,128 @@ def test_posting_priority_change_gives_digital_experience_substantial_space() ->
     assert diagnostic.bullet_counts["digital-role"] >= 3
     assert {"digital-telemetry", "digital-api", "digital-dashboard"} <= set(
         diagnostic.selected_bullet_ids
+    )
+
+
+def test_deep_engineering_entry_is_not_crowded_out_by_generic_software_evidence() -> None:
+    profile = _profile_with_generic_cross_domain_volume(entry_count=1)
+
+    resume = _compose(
+        profile,
+        _contextual_hardware_posting(),
+        maximum_selected_bullets=3,
+    )
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert "mechanical-role" in diagnostic.selected_experience_ids
+    assert {
+        "mechanical-cad",
+        "mechanical-build",
+        "mechanical-test",
+    } & set(diagnostic.selected_bullet_ids)
+    assert not any(
+        bullet_id.startswith("generic-software-")
+        for bullet_id in diagnostic.selected_bullet_ids
+    )
+
+
+def test_contextual_cross_domain_transfer_can_add_unique_hardware_value() -> None:
+    payload = _mixed_domain_profile().model_dump(mode="python")
+    payload["projects"].append(
+        {
+            "id": "telemetry-tool-project",
+            "title": "Embedded Telemetry Utility",
+            "kind": "project",
+        }
+    )
+    payload["evidence"].append(
+        {
+            "id": "contextual-telemetry-transfer",
+            "entity_id": "telemetry-tool-project",
+            "source_text": (
+                "Automated embedded controller telemetry logging with Python on a "
+                "hardware test rig."
+            ),
+        }
+    )
+
+    resume = _compose(
+        MasterProfile.model_validate(payload),
+        _contextual_hardware_posting(),
+        maximum_selected_bullets=5,
+    )
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert "mechanical-role" in diagnostic.selected_experience_ids
+    assert "contextual-telemetry-transfer" in diagnostic.selected_bullet_ids
+
+
+def test_software_reverse_control_is_not_displaced_by_generic_hardware_terms() -> None:
+    payload = _mixed_domain_profile().model_dump(mode="python")
+    payload["evidence"].extend(
+        {
+            "id": f"generic-hardware-{index}",
+            "entity_id": "mechanical-role",
+            "source_text": text,
+        }
+        for index, text in enumerate(
+            (
+                "Used Python automation for electromechanical prototype testing.",
+                "Debugged hardware tests with logging and documentation.",
+                "Validated physical systems through collaborative engineering analysis.",
+            )
+        )
+    )
+    posting = JobPosting(
+        id="software-reverse-control-posting",
+        title="Cloud Software Engineer",
+        description=(
+            "Build Python telemetry services. Implement cloud APIs and data pipelines. "
+            "Create dashboards and validate software service workflows."
+        ),
+    )
+
+    resume = _compose(
+        MasterProfile.model_validate(payload),
+        posting,
+        maximum_selected_bullets=3,
+    )
+    diagnostic = resume.composition_diagnostic
+
+    assert diagnostic is not None
+    assert diagnostic.selected_experience_ids == ["digital-role"]
+    assert set(diagnostic.selected_bullet_ids) == {
+        "digital-telemetry",
+        "digital-api",
+        "digital-dashboard",
+    }
+
+
+def test_large_irrelevant_library_does_not_change_hardware_portfolio() -> None:
+    posting = _contextual_hardware_posting()
+    baseline = _compose(
+        _mixed_domain_profile(),
+        posting,
+        maximum_selected_bullets=6,
+    )
+    expanded = _compose(
+        _profile_with_generic_cross_domain_volume(entry_count=15),
+        posting.model_copy(deep=True),
+        maximum_selected_bullets=6,
+    )
+
+    assert baseline.composition_diagnostic is not None
+    assert expanded.composition_diagnostic is not None
+    assert expanded.composition_diagnostic.selected_bullet_ids == (
+        baseline.composition_diagnostic.selected_bullet_ids
+    )
+    assert expanded.composition_diagnostic.selected_experience_ids == (
+        baseline.composition_diagnostic.selected_experience_ids
+    )
+    assert expanded.composition_diagnostic.selected_project_ids == (
+        baseline.composition_diagnostic.selected_project_ids
     )
 
 

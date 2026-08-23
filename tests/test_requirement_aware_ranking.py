@@ -154,6 +154,30 @@ def test_coordinated_engineering_duties_do_not_create_orphan_requirements() -> N
     )
 
 
+def test_complete_improvement_clause_keeps_coordinated_requirements_splittable() -> None:
+    posting = JobPosting(
+        id="coordinated-improvement-posting",
+        title="Embedded Systems Engineer",
+        description=(
+            "Design CAN control systems, validate sensor timing with hardware-in-the-loop "
+            "tests, debug power faults with an oscilloscope, document requirements, and "
+            "improve control-loop latency."
+        ),
+    )
+
+    requirement_text = {
+        item.text for item in extract_posting_requirements(posting).requirements
+    }
+
+    assert requirement_text == {
+        "Design CAN control systems",
+        "validate sensor timing with hardware-in-the-loop tests",
+        "debug power faults with an oscilloscope",
+        "document requirements",
+        "improve control-loop latency.",
+    }
+
+
 def test_what_we_offer_and_company_context_are_incidental_not_candidate_requirements() -> None:
     posting = JobPosting(
         id="incidental-posting",
@@ -455,6 +479,122 @@ def test_entry_admission_does_not_transfer_relevance_to_weak_internal_bullet() -
     assert ranked["backend-proof"].admitted is True
     assert ranked["event-photos"].admitted is False
     assert ranked["event-photos"].relationship is EvidenceRelationship.REJECTED
+
+
+def test_domain_rich_requirement_rejects_context_neutral_cross_domain_overlap() -> None:
+    entry = ResumeItem(
+        id="data-entry",
+        title="Business Data Engineer",
+        kind=EntityKind.EXPERIENCE,
+    )
+    profile = _profile(
+        experiences=[entry],
+        evidence=[
+            EvidenceItem(
+                id="generic-data-workflow",
+                entity_id=entry.id,
+                source_text=(
+                    "Built Python ETL automation pipelines with validation, debugging, "
+                    "logging, and technical documentation for business reporting."
+                ),
+            )
+        ],
+    )
+    posting = JobPosting(
+        id="ruggedized-hardware-posting",
+        title="Ruggedized Hardware Engineer",
+        description=(
+            "Use Python for hardware control, telemetry, automation, and logging. "
+            "Perform mechanical and electrical testing, validation, debugging, and "
+            "documentation."
+        ),
+    )
+
+    candidate = _rank(profile, posting)["generic-data-workflow"]
+
+    assert candidate.relationship is EvidenceRelationship.REJECTED
+    assert not candidate.direct_requirement_ids
+    assert not candidate.adjacent_requirement_ids
+
+
+def test_reverse_control_rejects_context_neutral_hardware_overlap_for_software() -> None:
+    entry = ResumeItem(
+        id="hardware-entry",
+        title="Mechanical Test Engineer",
+        kind=EntityKind.EXPERIENCE,
+    )
+    profile = _profile(
+        experiences=[entry],
+        evidence=[
+            EvidenceItem(
+                id="generic-hardware-workflow",
+                entity_id=entry.id,
+                source_text=(
+                    "Used Python automation, debugging, logging, validation, and "
+                    "documentation for electromechanical prototype tests."
+                ),
+            ),
+            EvidenceItem(
+                id="generic-hardware-morphology",
+                entity_id=entry.id,
+                source_text=(
+                    "Debugged and documented electromechanical prototype test results "
+                    "with automated Python logs."
+                ),
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="cloud-data-posting",
+        title="Cloud Data Engineer",
+        description=(
+            "Use Python automation, debugging, logging, validation, and documentation "
+            "for cloud data pipelines."
+        ),
+    )
+
+    ranked = _rank(profile, posting)
+
+    for evidence_id in (
+        "generic-hardware-workflow",
+        "generic-hardware-morphology",
+    ):
+        candidate = ranked[evidence_id]
+        assert candidate.relationship is EvidenceRelationship.REJECTED
+        assert not candidate.direct_requirement_ids
+        assert not candidate.adjacent_requirement_ids
+
+
+def test_explicit_standalone_transferable_requirement_remains_matchable() -> None:
+    entry = ResumeItem(
+        id="automation-project",
+        title="Workflow Utility",
+        kind=EntityKind.PROJECT,
+    )
+    profile = _profile(
+        projects=[entry],
+        evidence=[
+            EvidenceItem(
+                id="python-automation",
+                entity_id=entry.id,
+                source_text="Built reliable Python automation for a reviewed workflow.",
+            )
+        ],
+    )
+    posting = JobPosting(
+        id="transferable-requirement-posting",
+        title="Systems Engineer",
+        description=(
+            "Build embedded controller test rigs. Preferred qualifications:\n"
+            "Python automation."
+        ),
+    )
+
+    candidate = _rank(profile, posting)["python-automation"]
+
+    assert candidate.admitted is True
+    assert candidate.relationship is EvidenceRelationship.COMPLEMENTARY
+    assert candidate.complementary_requirement_ids
 
 
 def test_single_broad_acronym_cannot_admit_unrelated_project() -> None:

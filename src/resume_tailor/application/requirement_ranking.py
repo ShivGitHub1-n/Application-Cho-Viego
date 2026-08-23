@@ -44,24 +44,61 @@ _INCIDENTAL_MARKERS = re.compile(
 _RAW_TECHNICAL_TOKEN = re.compile(
     r"(?<![\w+#./-])[A-Za-z][A-Za-z0-9+.#/-]{0,11}(?![\w+#./-])"
 )
-_GENERAL_PURPOSE_TECHNICAL_TERMS = frozenset(
+_CONTEXT_NEUTRAL_TRANSFERABLE_TERMS = frozenset(
     {
+        "analysis",
         "automation",
         "c",
         "c++",
+        "c/c++",
+        "collaboration",
+        "collaborative",
+        "complete",
+        "completed",
         "control",
         "controls",
+        "debug",
+        "debugging",
+        "document",
+        "documentation",
         "git",
         "java",
         "javascript",
         "linux",
+        "logging",
+        "logs",
         "model",
         "models",
+        "monitoring",
+        "pipeline",
+        "pipelines",
         "python",
         "reporting",
         "software",
         "testing",
+        "use",
+        "used",
         "validation",
+    }
+)
+_REQUIREMENT_AUTHORITY_TERMS = frozenset(
+    {
+        "bonus",
+        "core",
+        "duties",
+        "helpful",
+        "important",
+        "minimum",
+        "must",
+        "optional",
+        "preferred",
+        "qualification",
+        "qualifications",
+        "required",
+        "requirement",
+        "requirements",
+        "responsibilities",
+        "responsibility",
     }
 )
 
@@ -223,14 +260,19 @@ def assess_evidence_relationship(
             reviewed_skill
             and _exact_reviewed_skill_match(bullet_text, requirement)
         )
-        lexical_direct = (
-            bullet_match.admitted and not bullet_match.generic_only
-        ) or exact_reviewed_skill
-        if lexical_direct and _general_technology_only_match(
+        misses_requirement_context = _context_neutral_overlap_misses_requirement_context(
             bullet_match.meaningful_overlap,
+            bullet_match.responsibility_overlap,
+            bullet_features,
             requirement_features,
-        ):
-            lexical_direct = False
+        )
+        lexical_direct = (
+            (
+                bullet_match.admitted
+                and not bullet_match.generic_only
+            )
+            or exact_reviewed_skill
+        ) and not misses_requirement_context
         has_responsibility_adjacency = bool(bullet_match.responsibility_overlap)
         strong_overlap_context = (
             len(bullet_match.meaningful_overlap) >= 2
@@ -266,18 +308,21 @@ def assess_evidence_relationship(
             and bool(bullet_features.responsibility_signals)
         )
         contextual_adjacency = (
-            (
-                has_responsibility_adjacency
-                or specific_transferable_context
-                or family_transferable_context
-            )
-            and bullet_features.technical_specificity >= 0.18
+            not misses_requirement_context
             and (
-                strong_overlap_context
-                or corroborated_short
-                or strong_entry_adjacency
-                or specific_transferable_context
-                or family_transferable_context
+                (
+                    has_responsibility_adjacency
+                    or specific_transferable_context
+                    or family_transferable_context
+                )
+                and bullet_features.technical_specificity >= 0.18
+                and (
+                    strong_overlap_context
+                    or corroborated_short
+                    or strong_entry_adjacency
+                    or specific_transferable_context
+                    or family_transferable_context
+                )
             )
         )
 
@@ -367,19 +412,28 @@ def _posting_segments(description: str) -> list[str]:
     return segments
 
 
-def _general_technology_only_match(
+def _context_neutral_overlap_misses_requirement_context(
     overlap: tuple[str, ...],
+    responsibility_overlap: tuple[str, ...],
+    candidate: ReviewedTextFeatures,
     requirement: ReviewedTextFeatures,
 ) -> bool:
-    overlap_tokens = {
-        token
-        for phrase in overlap
-        for token in normalize_reviewed_text(phrase).split()
-    }
-    if not overlap_tokens or not overlap_tokens <= _GENERAL_PURPOSE_TECHNICAL_TERMS:
+    overlap_tokens = set(
+        extract_reviewed_text_features(" ".join(overlap)).meaningful_tokens
+    )
+    neutral_lexical_bridge = bool(overlap_tokens) and (
+        overlap_tokens <= _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS
+    )
+    if not neutral_lexical_bridge and not responsibility_overlap:
         return False
-    domain_tokens = set(requirement.meaningful_tokens) - _GENERAL_PURPOSE_TECHNICAL_TERMS
-    return len(domain_tokens) >= 2
+    contextual_anchors = (
+        set(requirement.meaningful_tokens)
+        - _CONTEXT_NEUTRAL_TRANSFERABLE_TERMS
+        - _REQUIREMENT_AUTHORITY_TERMS
+    )
+    return bool(contextual_anchors) and not bool(
+        contextual_anchors & set(candidate.meaningful_tokens)
+    )
 
 
 def _material_requirement_components(text: str) -> list[str]:
@@ -534,6 +588,8 @@ def _is_complete_action_clause(value: str) -> bool:
         "executed",
         "implement",
         "implemented",
+        "improve",
+        "improved",
         "inspect",
         "inspected",
         "integrate",
