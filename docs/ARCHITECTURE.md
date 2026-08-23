@@ -165,11 +165,14 @@ retains the final structured resume, diagnostics, stage timings, call counts,
 pagination status, and exact final DOCX bytes. Unrelated reruns reuse this
 object; any material identity change invalidates it.
 
-Streamlit attaches the active normalized posting, its content fingerprint, and
-the accepted plan atomically. Resume and cover-letter delivery read that same
-posting object. For backward compatibility, a rerun that retained an accepted
-plan but lost the duplicate delivery key recovers `TailoringPlan.posting` rather
-than rebuilding a posting from blank cover-letter fields.
+Streamlit attaches one active normalized posting as the application context.
+Jobs may open either Resume Studio or Cover Letters from that same posting, and
+Cover Letters may also establish a direct pasted context. Resume Studio can add
+its accepted plan later; Cover Letters does not require that plan, résumé
+generation, résumé approval, or résumé export. For backward compatibility, a
+rerun that retained an accepted plan but lost the duplicate delivery key
+recovers `TailoringPlan.posting` rather than rebuilding a posting from blank
+fields.
 
 The cover-letter application service also binds posting-authority fields on
 every research request to that accepted posting before research, composition,
@@ -195,14 +198,16 @@ stable IDs, requirement IDs, marginal values, redundancy, entry-activation
 line cost, and rendered-line cost.
 
 Cover letters follow the same immutable-artifact rule without duplicating the
-resume engine. The application reuses reviewed-profile retrieval, requirement
-ranking, the accepted final-resume narrative, provider configuration, local
-grounding primitives, timing models, and approval patterns. Cover-letter-only
-services own bounded company research, narrative evidence selection, paragraph
-validation, quality gates, and 92–95% page-density selection. The provider
-returns a minimal paragraph/ID contract; provenance, diagnostics, research
-attribution, cache state, artifact identity, DOCX formatting, and page fitting
-are reconstructed locally. See
+resume engine. The application reuses reviewed-profile retrieval, provider
+configuration, local grounding primitives, timing models, and approval
+patterns, but selects narrative evidence independently of the generated
+résumé. Cover-letter-only services own bounded company research, a typed
+narrative plan, title-safe writer inputs, paragraph and whole-letter validation,
+quality-aware finalist ordering, and a preferred 76–90% page-utilization band.
+Exact final pagination remains mandatory. The provider returns a minimal
+paragraph/ID contract; provenance, diagnostics, research attribution, cache
+state, artifact identity, DOCX formatting, and page fitting are reconstructed
+locally. See
 [COVER_LETTER_WORKFLOW.md](COVER_LETTER_WORKFLOW.md).
 
 The versioned writing policy is centralized in

@@ -107,7 +107,7 @@ def _render_saved_detail(
         if saved.availability == "unavailable":
             streamlit_module.warning("Unavailable posting retained as an immutable snapshot.")
         with streamlit_module.container(key="jobs-saved-action-row"):
-            actions = streamlit_module.columns(3, gap="small")
+            actions = streamlit_module.columns(4, gap="small")
             with actions[0]:
                 if saved.official_url:
                     streamlit_module.link_button(
@@ -147,6 +147,21 @@ def _render_saved_detail(
                     from resume_tailor.frontend.jobs_page import apply_tailoring_handoff
 
                     apply_tailoring_handoff(streamlit_module.session_state, handoff)
+                    streamlit_module.rerun()
+            with actions[3]:
+                if streamlit_module.button(
+                    "Create cover letter",
+                    key=f"jobs-cover-saved-{saved.saved_id}",
+                    width="content",
+                ):
+                    handoff = experience.prepare_saved_tailoring(saved.saved_id, profile_id)
+                    from resume_tailor.frontend.jobs_page import apply_tailoring_handoff
+
+                    apply_tailoring_handoff(
+                        streamlit_module.session_state,
+                        handoff,
+                        destination="Cover Letters",
+                    )
                     streamlit_module.rerun()
         streamlit_module.divider()
         streamlit_module.markdown("#### Snapshot description")

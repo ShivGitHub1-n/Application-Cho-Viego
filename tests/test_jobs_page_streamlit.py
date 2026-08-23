@@ -82,6 +82,33 @@ def test_tailoring_handoff_sets_existing_inputs_and_only_invalidates_derived_sta
     assert "profile" not in state
     assert state["cover_recipient_name"] == "Keep this"
     assert state["app_pending_page"] == "Resume Studio"
+
+
+def test_jobs_handoff_can_open_cover_letter_with_the_same_application_context() -> None:
+    state: dict[str, object] = {"profile": type("Profile", (), {"id": "profile-one"})()}
+    handoff = type(
+        "Handoff",
+        (),
+        {
+            "profile_id": "profile-one",
+            "posting_id": "posting-one",
+            "title": "Controls Engineer",
+            "company": "Example Motion",
+            "description": "Build and test embedded motor-control systems.",
+            "official_url": "https://example.test/jobs/controls",
+        },
+    )()
+
+    apply_tailoring_handoff(state, handoff, destination="Cover Letters")
+
+    posting = state["posting"]
+    assert posting.id == "posting-one"
+    assert posting.company_name == "Example Motion"
+    assert posting.title == "Controls Engineer"
+    assert posting.description == handoff.description
+    assert state["app_pending_page"] == "Cover Letters"
+    assert "plan" not in state
+    assert "resume" not in state
     assert "_resume_studio_job_title_widget" not in state
     assert "_resume_studio_job_description_widget" not in state
     assert state["resume_studio_pending_stage"] == "Job context"

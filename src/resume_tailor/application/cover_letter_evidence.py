@@ -20,6 +20,13 @@ _RELATIONSHIP_PRIORITY = {
     EvidenceRelationship.INCIDENTAL: 3,
     EvidenceRelationship.REJECTED: 4,
 }
+_ASSERTED_TITLE = re.compile(
+    r"\b(?:as|serving as|acting as|in (?:my|the) role as)\s+"
+    r"(?P<title>(?:(?:chief|director|head|lead|manager|principal|senior|staff)\s+)?"
+    r"(?:[A-Za-z0-9&+/-]+\s+){0,5}"
+    r"(?:engineer|architect|designer|researcher|developer|manager))\b\s*[,;:-]?\s*",
+    re.IGNORECASE,
+)
 
 
 class CoverLetterEvidencePortfolio:
@@ -33,7 +40,7 @@ class CoverLetterEvidencePortfolio:
         self,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None = None,
         *,
         final_resume: StructuredResume | None = None,
         explicit_motivation: str | None = None,
@@ -103,6 +110,10 @@ class CoverLetterEvidencePortfolio:
         for retrieved in selected:
             source = evidence_by_id[retrieved.evidence_id]
             entry = entries[source.entity_id]
+            writer_text, excluded_titles = self._writer_safe_text(
+                source.source_text,
+                entry.title,
+            )
             kind = (
                 CoverLetterEvidenceKind.EXPERIENCE
                 if entry.kind.value == "experience"
@@ -115,6 +126,8 @@ class CoverLetterEvidencePortfolio:
                     entity_id=source.entity_id,
                     entry_title=entry.title,
                     source_text=source.source_text,
+                    writer_text=writer_text,
+                    excluded_title_claims=excluded_titles,
                     technologies=list(source.technologies),
                     outcomes=list(source.outcomes),
                     provenance=list(retrieved.provenance),
@@ -238,7 +251,7 @@ class CoverLetterEvidencePortfolio:
     @staticmethod
     def _final_resume_evidence_ids(
         final_resume: StructuredResume | None,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None,
     ) -> set[str]:
         if final_resume is not None:
             return {
@@ -250,6 +263,8 @@ class CoverLetterEvidencePortfolio:
                 for bullet in bullets
                 for evidence_id in bullet.evidence_ids
             }
+        if plan is None:
+            return set()
         if plan.composition_selection is not None:
             return set(plan.composition_selection.selected_evidence_ids)
         selected_claim_ids = set(plan.selected_claim_ids)
@@ -259,6 +274,26 @@ class CoverLetterEvidencePortfolio:
             if candidate.id in selected_claim_ids
             for evidence_id in candidate.evidence_ids
         }
+
+    @staticmethod
+    def _writer_safe_text(source_text: str, authoritative_title: str) -> tuple[str, list[str]]:
+        """Remove conflicting self-title phrases only from writer-facing prose."""
+
+        excluded: list[str] = []
+        canonical = " ".join(authoritative_title.casefold().split())
+
+        def replace(match: re.Match[str]) -> str:
+            asserted = " ".join(match.group("title").casefold().split())
+            if asserted == canonical:
+                return match.group(0)
+            excluded.append(match.group("title").strip())
+            return ""
+
+        safe = _ASSERTED_TITLE.sub(replace, source_text)
+        safe = re.sub(r"\s+", " ", safe).strip(" ,;:-")
+        if not safe:
+            safe = authoritative_title
+        return safe, list(dict.fromkeys(excluded))
 
     @staticmethod
     def _selection_reason(

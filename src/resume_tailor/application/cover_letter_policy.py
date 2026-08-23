@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v9"
-COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v2"
-COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v7"
-COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v4:standard-business-brief"
+COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v10"
+COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v3"
+COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v8"
+COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v5:standard-business-brief"
 
 COVER_LETTER_WRITING_CONSTRAINTS = (
     "Write one coherent narrative answering why this company, why this candidate, "
     "and why this role without labels.",
+    "Follow the supplied narrative plan: sustain its thesis across the whole letter, "
+    "develop the ordered stories, and use each story for its stated role connection.",
     "Use two or three authorized evidence threads; connect them rather than "
     "restating resume bullets.",
     "Every candidate assertion must be supported by the candidate evidence IDs "
@@ -30,6 +32,11 @@ COVER_LETTER_WRITING_CONSTRAINTS = (
     "Describe the candidate's work directly; never expose evidence-selection, validation, "
     "grounding, or other internal application terminology.",
     "Do not copy a resume bullet verbatim or repeat posting language as praise.",
+    "Do not use a self-title unless it is necessary for clarity. Authoritative entry "
+    "titles are the only allowed titles; never repeat a prohibited title claim found in "
+    "source prose.",
+    "Avoid stock application language, defensive validation disclaimers, technology "
+    "inventories, and sentences whose only purpose is to announce that evidence matches.",
 )
 
 __all__ = [

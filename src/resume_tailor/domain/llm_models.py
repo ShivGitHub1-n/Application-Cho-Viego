@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from resume_tailor.domain.cover_letter import (
     CoverLetterLengthClass,
+    CoverLetterNarrativePlan,
     CoverLetterParagraphPurpose,
     CoverLetterSentenceAuthority,
     normalize_paragraph_purpose,
@@ -386,6 +387,7 @@ class CoverLetterDraftRequest(StrictModel):
     company_name: str | None = None
     job_description: str
     strategy: str
+    narrative_plan: CoverLetterNarrativePlan
     selected_entry_ids: list[str] = Field(default_factory=list)
     selected_evidence: list[CoverLetterEvidence] = Field(min_length=1)
     company_research: list[CoverLetterCompanyFact] = Field(default_factory=list)

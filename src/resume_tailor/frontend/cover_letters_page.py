@@ -8,10 +8,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from resume_tailor.application.job_intake import InvalidJobDescriptionError, build_job_posting
+from resume_tailor.application.workflow_state import set_active_application_context
 from resume_tailor.domain.cover_letter import CoverLetterRecipient
-from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
 from resume_tailor.domain.llm_models import LanguageModelError
-from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.models import JobPosting, MasterProfile
 from resume_tailor.frontend.cover_letter_view import render_cover_letter_view
 from resume_tailor.frontend.document_canvas import render_document_canvas
 from resume_tailor.frontend.shared_components import render_page_header
@@ -289,18 +290,81 @@ def render_cover_letters_page(
     profile = streamlit_module.session_state.get("profile")
     plan = streamlit_module.session_state.get("plan")
     posting = streamlit_module.session_state.get("posting")
-    if (
-        not isinstance(profile, MasterProfile)
-        or plan is None
-        or posting is None
-        or getattr(plan, "strategy", None) is None
-    ):
+    if not isinstance(profile, MasterProfile):
         streamlit_module.info(
-            "Create an active tailoring plan from a reviewed Career Profile "
-            "before drafting a cover letter."
+            "Choose a reviewed Career Profile before drafting a cover letter."
         )
         return
+    if posting is None:
+        with streamlit_module.form("cover-letter-direct-job-context", border=True):
+            streamlit_module.subheader("Job context")
+            company = streamlit_module.text_input("Company", key="cover_direct_company")
+            title = streamlit_module.text_input("Role", key="cover_direct_role")
+            description = streamlit_module.text_area(
+                "Paste job description",
+                key="cover_direct_posting",
+                height=220,
+            )
+            submitted = streamlit_module.form_submit_button(
+                "Use this job for Cover Letters",
+                type="primary",
+            )
+        if submitted:
+            try:
+                direct_posting = build_job_posting(
+                    "cover-letter-direct-posting",
+                    title,
+                    description,
+                    company_name=company,
+                )
+            except InvalidJobDescriptionError as error:
+                streamlit_module.error(str(error))
+            else:
+                set_active_application_context(streamlit_module.session_state, direct_posting)
+                streamlit_module.rerun()
+        return
+    with streamlit_module.expander("Use a different pasted job", expanded=False):
+        streamlit_module.session_state.setdefault(
+            "cover_direct_company", posting.company_name or ""
+        )
+        streamlit_module.session_state.setdefault("cover_direct_role", posting.title)
+        streamlit_module.session_state.setdefault(
+            "cover_direct_posting", str(getattr(posting, "description", ""))
+        )
+        with streamlit_module.form("cover-letter-direct-job-context", border=True):
+            company = streamlit_module.text_input(
+                "Company",
+                key="cover_direct_company",
+            )
+            title = streamlit_module.text_input(
+                "Role",
+                key="cover_direct_role",
+            )
+            description = streamlit_module.text_area(
+                "Paste job description",
+                key="cover_direct_posting",
+                height=180,
+            )
+            replace_context = streamlit_module.form_submit_button(
+                "Use this job for Cover Letters"
+            )
+        if replace_context:
+            try:
+                replacement = build_job_posting(
+                    "cover-letter-direct-posting",
+                    title,
+                    description,
+                    company_name=company,
+                )
+            except InvalidJobDescriptionError as error:
+                streamlit_module.error(str(error))
+            else:
+                set_active_application_context(streamlit_module.session_state, replacement)
+                streamlit_module.rerun()
     if hasattr(dependencies.tailor_service, "generate_cover_letter_artifact"):
+        if not isinstance(posting, JobPosting):
+            streamlit_module.error("The active application context is not a validated posting.")
+            return
         # The converged application uses the newer immutable-artifact workflow.
         # Keep the Precision Workbench route and header, but delegate generation,
         # evidence review, approval, currentness, and stored-byte download to the
@@ -311,12 +375,11 @@ def render_cover_letters_page(
             profile,
             posting,
             plan,
-            streamlit_module.session_state.get("generated_resume_artifact")
-            if isinstance(
-                streamlit_module.session_state.get("generated_resume_artifact"),
-                GeneratedResumeArtifact,
-            )
-            else None,
+        )
+        return
+    if plan is None:
+        streamlit_module.info(
+            "This compatibility-only cover-letter path requires a tailoring plan."
         )
         return
     _render_setup(streamlit_module, dependencies, profile, posting, plan)

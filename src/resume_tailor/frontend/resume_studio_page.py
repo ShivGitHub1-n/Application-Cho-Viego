@@ -28,7 +28,7 @@ from resume_tailor.application.workflow_state import (
 )
 from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
 from resume_tailor.domain.llm_models import LanguageModelError
-from resume_tailor.domain.models import MasterProfile, TemplateConstraints
+from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConstraints
 from resume_tailor.frontend.document_canvas import generated_resume_groups, render_document_canvas
 from resume_tailor.frontend.shared_components import render_page_header
 from resume_tailor.infrastructure.rendering import (
@@ -52,6 +52,8 @@ _STAGE_WIDGET_KEY = "_resume_studio_stage_widget"
 _PENDING_STAGE_KEY = "resume_studio_pending_stage"
 _JOB_TITLE_KEY = "job_title_input"
 _JOB_TITLE_WIDGET_KEY = "_resume_studio_job_title_widget"
+_JOB_COMPANY_KEY = "job_company_input"
+_JOB_COMPANY_WIDGET_KEY = "_resume_studio_job_company_widget"
 _JOB_DESCRIPTION_KEY = "job_description_input"
 _JOB_DESCRIPTION_WIDGET_KEY = "_resume_studio_job_description_widget"
 _REVIEW_CONFIRMED_KEY = "resume_studio_review_confirmed"
@@ -207,8 +209,19 @@ def _invalidate_if_inputs_changed(
         return
     try:
         posting = build_job_posting(
-            "local-posting", str(state.get(_JOB_TITLE_KEY, "")), description
+            "local-posting",
+            str(state.get(_JOB_TITLE_KEY, "")),
+            description,
+            company_name=str(state.get(_JOB_COMPANY_KEY, "")),
         )
+        active_posting = state.get("posting")
+        if (
+            isinstance(active_posting, JobPosting)
+            and active_posting.title == posting.title
+            and active_posting.description == posting.description
+            and active_posting.company_name == posting.company_name
+        ):
+            posting = active_posting
     except InvalidJobDescriptionError:
         _invalidate_resume_presentation_state(streamlit_module, dependencies)
         state[_PENDING_STAGE_KEY] = ResumeStudioStage.JOB_CONTEXT.value
@@ -221,16 +234,20 @@ def _invalidate_if_inputs_changed(
 def _prepare_job_context_widgets(streamlit_module: Any) -> None:
     state = streamlit_module.session_state
     state.setdefault(_JOB_TITLE_KEY, "")
+    state.setdefault(_JOB_COMPANY_KEY, "")
     state.setdefault(_JOB_DESCRIPTION_KEY, "")
     if _JOB_TITLE_WIDGET_KEY not in state:
         state[_JOB_TITLE_WIDGET_KEY] = state[_JOB_TITLE_KEY]
     if _JOB_DESCRIPTION_WIDGET_KEY not in state:
         state[_JOB_DESCRIPTION_WIDGET_KEY] = state[_JOB_DESCRIPTION_KEY]
+    if _JOB_COMPANY_WIDGET_KEY not in state:
+        state[_JOB_COMPANY_WIDGET_KEY] = state[_JOB_COMPANY_KEY]
 
 
 def _sync_job_context(streamlit_module: Any) -> None:
     state = streamlit_module.session_state
     state[_JOB_TITLE_KEY] = str(state.get(_JOB_TITLE_WIDGET_KEY, ""))
+    state[_JOB_COMPANY_KEY] = str(state.get(_JOB_COMPANY_WIDGET_KEY, ""))
     state[_JOB_DESCRIPTION_KEY] = str(state.get(_JOB_DESCRIPTION_WIDGET_KEY, ""))
 
 
@@ -327,6 +344,12 @@ def _render_job_context(
         on_change=_sync_job_context,
         args=(streamlit_module,),
     )
+    company = streamlit_module.text_input(
+        "Company",
+        key=_JOB_COMPANY_WIDGET_KEY,
+        on_change=_sync_job_context,
+        args=(streamlit_module,),
+    )
     description = streamlit_module.text_area(
         "Paste job description",
         key=_JOB_DESCRIPTION_WIDGET_KEY,
@@ -340,7 +363,20 @@ def _render_job_context(
     ):
         try:
             _sync_job_context(streamlit_module)
-            posting = build_job_posting("local-posting", title, description)
+            active_posting = streamlit_module.session_state.get("posting")
+            posting = build_job_posting(
+                "local-posting",
+                title,
+                description,
+                company_name=company,
+            )
+            if (
+                isinstance(active_posting, JobPosting)
+                and active_posting.title == posting.title
+                and active_posting.description == posting.description
+                and active_posting.company_name == posting.company_name
+            ):
+                posting = active_posting
             _invalidate_resume_presentation_state(streamlit_module, dependencies)
             if hasattr(dependencies.tailor_service, "start_generation"):
                 dependencies.tailor_service.start_generation()

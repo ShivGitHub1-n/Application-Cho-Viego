@@ -153,18 +153,25 @@ def set_active_opportunity(
     state["plan"] = plan
 
 
-def has_cover_letter_prerequisites(state: MutableMapping[str, object]) -> bool:
-    """Report whether the active profile, posting, and strategy can draft a letter."""
+def set_active_application_context(
+    state: MutableMapping[str, object],
+    posting: JobPosting,
+) -> None:
+    """Bind one posting for independent résumé and cover-letter sibling workflows."""
 
-    plan = state.get("plan")
+    previous = get_active_posting(state)
+    if isinstance(previous, JobPosting) and previous != posting:
+        for key in POSTING_DERIVED_WORKFLOW_KEYS:
+            state.pop(key, None)
+    state[ACTIVE_POSTING_KEY] = posting
+    state[POSTING_FINGERPRINT_KEY] = content_fingerprint(posting)
+
+
+def has_cover_letter_prerequisites(state: MutableMapping[str, object]) -> bool:
+    """Report whether a reviewed profile and active application can draft a letter."""
+
     posting = get_active_posting(state)
-    return (
-        state.get("profile") is not None
-        and posting is not None
-        and plan is not None
-        and getattr(plan, "strategy", None) is not None
-        and getattr(plan, "posting", None) == posting
-    )
+    return state.get("profile") is not None and isinstance(posting, JobPosting)
 
 
 def invalidate_profile_derived_workflow(state: MutableMapping[str, object]) -> None:

@@ -11,10 +11,12 @@ letters are never factual sources.
 
 ## Boundaries
 
-The workflow reuses the accepted resume pipeline's public boundaries:
+The workflow reuses reviewed profile and posting boundaries without depending
+on a generated résumé:
 
-- `MasterProfile`, `JobPosting`, and `TailoringPlan` identify the reviewed
-  profile, normalized opportunity, requirement ranking, and primary narrative;
+- `MasterProfile` and `JobPosting` identify the reviewed profile and normalized
+  application context; a compatible `TailoringPlan` may be present but is not a
+  cover-letter prerequisite or writing authority;
 - `InProcessResumeEvidenceRetriever` supplies ranked evidence with provenance;
 - `ResumeLanguageModel.draft_cover_letter` is the existing provider seam;
 - the shared local grounding validator checks protected numbers, technologies,
@@ -62,12 +64,18 @@ page fitting, rendering, approval, rebuild, and download never invoke research.
 The application selects up to three distinct narrative threads when the
 profile can support them and may attach one non-duplicative supporting fact to
 each thread. Direct and adjacent role evidence is preferred before
-complementary evidence. It starts with requirement-ranked reviewed evidence,
-considers the accepted final resume selection, and may select omitted reviewed
-evidence when it adds a distinct relevant thread. Sparse profiles can use
+complementary evidence. It starts with requirement-ranked reviewed evidence and
+selects independently of the final résumé. Sparse profiles can use
 clearly diagnosed adjacent reviewed evidence. Canonical education, reviewed
 skills, or explicit user motivation may be added only through their own typed
 authority.
+
+Before prose generation, a typed narrative plan orders the role themes and
+evidence stories, states one through-line, records why each story matters,
+binds authoritative entry titles, and lists conflicting source-title phrases
+that the writer must not repeat. Writer-facing evidence removes only those
+conflicting self-title phrases; the original reviewed source remains available
+to deterministic validation.
 
 One provider request returns only paragraph purpose/text, candidate evidence
 IDs, company research IDs, an optional narrative-thread ID, and a length class.
@@ -88,7 +96,8 @@ relationship, or technical mechanism when the fixed DOCX geometry remains
 underfilled. Sparse evidence produces a shorter typed limitation rather than
 filler.
 One repair request is permitted only after a malformed typed response. A
-semantically invalid response does not cause provider retries. Provider
+semantically invalid response does not cause provider retries and is never
+spliced paragraph-by-paragraph into a deterministic letter. Provider
 timeouts, rate limits, configuration failures, malformed output after repair,
 or fully rejected prose use deterministic grounded variants.
 
@@ -97,9 +106,10 @@ or fully rejected prose use deterministic grounded variants.
 Each paragraph is checked locally. Unknown evidence references, changed
 metrics, changed technical entities, ownership expansion, unsupported
 production/deployment/scale/business-impact/causal claims, invented motivation,
-and unsupported company statements are rejected. A rejected paragraph does not
-destroy valid siblings; deterministic validated replacement can complete the
-narrative.
+and unsupported company statements are rejected. A rejected paragraph now
+invalidates that provider candidate as a whole; valid provider paragraphs are
+not stitched to unrelated deterministic replacements. A complete deterministic
+candidate remains the bounded fallback.
 
 Deterministic candidates use source-derived engineering detail for the
 posting-to-candidate connection and grammatically transform reviewed action
@@ -136,8 +146,8 @@ The cover letter has its own semantic correspondence template. Fixed tokens are
 1-inch margins, Calibri 11-point body text, 1.10 line spacing, 8-point paragraph
 spacing, a 16-point candidate name, and 10-point contact text. Page fitting
 selects only among already validated content variants. It does not change
-facts, generate prose, fetch research, or call Gemini. It prefers 84–92%
-estimated utilization, accepts a balanced 80–96%, and exposes severe underfill,
+facts, generate prose, fetch research, or call Gemini. It prefers 76–90%
+estimated utilization, accepts a balanced 70–94%, and exposes severe underfill,
 overflow, and blank trailing pages as failures.
 
 Link labels use recognizable host or profile names without a redundant generic
@@ -155,12 +165,12 @@ The renderer writes those typography and spacing tokens directly as well as
 through named styles so deterministic occupancy estimates do not omit inherited
 Word formatting.
 
-Exact Word pagination is authoritative when available. If it is unavailable,
+Exact Word or LibreOffice pagination is authoritative. If it is unavailable,
 the deterministic occupancy estimate remains explicitly
 `pagination_unverified`; utilization and remaining-line estimates are exposed,
-the rendered bytes remain a reviewable artifact, and Microsoft Word inspection
-is required before approval. An estimated underfill or overflow classification
-remains diagnostic and cannot replace the typed unverified-pagination state.
+the rendered bytes remain a review copy, and the artifact fails closed rather
+than becoming approvable or exportable. An estimated underfill or overflow
+classification cannot replace exact final pagination authority.
 The renderer does not inflate fonts, margins, or spacing to meet density.
 
 ## Artifact and review lifecycle
@@ -181,10 +191,13 @@ review state. Approved download returns those same stored bytes. Neither action
 performs provider, research, validation, composition, rendering, or pagination
 calls.
 
-The accepted resume strategy owns the authoritative normalized posting for the
-session. Streamlit stores that posting, its content fingerprint, and the plan
-atomically; older reruns that retained only the plan recover the same posting
-object from `TailoringPlan.posting`. Posting-scoped widget keys keep optional
+The active application context owns the authoritative normalized posting for
+the session. Jobs can bind that posting and open either Resume Studio or Cover
+Letters. A direct pasted posting can establish the same context from Cover
+Letters. Resume and cover-letter artifacts are independent siblings, and a
+context change invalidates both sets of stale derived artifacts. Older reruns
+that retained only a plan can still recover its posting for compatibility.
+Posting-scoped widget keys keep optional
 cover-letter inputs across ordinary reruns without carrying them into a changed
 opportunity. Artifact-currentness checks use the same request-binding rule, so
 approval and download cannot validate an artifact against a differently

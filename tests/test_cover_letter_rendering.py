@@ -116,7 +116,7 @@ def test_pagination_failure_falls_back_to_honest_estimate(tmp_path: Path) -> Non
     assert result.estimated_remaining_lines >= 0
 
 
-def test_unavailable_pagination_retains_reviewable_service_artifact() -> None:
+def test_unavailable_pagination_retains_review_copy_but_fails_final_authority() -> None:
     profile, posting, plan = cover_letter_case()
     renderer = CoverLetterRenderer(page_count_provider=_UnavailableProvider())
 
@@ -131,9 +131,9 @@ def test_unavailable_pagination_retains_reviewable_service_artifact() -> None:
     assert artifact.page_fit.status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED
     assert not artifact.page_fit.exact_pagination
     assert artifact.page_fit.manual_word_inspection_required
-    assert page_gate.status is CoverLetterQualityGateStatus.REVIEW_REQUIRED
-    assert artifact.ready_for_review
-    assert artifact.review_state is CoverLetterReviewState.GENERATED_AWAITING_REVIEW
+    assert page_gate.status is CoverLetterQualityGateStatus.FAILED
+    assert not artifact.ready_for_review
+    assert artifact.review_state is CoverLetterReviewState.GENERATION_FAILED
 
 
 def test_contact_header_has_no_duplicate_raw_values(tmp_path: Path) -> None:

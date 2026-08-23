@@ -12,7 +12,6 @@ from resume_tailor.application.workflow_state import (
     COVER_LETTER_CANDIDATE_DIAGNOSTICS_KEY,
     COVER_LETTER_GENERATION_ERROR_KEY,
     COVER_LETTER_INPUT_FINGERPRINT_KEY,
-    COVER_LETTER_MANUAL_INSPECTION_KEY,
     COVER_LETTER_REVIEW_STATE_KEY,
 )
 from resume_tailor.domain.company_research import (
@@ -26,7 +25,6 @@ from resume_tailor.domain.cover_letter import (
     CoverLetterReviewState,
     GeneratedCoverLetterArtifact,
 )
-from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import JobPosting, MasterProfile, TailoringPlan
 
@@ -35,16 +33,22 @@ def render_cover_letter_view(
     service: Any,
     profile: MasterProfile,
     posting: JobPosting,
-    plan: TailoringPlan,
-    final_resume_artifact: GeneratedResumeArtifact | None,
+    plan: TailoringPlan | None,
 ) -> None:
     """Render a review-first cover-letter workflow around immutable artifacts."""
 
+    with st.container(border=True):
+        company_column, role_column = st.columns(2)
+        company_column.caption("COMPANY")
+        company_column.write(posting.company_name or "Company not provided")
+        role_column.caption("ROLE")
+        role_column.write(posting.title)
+        if posting.source_url:
+            st.caption(f"Active posting: {posting.source_url}")
     st.caption(
-        "Generation reuses the reviewed profile, requirement ranking, and accepted resume "
-        "narrative. Research runs only from explicit sources and never during download."
+        "This letter independently selects narrative evidence from the active reviewed "
+        "Career Profile. It does not require or copy a generated résumé."
     )
-    final_resume = final_resume_artifact.final_resume if final_resume_artifact else None
     inputs = _render_inputs(posting)
     recipient, research_request, motivation, submitted = inputs
     input_fingerprint = _input_fingerprint(recipient, research_request, motivation)
@@ -64,7 +68,7 @@ def render_cover_letter_view(
                         posting,
                         plan,
                         recipient=recipient,
-                        final_resume=final_resume,
+                        final_resume=None,
                         research_request=research_request,
                         explicit_motivation=motivation,
                     ),
@@ -75,7 +79,6 @@ def render_cover_letter_view(
             st.session_state[COVER_LETTER_REVIEW_STATE_KEY] = artifact.review_state.value
             if committed:
                 st.session_state[COVER_LETTER_INPUT_FINGERPRINT_KEY] = input_fingerprint
-                st.session_state[COVER_LETTER_MANUAL_INSPECTION_KEY] = False
                 st.session_state[COVER_LETTER_CANDIDATE_DIAGNOSTICS_KEY] = (
                     artifact.candidate_validations
                 )
@@ -134,7 +137,7 @@ def render_cover_letter_view(
             posting,
             plan,
             recipient=recipient,
-            final_resume=final_resume,
+            final_resume=None,
             research_request=research_request,
             explicit_motivation=motivation,
         )
@@ -166,11 +169,6 @@ def _render_inputs(
             "Recipient title (optional)",
             key=f"cover_recipient_title_{widget_scope}",
         )
-        recipient_company = st.text_input(
-            "Company",
-            value=posting.company_name or "",
-            key=f"cover_recipient_company_{widget_scope}",
-        )
         company_domain = st.text_input(
             "Company domain (optional)",
             help="Used to restrict official-source fetching to the company's domain.",
@@ -200,7 +198,7 @@ def _render_inputs(
     recipient = CoverLetterRecipient(
         name=recipient_name.strip() or None,
         title=recipient_title.strip() or None,
-        company=recipient_company.strip() or posting.company_name,
+        company=posting.company_name,
     )
     official_urls = [line.strip() for line in official_urls_text.splitlines() if line.strip()][:3]
     user_facts = [line.strip() for line in company_facts_text.splitlines() if line.strip()][:3]
@@ -339,7 +337,7 @@ def _render_approval(
     if already_approved:
         st.success("This exact artifact is approved.")
         return artifact
-    if artifact_current and artifact.ready_for_review:
+    if artifact_current:
         st.download_button(
             "Download review DOCX for inspection",
             data=artifact.docx_bytes,
@@ -351,15 +349,11 @@ def _render_approval(
         "I reviewed the complete letter, evidence, and company-source report.",
         key="cover_letter_complete_review",
     )
-    manual_confirmed = True
     if artifact.page_fit.manual_word_inspection_required:
-        st.warning(
-            "Exact Word pagination was unavailable. Open the reviewed DOCX in Microsoft Word "
-            "and inspect the page before approval."
-        )
-        manual_confirmed = st.checkbox(
-            "I inspected this exact DOCX in Microsoft Word and confirmed one nonblank page.",
-            key=COVER_LETTER_MANUAL_INSPECTION_KEY,
+        st.error(
+            "Exact pagination was unavailable. This review copy cannot be approved or "
+            "exported; generate in an environment with Microsoft Word or LibreOffice "
+            "pagination configured."
         )
     if st.button(
         "Approve cover letter",
@@ -367,7 +361,6 @@ def _render_approval(
         icon=":material/verified:",
         disabled=(
             not reviewed
-            or not manual_confirmed
             or not artifact.ready_for_review
             or not artifact_current
         ),
@@ -377,7 +370,7 @@ def _render_approval(
             service.approve_cover_letter_artifact(
                 artifact,
                 expected_fingerprint=artifact.artifact_fingerprint,
-                manual_word_inspection_confirmed=manual_confirmed,
+                manual_word_inspection_confirmed=False,
             ),
         )
         st.session_state[COVER_LETTER_ARTIFACT_KEY] = artifact

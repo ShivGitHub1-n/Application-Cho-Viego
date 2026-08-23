@@ -42,9 +42,14 @@ class CoverLetterPageFitter:
         self,
         candidates: list[CoverLetter],
         output_directory: Path,
+        *,
+        narrative_quality_ranks: list[int] | None = None,
     ) -> FittedCoverLetter:
         if not candidates:
             raise ValueError("Cover-letter page fitting requires validated candidates")
+        quality_ranks = narrative_quality_ranks or [0] * len(candidates)
+        if len(quality_ranks) != len(candidates):
+            raise ValueError("Narrative quality ranks must align with cover-letter candidates")
         render_started = self._clock()
         results = self._renderer.render_candidates(candidates, output_directory)
         render_elapsed_seconds = max(0.0, self._clock() - render_started)
@@ -88,6 +93,7 @@ class CoverLetterPageFitter:
             diagnostics,
             profile.target_utilization,
             candidates,
+            quality_ranks,
         )
         selected_update: dict[str, object] = {"selected": True}
         if diagnostics[selected_index].status in {
@@ -151,9 +157,7 @@ class CoverLetterPageFitter:
             return CoverLetterPageFitStatus.OVERFLOW
         if floor <= ratio <= ceiling:
             return CoverLetterPageFitStatus.PREFERRED_DENSITY
-        if acceptable_floor <= ratio <= acceptable_ceiling or (
-            290 <= narrative_word_count <= 425 and result.page_count == 1
-        ):
+        if acceptable_floor <= ratio <= acceptable_ceiling:
             return CoverLetterPageFitStatus.ACCEPTABLE_DENSITY
         return CoverLetterPageFitStatus.SEVERE_UNDERFILL
 
@@ -162,6 +166,7 @@ class CoverLetterPageFitter:
         diagnostics: list[CoverLetterPageFitCandidateDiagnostic],
         target: float,
         candidates: list[CoverLetter],
+        narrative_quality_ranks: list[int],
     ) -> int:
         priority = {
             CoverLetterPageFitStatus.PREFERRED_DENSITY: 0,
@@ -171,15 +176,23 @@ class CoverLetterPageFitter:
             CoverLetterPageFitStatus.BLANK_TRAILING_PAGE: 4,
             CoverLetterPageFitStatus.PAGINATION_UNVERIFIED: 1,
         }
-        policy_length_indices = [
+        exact_one_page_indices = [
             index
-            for index, candidate in enumerate(candidates)
-            if 290 <= CoverLetterPageFitter._narrative_word_count(candidate) <= 425
+            for index, diagnostic in enumerate(diagnostics)
+            if diagnostic.exact_pagination
+            and diagnostic.page_count == 1
+            and diagnostic.status
+            not in {
+                CoverLetterPageFitStatus.SEVERE_UNDERFILL,
+                CoverLetterPageFitStatus.OVERFLOW,
+                CoverLetterPageFitStatus.BLANK_TRAILING_PAGE,
+            }
         ]
-        eligible_indices = policy_length_indices or list(range(len(diagnostics)))
+        eligible_indices = exact_one_page_indices or list(range(len(diagnostics)))
         return min(
             eligible_indices,
             key=lambda index: (
+                narrative_quality_ranks[index],
                 priority[diagnostics[index].status],
                 abs(diagnostics[index].estimated_utilization - target),
                 -len(diagnostics[index].evidence_ids),

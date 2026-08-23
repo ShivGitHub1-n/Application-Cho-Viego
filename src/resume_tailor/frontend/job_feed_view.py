@@ -81,6 +81,7 @@ def render_feed(
     on_select: Callable[[str], None],
     on_save: Callable[[str], None],
     on_tailor: Callable[[str], None],
+    on_cover_letter: Callable[[str], None],
     get_detail: Callable[[str], JobDetailView | None],
     expanded_excluded: bool,
     excluded: Sequence[RecommendationView],
@@ -140,6 +141,7 @@ def render_feed(
                 streamlit_module=streamlit_module,
                 on_save=on_save,
                 on_tailor=on_tailor,
+                on_cover_letter=on_cover_letter,
                 selection_scope=selection_scope,
             )
     return selected_job_id
@@ -243,6 +245,7 @@ def _render_detail(
     streamlit_module: Any,
     on_save: Callable[[str], None],
     on_tailor: Callable[[str], None],
+    on_cover_letter: Callable[[str], None],
     selection_scope: str,
 ) -> None:
     with streamlit_module.container(border=True, key="jobs-detail-panel"):
@@ -275,7 +278,7 @@ def _render_detail(
             f"{item.verification_confidence.value.title()}"
         )
         with streamlit_module.container(key="jobs-action-row"):
-            actions = streamlit_module.columns(3, gap="small")
+            actions = streamlit_module.columns(4, gap="small")
             with actions[0]:
                 if item.official_url:
                     streamlit_module.link_button(
@@ -302,6 +305,13 @@ def _render_detail(
                     width="content",
                 ):
                     on_tailor(item.job_id)
+            with actions[3]:
+                if streamlit_module.button(
+                    "Create cover letter",
+                    key=f"jobs-cover-{selection_scope}-{_safe_key(item.job_id)}",
+                    width="content",
+                ):
+                    on_cover_letter(item.job_id)
         streamlit_module.divider()
         if detail is not None:
             _render_list(

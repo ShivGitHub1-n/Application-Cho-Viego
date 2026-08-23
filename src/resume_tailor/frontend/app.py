@@ -67,6 +67,7 @@ from resume_tailor.domain.models import (
     JobPosting,
     MasterProfile,
     StructuredResume,
+    TailoringPlan,
     TemplateConstraints,
 )
 from resume_tailor.domain.profile_completeness import (
@@ -2176,21 +2177,17 @@ def _render_tailor_page(service: Any) -> None:
 def _render_cover_letter_page(service: Any) -> None:
     st.title("Cover letter")
     if not has_cover_letter_prerequisites(_state()):
-        st.info("Create a reviewed profile and resume strategy before generating a cover letter.")
+        st.info("Choose a reviewed profile and active job before generating a cover letter.")
         return
     posting = _active_posting()
     if posting is None:
-        st.info("Create a reviewed profile and resume strategy before generating a cover letter.")
+        st.info("Choose a reviewed profile and active job before generating a cover letter.")
         return
     render_cover_letter_view(
         service,
         cast(MasterProfile, st.session_state["profile"]),
         posting,
-        st.session_state["plan"],
-        cast(
-            GeneratedResumeArtifact | None,
-            st.session_state.get("generated_resume_artifact"),
-        ),
+        cast(TailoringPlan | None, st.session_state.get("plan")),
     )
 
 

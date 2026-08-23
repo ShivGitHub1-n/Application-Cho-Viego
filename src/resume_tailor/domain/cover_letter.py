@@ -135,6 +135,8 @@ class CoverLetterEvidenceRecord(BaseModel):
     entity_id: str | None = None
     entry_title: str | None = None
     source_text: str
+    writer_text: str | None = None
+    excluded_title_claims: list[str] = Field(default_factory=list)
     technologies: list[str] = Field(default_factory=list)
     outcomes: list[str] = Field(default_factory=list)
     provenance: list[str] = Field(default_factory=list)
@@ -143,6 +145,29 @@ class CoverLetterEvidenceRecord(BaseModel):
     selected_in_final_resume: bool = False
     selected_for_letter: bool = True
     selection_reason: str
+
+
+class CoverLetterNarrativeStory(BaseModel):
+    """One ordered, evidence-authorized story in the internal writing plan."""
+
+    thread_id: str
+    entry_id: str | None = None
+    authoritative_title: str | None = None
+    evidence_ids: list[str] = Field(min_length=1, max_length=3)
+    focus: str = Field(min_length=1, max_length=240)
+    role_connection: str = Field(min_length=1, max_length=360)
+
+
+class CoverLetterNarrativePlan(BaseModel):
+    """Typed narrative intent prepared before prose generation."""
+
+    thesis: str = Field(min_length=1, max_length=500)
+    company_role_hook: str = Field(min_length=1, max_length=500)
+    role_themes: list[str] = Field(min_length=1, max_length=4)
+    stories: list[CoverLetterNarrativeStory] = Field(min_length=1, max_length=3)
+    authoritative_entry_titles: dict[str, str] = Field(default_factory=dict)
+    prohibited_title_claims: list[str] = Field(default_factory=list)
+    tone: str = Field(min_length=1, max_length=240)
 
 
 class CoverLetterClaimDiagnostic(BaseModel):
@@ -174,7 +199,7 @@ class CoverLetterParagraph(BaseModel):
 class CoverLetterLayoutProfile(BaseModel):
     """Standard-business-brief tokens with a restrained correspondence header override."""
 
-    profile_id: str = "cover-letter-correspondence-v4"
+    profile_id: str = "cover-letter-correspondence-v5"
     preset_name: str = "standard_business_brief"
     header_pattern: str = "proposal_centerpiece_minimal_correspondence_override"
     page_width_inches: float = 8.5
@@ -195,11 +220,11 @@ class CoverLetterLayoutProfile(BaseModel):
     contact_spacing_pt: float = 2.0
     signoff_spacing_pt: float = 2.0
     contact_separator: str = " | "
-    preferred_utilization_floor: float = 0.84
-    preferred_utilization_ceiling: float = 0.92
-    acceptable_utilization_floor: float = 0.80
-    acceptable_utilization_ceiling: float = 0.96
-    target_utilization: float = 0.88
+    preferred_utilization_floor: float = 0.76
+    preferred_utilization_ceiling: float = 0.90
+    acceptable_utilization_floor: float = 0.70
+    acceptable_utilization_ceiling: float = 0.94
+    target_utilization: float = 0.84
 
     @property
     def usable_width_inches(self) -> float:
@@ -214,7 +239,7 @@ class CoverLetter(BaseModel):
     profile_id: str
     profile_version: int
     posting_id: str
-    plan_fingerprint: str
+    plan_fingerprint: str | None = None
     candidate_name: str
     contact: ContactInfo
     date_text: str
@@ -351,7 +376,7 @@ class CoverLetterCallCounts(BaseModel):
 class CoverLetterArtifactFingerprintInputs(BaseModel):
     reviewed_profile_fingerprint: str
     posting_fingerprint: str
-    plan_fingerprint: str
+    plan_fingerprint: str | None = None
     final_resume_fingerprint: str | None = None
     research_request_fingerprint: str
     research_fingerprint: str
@@ -419,6 +444,8 @@ __all__ = [
     "CoverLetterFallbackReason",
     "CoverLetterLayoutProfile",
     "CoverLetterLengthClass",
+    "CoverLetterNarrativePlan",
+    "CoverLetterNarrativeStory",
     "CoverLetterPageFitCandidateDiagnostic",
     "CoverLetterPageFitDiagnostic",
     "CoverLetterPageFitStatus",

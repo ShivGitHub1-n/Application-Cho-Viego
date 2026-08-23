@@ -14,7 +14,13 @@ from resume_tailor.application.job_discovery.experience import (
 )
 from resume_tailor.application.job_discovery.filtering import filter_recommendations
 from resume_tailor.application.job_discovery.handoff import TailoringHandoff
+from resume_tailor.application.job_intake import normalize_job_description
+from resume_tailor.application.workflow_state import (
+    invalidate_derived_workflow,
+    set_active_application_context,
+)
 from resume_tailor.domain.job_discovery.queries import APPROVED_EXPLORE_SECTORS, FeedKind
+from resume_tailor.domain.models import JobPosting
 from resume_tailor.frontend.job_feed_view import render_feed
 from resume_tailor.frontend.job_preferences_view import render_preferences
 from resume_tailor.frontend.jobs_filter_view import clear_browse_state, render_browse_controls
@@ -56,11 +62,12 @@ jobs_css = shared_jobs_css
 
 
 def apply_tailoring_handoff(
-    state: MutableMapping[str, object], handoff: TailoringHandoff | Any
+    state: MutableMapping[str, object],
+    handoff: TailoringHandoff | Any,
+    *,
+    destination: str = "Resume Studio",
 ) -> None:
-    """Apply prepared inputs at the delivery boundary, preserving unrelated state."""
-
-    from resume_tailor.application.workflow_state import invalidate_derived_workflow
+    """Bind one application context, then open either sibling document workspace."""
 
     invalidate_derived_workflow(state)
     current_profile = state.get("profile")
@@ -69,11 +76,25 @@ def apply_tailoring_handoff(
     state["profile_id"] = handoff.profile_id
     state["profile_id_input"] = handoff.profile_id
     state["job_title_input"] = handoff.title
+    company = str(getattr(handoff, "company", "")).strip()
+    state["job_company_input"] = company
     state["job_description_input"] = handoff.description
     state.pop("_resume_studio_job_title_widget", None)
+    state.pop("_resume_studio_job_company_widget", None)
     state.pop("_resume_studio_job_description_widget", None)
+    state.pop("cover_direct_company", None)
+    state.pop("cover_direct_role", None)
+    state.pop("cover_direct_posting", None)
     state["resume_studio_pending_stage"] = "Job context"
-    state["app_pending_page"] = "Resume Studio"
+    posting = JobPosting(
+        id=str(getattr(handoff, "posting_id", "jobs-handoff-posting")),
+        title=handoff.title.strip(),
+        company_name=company or None,
+        description=normalize_job_description(handoff.description),
+        source_url=str(getattr(handoff, "official_url", "")).strip() or None,
+    )
+    set_active_application_context(state, posting)
+    state["app_pending_page"] = destination
     state["pending_tailoring_handoff"] = handoff
 
 
@@ -402,6 +423,9 @@ def _render_feed(
             ),
             on_save=lambda job_id: experience.save_job(job_id, profile_id),
             on_tailor=lambda job_id: _tailor(experience, profile_id, job_id, streamlit_module),
+            on_cover_letter=lambda job_id: _create_cover_letter(
+                experience, profile_id, job_id, streamlit_module
+            ),
             get_detail=lambda job_id: experience.get_job_detail(
                 profile_id, feed_kind, job_id, sector=sector
             ),
@@ -418,6 +442,20 @@ def _tailor(
     handoff = experience.prepare_tailoring(job_id, profile_id)
     apply_tailoring_handoff(streamlit_module.session_state, handoff)
     streamlit_module.success("Tailoring inputs prepared. Resume Studio is ready for review.")
+    if hasattr(streamlit_module, "rerun"):
+        streamlit_module.rerun()
+
+
+def _create_cover_letter(
+    experience: JobsPageExperience, profile_id: str, job_id: str, streamlit_module: Any
+) -> None:
+    handoff = experience.prepare_tailoring(job_id, profile_id)
+    apply_tailoring_handoff(
+        streamlit_module.session_state,
+        handoff,
+        destination="Cover Letters",
+    )
+    streamlit_module.success("Application context prepared. Cover Letters is ready.")
     if hasattr(streamlit_module, "rerun"):
         streamlit_module.rerun()
 

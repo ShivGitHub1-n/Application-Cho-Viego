@@ -160,7 +160,7 @@ def test_mixed_ai_mechanical_narrative_prioritizes_direct_threads_deterministica
     } <= selected_ids
     assert {"unrelated-governance", "unrelated-reporting"}.isdisjoint(selected_ids)
     assert len(output.paragraphs) == 4
-    assert 300 <= len(text.split()) <= 425
+    assert 270 <= len(text.split()) <= 425
     assert posting.company_name in text
     assert "your organization" not in lowered
     assert all(

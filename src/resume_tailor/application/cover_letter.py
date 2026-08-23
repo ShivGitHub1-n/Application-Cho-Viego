@@ -14,6 +14,7 @@ from resume_tailor.application.cover_letter_evidence import CoverLetterEvidenceP
 from resume_tailor.application.cover_letter_page_fit import (
     CoverLetterPageFitter,
 )
+from resume_tailor.application.cover_letter_planning import CoverLetterNarrativePlanner
 from resume_tailor.application.cover_letter_policy import (
     COVER_LETTER_PROVIDER_CONTRACT_VERSION,
     COVER_LETTER_TEMPLATE_IDENTITY,
@@ -43,6 +44,7 @@ from resume_tailor.domain.cover_letter import (
     CoverLetterEvidenceRecord,
     CoverLetterFallbackReason,
     CoverLetterLayoutProfile,
+    CoverLetterNarrativePlan,
     CoverLetterPageFitDiagnostic,
     CoverLetterPageFitStatus,
     CoverLetterParagraphPurpose,
@@ -128,6 +130,7 @@ class CoverLetterService:
         evidence_portfolio: CoverLetterEvidencePortfolio | None = None,
         validator: CoverLetterValidator | None = None,
         deterministic_composer: DeterministicCoverLetterComposer | None = None,
+        narrative_planner: CoverLetterNarrativePlanner | None = None,
         provider_name: str = "unconfigured",
         model_name: str = "unconfigured",
         provider_unavailable_reason: str | None = None,
@@ -141,6 +144,7 @@ class CoverLetterService:
         self._evidence = evidence_portfolio or CoverLetterEvidencePortfolio()
         self._validator = validator or CoverLetterValidator()
         self._fallback = deterministic_composer or DeterministicCoverLetterComposer()
+        self._narrative_planner = narrative_planner or CoverLetterNarrativePlanner()
         self._provider_name = provider_name
         self._model_name = model_name
         self._provider_unavailable_reason = provider_unavailable_reason
@@ -158,7 +162,7 @@ class CoverLetterService:
         self,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None = None,
         *,
         recipient: CoverLetterRecipient | None = None,
         final_resume: StructuredResume | None = None,
@@ -192,7 +196,13 @@ class CoverLetterService:
         timings.append(self._timing(GenerationStage.COVER_LETTER_EVIDENCE_SELECTION, started))
         if not evidence:
             raise CoverLetterValidationError("No reviewed evidence is available for a cover letter")
-        request = self._create_request(posting, plan, evidence, research, final_resume)
+        narrative_plan = self._narrative_planner.create(posting, evidence, research)
+        request = self._create_request(
+            posting,
+            evidence,
+            research,
+            narrative_plan,
+        )
         cache_identity = self._build_fingerprint_inputs(
             profile,
             posting,
@@ -227,6 +237,7 @@ class CoverLetterService:
 
         quality_started = self._clock()
         candidates: list[CoverLetter] = []
+        candidate_quality_ranks: list[int] = []
         candidate_validations: list[CoverLetterValidationResult] = []
         candidate_diagnostics: list[CoverLetterCandidateValidationDiagnostic] = []
         eligible_diagnostic_indexes: list[int] = []
@@ -263,6 +274,9 @@ class CoverLetterService:
                     validated,
                     resolved_date_text,
                 )
+            )
+            candidate_quality_ranks.append(
+                0 if candidate.generation_source.startswith("provider") else 1
             )
             candidate_validations.append(validated)
         if not candidates:
@@ -302,6 +316,7 @@ class CoverLetterService:
                         resolved_date_text,
                     )
                 )
+                candidate_quality_ranks.append(1)
                 candidate_validations.append(source_bound_validation)
                 outputs.append(source_bound)
         if not candidates:
@@ -314,7 +329,11 @@ class CoverLetterService:
 
         fit_started = self._clock()
         with TemporaryDirectory(prefix="cover-letter-page-fit-") as directory:
-            fitted = CoverLetterPageFitter(self._renderer).fit(candidates, Path(directory))
+            fitted = CoverLetterPageFitter(self._renderer).fit(
+                candidates,
+                Path(directory),
+                narrative_quality_ranks=candidate_quality_ranks,
+            )
         timings.append(
             StageTiming(
                 stage=GenerationStage.DOCX_RENDERING,
@@ -411,7 +430,7 @@ class CoverLetterService:
         self,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None = None,
         *,
         final_resume: StructuredResume | None = None,
         research_request: CompanyResearchRequest | None = None,
@@ -426,7 +445,8 @@ class CoverLetterService:
             final_resume=final_resume,
             explicit_motivation=explicit_motivation,
         )
-        return self._create_request(posting, plan, evidence, research, final_resume)
+        narrative_plan = self._narrative_planner.create(posting, evidence, research)
+        return self._create_request(posting, evidence, research, narrative_plan)
 
     def approve_artifact(
         self,
@@ -441,13 +461,9 @@ class CoverLetterService:
             )
         if not artifact.ready_for_review:
             raise CoverLetterValidationError("The cover-letter artifact has failed quality gates")
-        if (
-            artifact.page_fit.manual_word_inspection_required
-            and not manual_word_inspection_confirmed
-        ):
+        if not artifact.page_fit.exact_pagination:
             raise CoverLetterValidationError(
-                "Manual Microsoft Word inspection is required before approval when "
-                "pagination is unverified"
+                "Exact final pagination is required before cover-letter approval"
             )
         return artifact.model_copy(
             update={
@@ -495,7 +511,7 @@ class CoverLetterService:
         artifact: GeneratedCoverLetterArtifact,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None,
         *,
         recipient: CoverLetterRecipient,
         final_resume: StructuredResume | None,
@@ -510,7 +526,8 @@ class CoverLetterService:
             (
                 inputs.reviewed_profile_fingerprint == content_fingerprint(profile),
                 inputs.posting_fingerprint == content_fingerprint(posting),
-                inputs.plan_fingerprint == content_fingerprint(plan),
+                inputs.plan_fingerprint
+                == (content_fingerprint(plan) if plan is not None else None),
                 inputs.final_resume_fingerprint
                 == (content_fingerprint(final_resume) if final_resume is not None else None),
                 inputs.research_request_fingerprint == content_fingerprint(bound_research_request),
@@ -554,10 +571,9 @@ class CoverLetterService:
     def _create_request(
         self,
         posting: JobPosting,
-        plan: TailoringPlan,
         evidence: list[CoverLetterEvidenceRecord],
         research: CompanyResearchBundle,
-        final_resume: StructuredResume | None,
+        narrative_plan: CoverLetterNarrativePlan,
     ) -> CoverLetterDraftRequest:
         source_by_id = {source.id: source for source in research.sources}
         facts = [
@@ -569,7 +585,8 @@ class CoverLetterService:
             job_title=posting.title,
             company_name=posting.company_name,
             job_description=posting.description,
-            strategy=plan.strategy.primary_focus if plan.strategy else posting.title,
+            strategy=narrative_plan.thesis,
+            narrative_plan=narrative_plan,
             selected_entry_ids=list(
                 dict.fromkeys(item.entity_id for item in evidence if item.entity_id)
             ),
@@ -577,7 +594,7 @@ class CoverLetterService:
                 CoverLetterEvidence(
                     evidence_id=item.id,
                     evidence_kind=item.kind.value,
-                    source_text=item.source_text,
+                    source_text=item.writer_text or item.source_text,
                     entity_id=item.entity_id,
                     entry_title=item.entry_title,
                     technologies=item.technologies,
@@ -597,7 +614,7 @@ class CoverLetterService:
                 )
                 for fact in facts
             ],
-            final_resume_evidence_ids=sorted(self._resume_evidence_ids(final_resume)),
+            final_resume_evidence_ids=[],
             approximate_body_lines=self._approximate_body_lines(),
             writing_constraints=list(COVER_LETTER_WRITING_CONSTRAINTS),
         )
@@ -723,43 +740,13 @@ class CoverLetterService:
             rejected.extend(validated.rejected_claims)
             review_required.extend(validated.review_required_claims)
             consistency.extend(validated.resume_consistency)
-            if validated.paragraphs:
-                valid_text = {paragraph.text for paragraph in validated.paragraphs}
-                fallback_by_purpose = {
-                    paragraph.purpose: paragraph for paragraph in deterministic[-1].paragraphs
-                }
-                merged = []
-                for paragraph in provider_output.paragraphs:
-                    if " ".join(paragraph.text.split()) in valid_text:
-                        merged.append(paragraph)
-                    elif paragraph.purpose in fallback_by_purpose:
-                        merged.append(fallback_by_purpose[paragraph.purpose])
-                purposes = {paragraph.purpose for paragraph in merged}
-                for required in (
-                    CoverLetterParagraphPurpose.OPENING,
-                    CoverLetterParagraphPurpose.CLOSING,
-                ):
-                    if required not in purposes:
-                        merged.append(fallback_by_purpose[required])
-                merged.sort(key=self._purpose_order)
-                try:
-                    repaired_output = CoverLetterDraftOutput(paragraphs=merged)
-                except ValueError:
-                    repaired_output = deterministic[-1]
-                repaired_validation = self._validator.validate_output(
-                    repaired_output,
-                    evidence,
-                    research,
-                    posting,
-                    final_resume=final_resume,
-                )
-                if self._required_content_gates_pass(repaired_validation.quality_gates):
-                    outputs.append(
-                        _CandidateOutput(
-                            generation_source="provider_with_deterministic_repair",
-                            output=repaired_output,
-                        )
+            if self._required_content_gates_pass(validated.quality_gates):
+                outputs.append(
+                    _CandidateOutput(
+                        generation_source="provider",
+                        output=provider_output,
                     )
+                )
             if not outputs:
                 fallback_reason = CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
         outputs.extend(
@@ -785,7 +772,7 @@ class CoverLetterService:
         self,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None,
         recipient: CoverLetterRecipient,
         validated: CoverLetterValidationResult,
         date_text: str | None,
@@ -794,7 +781,7 @@ class CoverLetterService:
             profile_id=profile.id,
             profile_version=profile.version,
             posting_id=posting.id,
-            plan_fingerprint=content_fingerprint(plan),
+            plan_fingerprint=(content_fingerprint(plan) if plan is not None else None),
             candidate_name=profile.display_name,
             contact=profile.contact,
             date_text=date_text or date.today().strftime("%B %d, %Y").replace(" 0", " "),
@@ -811,7 +798,7 @@ class CoverLetterService:
         self,
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None,
         final_resume: StructuredResume | None,
         research_request: CompanyResearchRequest,
         research: CompanyResearchBundle,
@@ -823,7 +810,7 @@ class CoverLetterService:
         return CoverLetterArtifactFingerprintInputs(
             reviewed_profile_fingerprint=content_fingerprint(profile),
             posting_fingerprint=content_fingerprint(posting),
-            plan_fingerprint=content_fingerprint(plan),
+            plan_fingerprint=(content_fingerprint(plan) if plan is not None else None),
             final_resume_fingerprint=(
                 content_fingerprint(final_resume) if final_resume is not None else None
             ),
@@ -1009,10 +996,10 @@ class CoverLetterService:
             and diagnostic.underfill_or_overflow == "balanced_one_page"
         )
         if status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED:
-            gate_status = CoverLetterQualityGateStatus.REVIEW_REQUIRED
+            gate_status = CoverLetterQualityGateStatus.FAILED
             detail = (
-                "Exact pagination is unavailable. The rendered DOCX was retained for "
-                "review, and manual Word inspection is required before approval."
+                "Exact pagination is unavailable, so this DOCX cannot become an "
+                "approvable final artifact."
             )
         elif balanced:
             gate_status = CoverLetterQualityGateStatus.PASSED
@@ -1137,8 +1124,10 @@ class CoverLetterService:
     def _validate_inputs(
         profile: MasterProfile,
         posting: JobPosting,
-        plan: TailoringPlan,
+        plan: TailoringPlan | None,
     ) -> None:
+        if plan is None:
+            return
         if plan.profile_id != profile.id or plan.profile_version != profile.version:
             raise CoverLetterValidationError("Tailoring plan does not match the reviewed profile")
         if plan.posting_id != posting.id or plan.posting != posting:

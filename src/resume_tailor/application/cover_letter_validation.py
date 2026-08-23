@@ -76,11 +76,14 @@ _GENERIC_COMPANY_LANGUAGE = (
 )
 _OPENING_REJECTIONS = (
     "i am writing to apply",
+    "i am applying for",
     "i am thrilled to apply",
     "please accept my application",
 )
 _CLOSING_REJECTIONS = (
     "i look forward to the opportunity",
+    "i would welcome the opportunity",
+    "thank you for considering my application",
     "i am confident i would be a great fit",
     "i would be honored to join your team",
 )
@@ -94,6 +97,13 @@ _INTERNAL_PROSE_PATTERNS = (
     r"\b(?:candidate|company)[ -]detail\b",
     r"\bnarrative thread\b",
     r"\bimplementation evidence\b",
+)
+_VALIDATOR_PROSE_PATTERNS = (
+    r"\bi do not claim direct\b",
+    r"\bgrounded starting point\b",
+    r"\banchored in technical work\b",
+    r"\bthe connection is\b",
+    r"\bthe connection to .+ comes from that demonstrated technical work\b",
 )
 _REPETITIVE_NARRATIVE_PATTERNS = (
     r"\bi also worked with\b",
@@ -582,6 +592,7 @@ class CoverLetterValidator:
                 sentence_codes.append("company_claim_without_verified_source")
             elif (
                 company_sentence
+                and not self._is_application_intent(authority.text)
                 and (posting_facts or verified_facts)
                 and not self._company_claim_supported(
                     authority.text,
@@ -657,8 +668,12 @@ class CoverLetterValidator:
         return bool(
             re.fullmatch(
                 r"I am applying for the .+ role at .+\.|"
+                r"What stood out to me about the .+ role(?: at .+)? is the work behind .+\.|"
                 r"I would welcome (?:the opportunity for )?a? ?conversation .+\.|"
-                r"I would welcome the opportunity to discuss .+\.",
+                r"I would welcome the opportunity to discuss .+\.|"
+                r"I would contribute .+ to the .+ work at .+\.|"
+                r"That is why the .+ work at .+ feels like a natural next problem for me\."
+                r"|I would welcome a conversation .+\.",
                 sentence,
                 re.IGNORECASE,
             )
@@ -1410,6 +1425,10 @@ class CoverLetterValidator:
         )
         if template_count >= 2:
             codes.append("repetitive_narrative_template")
+        if any(re.search(pattern, lowered) for pattern in _VALIDATOR_PROSE_PATTERNS):
+            codes.append("validation_disclaimer_in_letter")
+        if cls._excessive_posting_phrase_reuse(text, posting):
+            codes.append("excessive_posting_paraphrase")
 
         canonical_titles = {
             title.casefold()
@@ -1429,7 +1448,7 @@ class CoverLetterValidator:
             and not (
                 title == posting_title
                 and re.match(
-                    r"\s+(?:role|position)\b",
+                    r"\s+(?:role|position|work)\b",
                     text[match.end() :],
                     re.IGNORECASE,
                 )
@@ -1469,6 +1488,20 @@ class CoverLetterValidator:
         ):
             codes.append("excessive_evidence_listing")
         return list(dict.fromkeys(codes))
+
+    @classmethod
+    def _excessive_posting_phrase_reuse(cls, text: str, posting: JobPosting) -> bool:
+        posting_tokens = [
+            token
+            for token in re.findall(r"[a-z][a-z0-9+#-]{2,}", posting.description.casefold())
+            if token not in _CONTENT_STOPWORDS
+        ]
+        letter = text.casefold()
+        phrases = {
+            " ".join(posting_tokens[index : index + 3])
+            for index in range(max(0, len(posting_tokens) - 2))
+        }
+        return any(letter.count(phrase) >= 3 for phrase in phrases if len(phrase) >= 12)
 
     @staticmethod
     def _has_mechanical_posting_reference(
@@ -1815,14 +1848,15 @@ class DeterministicCoverLetterComposer:
             posting,
         )
         per_thread = 2 if length_class is CoverLetterLengthClass.DEVELOPED else 1
-        if len(threads) >= 3:
-            primary_records = [
-                record for thread in threads[:2] for record in thread[:per_thread]
-            ][:3]
-            secondary_records = threads[2][:2]
-        elif len(threads) == 2:
+        if len(threads) >= 2:
             primary_records = threads[0][:per_thread]
-            secondary_records = threads[1][:2]
+            if (
+                length_class is CoverLetterLengthClass.DEVELOPED
+                and len(threads) >= 3
+            ):
+                secondary_records = [threads[1][0], threads[2][0]]
+            else:
+                secondary_records = threads[1][:per_thread]
         else:
             primary_records = threads[0][:per_thread]
             secondary_records = threads[0][:1]
@@ -1912,12 +1946,19 @@ class DeterministicCoverLetterComposer:
         )
         return " ".join(
             [
-                f"I am applying for the {posting.title} role{destination}.",
-                f"The role's focus on {role_focus} connects directly to my experience "
-                f"with {candidate_focus}.",
+                f"What stood out to me about the {posting.title} role{destination} "
+                f"is the work behind {role_focus}.",
                 (
-                    f"What interests me is the need to keep {posting_concepts[0]} connected "
-                    f"to {self._thread_focus(evidence[0])} through implementation."
+                    f"My experience with {candidate_focus} has taught me to connect "
+                    "implementation to test behavior."
+                ),
+                (
+                    "My work has involved making those boundaries explicit enough to "
+                    "test and practical enough to debug."
+                ),
+                (
+                    "That practical boundary, where a design has to work as a complete "
+                    "system, is what makes the role interesting to me."
                 ),
             ]
         )
@@ -1937,41 +1978,43 @@ class DeterministicCoverLetterComposer:
         ]
         focuses = [self._thread_focus(record) for record in records]
         sentences.append(
-            "This work linked hardware testing to interface behavior."
+            "What mattered was tracing behavior across the interface and back to a "
+            "testable cause."
             if secondary
-            else "Across this work, technical choices stayed tied to implementation "
-            "constraints and observable test behavior."
+            else "The work kept architecture decisions connected to observable test "
+            "behavior in the assembled system."
         )
         if adjacent:
-            adjacent_scope = " or ".join(posting_concepts[:2])
             sentences.extend(
                 [
                     (
-                        f"The connection is {self._joined(focuses[:2])}; I do not claim "
-                        f"direct {adjacent_scope} experience."
-                    ),
-                    (
-                        "That method required implementation decisions to remain connected "
-                        "to observable system behavior."
+                        f"The useful bridge is {self._joined(focuses[:2])}: the domain may "
+                        "differ, but the transferable habit is concrete: keep implementation "
+                        "decisions tied to observable system behavior."
                     ),
                 ]
             )
         else:
-            role_focus = self._joined(posting_concepts[:2])
             sentences.append(
-                f"The connection to {role_focus} comes from that demonstrated technical work."
+                "That made the interface itself part of the test strategy rather than a "
+                "detail to reconcile later."
             )
         if length_class is CoverLetterLengthClass.DEVELOPED:
             if secondary:
                 sentences.extend(
                     [
                         (
-                            "At that boundary, interface behavior remained tied to measured "
-                            "test results."
+                            "At that boundary, a useful diagnosis had to connect interface "
+                            "behavior to measured test results."
                         ),
                         (
-                            "That is the transferable engineering method I would bring to "
-                            "the role."
+                            "It is a method I can carry into a new system while respecting "
+                            "the differences between systems."
+                        ),
+                        (
+                            "My method was to keep the question narrow: what changed, what "
+                            "could be measured, which interface could explain the difference, "
+                            "and what evidence would settle it."
                         ),
                     ]
                 )
@@ -1979,12 +2022,16 @@ class DeterministicCoverLetterComposer:
                 sentences.extend(
                     [
                         (
-                            "Following those choices through implementation gave me a "
-                            "practical view of system trade-offs."
+                            "Following those choices through implementation made the system "
+                            "trade-offs visible early."
                         ),
                         (
-                            "My work also required the design, software, and evaluation to "
-                            "remain coherent as the prototype developed."
+                            "This work required moving from observed behavior back to the "
+                            "design or implementation decision that could explain it, then "
+                            "checking whether the next test behaved as expected."
+                        ),
+                        (
+                            "That method kept debugging tied to the system in front of me."
                         ),
                     ]
                 )
@@ -2024,15 +2071,18 @@ class DeterministicCoverLetterComposer:
         return " ".join(
             [
                 (
-                    f"I would welcome the opportunity to discuss the {posting.title} "
-                    f"role{destination}."
+                    "That method turns a broad system problem into a sequence of "
+                    "testable decisions."
                 ),
                 (
-                    f"My experience with {candidate_focus} gives me a grounded starting "
-                    f"point for contributing to {role_focus}, with that connection "
-                    "anchored in technical work and measured results I can support directly."
+                    f"That is why the {posting.title} work{destination} feels like a natural "
+                    "next problem for me."
                 ),
-                "Thank you for considering my application.",
+                (
+                    f"I can contribute experience with {candidate_focus}, along with an "
+                    f"approach that follows {role_focus} through implementation and testing."
+                ),
+                "I would welcome a conversation about the work and the decisions behind it.",
             ]
         )
 
@@ -2043,7 +2093,8 @@ class DeterministicCoverLetterComposer:
         *,
         index: int,
     ) -> str:
-        action = cls._finite_action(record.source_text)
+        writer_text = record.writer_text or record.source_text
+        action = cls._finite_action(writer_text)
         title = record.entry_title or (
             "technical project"
             if record.kind is CoverLetterEvidenceKind.PROJECT
@@ -2052,7 +2103,7 @@ class DeterministicCoverLetterComposer:
         if action is None:
             focus = cls._thread_focus(record)
             return f"The {title} work gave me direct experience with {focus}."
-        normalized_source = " ".join(record.source_text.split()).strip(" .,:;-")
+        normalized_source = " ".join(writer_text.split()).strip(" .,:;-")
         project_label = title if title.casefold().endswith("project") else f"{title} project"
         if (
             len(normalized_source.split()) >= 8
@@ -2087,19 +2138,16 @@ class DeterministicCoverLetterComposer:
             additions = cls._joined(missing_technologies[:3])
             if record.kind is CoverLetterEvidenceKind.PROJECT:
                 if index == 0:
-                    return f"In the {project_label}, I {action} and incorporated {additions}."
-                return (
-                    f"A second part of the {project_label} {action} and incorporated "
-                    f"{additions}."
-                )
+                    return f"On the {project_label}, I {action} and incorporated {additions}."
+                return f"I also {action} and incorporated {additions}."
             if index == 0:
-                return f"As {title}, I {action} and incorporated {additions}."
-            return f"In related {title} work, I {action} and incorporated {additions}."
+                return f"In my {title} work, I {action} and incorporated {additions}."
+            return f"I also {action} and incorporated {additions}."
         if record.kind is CoverLetterEvidenceKind.PROJECT:
-            return f"In the {project_label}, I {action}."
+            return f"On the {project_label}, I {action}."
         if index == 0:
-            return f"As {title}, I {action}."
-        return f"In my {title} work, I {action}."
+            return f"In my {title} work, I {action}."
+        return f"I also {action}."
 
     @staticmethod
     def _finite_action(text: str) -> str | None:

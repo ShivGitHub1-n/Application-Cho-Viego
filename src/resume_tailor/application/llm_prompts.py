@@ -51,14 +51,20 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (
             "Draft a concise, human, evidence-grounded cover-letter body for this exact candidate, "
-            "company, and role. Build one narrative across why this company, why this candidate, and "
-            "why this role. Return only paragraph text, authorized candidate evidence IDs, authorized "
+            "company, and role. Treat the supplied narrative_plan as the editorial brief: establish "
+            "its thesis, develop the ordered evidence stories, and make the transitions serve that "
+            "same through-line. Do not write independent evidence summaries and stitch them together. "
+            "Before returning, silently reread the complete letter for coherence, specificity, natural "
+            "rhythm, posting paraphrase, resume-like enumeration, generic opening/closing language, "
+            "and unsupported company praise; revise any such problem in the same response. Return only "
+            "paragraph text, authorized candidate evidence IDs, authorized "
             "company research IDs, paragraph purpose, optional narrative thread ID, and length class. "
             "Do not return diagnostics, rationale, claim confidence, formatting, salutation, or sign-off. "
             "Each paragraph purpose must be exactly one machine-readable identifier: "
             + ", ".join(purpose.value for purpose in CoverLetterParagraphPurpose)
             + ". Put role-specific or company-specific descriptions in paragraph text, never in purpose. "
-            "Use only supplied IDs; do not infer personal motivation or company facts."
+            "Use only supplied IDs; do not infer personal motivation or company facts. Never repeat a "
+            "prohibited title claim, and use only authoritative_entry_titles if a self-title is needed."
         ),
     }[operation]
     payload = json.dumps(request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
