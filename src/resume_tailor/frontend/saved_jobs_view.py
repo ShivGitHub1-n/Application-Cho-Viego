@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
+from resume_tailor.application.job_discovery.filtering import filter_saved_jobs
 from resume_tailor.application.job_discovery.presentation import (
     normalize_job_description_for_display,
 )
+from resume_tailor.frontend.jobs_filter_view import render_browse_controls
 
 
 def render_saved_jobs(experience: Any, profile_id: str, *, streamlit_module: Any) -> None:
-    streamlit_module.subheader("Saved")
     streamlit_module.caption(
         "Immutable snapshots stay available for review even when a live posting changes "
         "or disappears."
@@ -22,8 +24,27 @@ def render_saved_jobs(experience: Any, profile_id: str, *, streamlit_module: Any
             )
         return
 
+    now_factory = getattr(experience, "now", None)
+    now = now_factory() if callable(now_factory) else datetime.now(UTC)
+    controls = render_browse_controls(
+        streamlit_module,
+        section="saved",
+        items=saved_jobs,
+        filter_items=filter_saved_jobs,
+        now=now,
+        result_noun="saved snapshots",
+    )
+    visible_saved_jobs = controls.filtered
+    if not visible_saved_jobs:
+        with streamlit_module.container(border=True, key="jobs-saved-filter-empty"):
+            streamlit_module.subheader("No jobs match your search and filters.")
+            streamlit_module.write("Use Clear all or adjust the search and filters.")
+        return
+
     checked = streamlit_module.session_state.get("jobs_checked_saved_jobs", {})
-    saved_by_id = {saved.saved_id: checked.get(saved.saved_id, saved) for saved in saved_jobs}
+    saved_by_id = {
+        saved.saved_id: checked.get(saved.saved_id, saved) for saved in visible_saved_jobs
+    }
     selected_id = streamlit_module.session_state.get("jobs_saved_selected_id")
     if selected_id not in saved_by_id:
         selected_id = next(iter(saved_by_id))
@@ -31,7 +52,9 @@ def render_saved_jobs(experience: Any, profile_id: str, *, streamlit_module: Any
 
     left, right = streamlit_module.columns([0.38, 0.62], gap="large")
     with left:
-        streamlit_module.subheader(f"Saved snapshots · {len(saved_jobs)}")
+        streamlit_module.subheader(
+            f"Saved snapshots · {len(visible_saved_jobs)} of {len(saved_jobs)}"
+        )
         for saved in saved_by_id.values():
             _render_saved_card(
                 saved, selected=saved.saved_id == selected_id, streamlit_module=streamlit_module

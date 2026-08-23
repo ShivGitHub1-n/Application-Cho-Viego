@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import inspect
+
 from resume_tailor.domain.job_discovery.models import EligibilityStatus, FitGrade
 from resume_tailor.frontend.job_feed_view import (
     eligibility_indicator_markup,
     fit_grade_meter_markup,
     recommendation_selection_key,
 )
-from resume_tailor.frontend.jobs_page import apply_tailoring_handoff, jobs_css
+from resume_tailor.frontend.jobs_page import (
+    JobsPageExperience,
+    apply_tailoring_handoff,
+    jobs_css,
+)
 
 
 def test_fit_grade_meter_maps_each_grade_without_numeric_score() -> None:
@@ -178,6 +184,17 @@ def test_jobs_css_covers_the_keyed_visual_surfaces_and_responsive_layout() -> No
     assert "body" not in css
 
 
+def test_jobs_css_matches_page_eleven_browse_surface_geometry() -> None:
+    css = jobs_css()
+
+    assert '[data-testid="stTextInput"] input' in css
+    assert "min-height: 2.625rem;" in css
+    assert '[class*="st-key-jobs-filter-panel-"]' in css
+    assert "border-radius: 12px;" in css
+    assert '[class*="st-key-jobs-chip-"] button' in css
+    assert "border-radius: 999px;" in css
+
+
 def test_jobs_css_uses_shared_semantic_tokens_and_selected_state_precedence() -> None:
     css = jobs_css()
 
@@ -238,3 +255,10 @@ def test_jobs_css_defines_navigation_precedence_and_eligibility_tokens() -> None
     assert "gap: 1.25rem;" in css
     assert css.index(active) < css.index(active_hover)
     assert "background: transparent !important;" in css[css.index(active_hover) :]
+
+
+def test_explore_detail_contract_accepts_sector_scope() -> None:
+    parameters = inspect.signature(JobsPageExperience.get_job_detail).parameters
+
+    assert "sector" in parameters
+    assert parameters["sector"].kind is inspect.Parameter.KEYWORD_ONLY

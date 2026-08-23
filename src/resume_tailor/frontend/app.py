@@ -83,6 +83,7 @@ from resume_tailor.frontend.job_discovery_view import (
     ApplicationJobDiscoveryDeliveryApi,
     render_job_discovery_view,
 )
+from resume_tailor.frontend.jobs_filter_view import clear_browse_state
 from resume_tailor.frontend.jobs_page import render_jobs_page, render_jobs_unavailable
 from resume_tailor.frontend.profile_page import ProfilePageDependencies, render_profile_page
 from resume_tailor.frontend.resume_studio_page import (
@@ -628,7 +629,57 @@ def create_jobs_experience(
 
 
 def _clear_tailoring_state() -> None:
-    invalidate_derived_workflow(cast(MutableMapping[str, object], st.session_state))
+    state = cast(MutableMapping[str, object], st.session_state)
+    invalidate_derived_workflow(state)
+    clear_browse_state(state)
+    for key in (
+        "jobs_tailored_selected_job_id",
+        "jobs_explore_selected_job_id",
+        "jobs_saved_selected_id",
+        "jobs_selected_explore_sector",
+    ):
+        state.pop(key, None)
+
+
+def _profile_options(profile_repository: Any) -> list[tuple[str, str]]:
+    try:
+        profiles = profile_repository.list_all()
+    except (ProfileStoreError, CorruptStoredProfileError):
+        return []
+    return [(profile.id, profile.display_name) for profile in profiles]
+
+
+def _activate_profile(
+    profile_id: str, profile_repository: SQLiteMasterProfileRepository
+) -> None:
+    """Load a shell-selected reviewed profile through canonical storage authority."""
+
+    try:
+        profile = profile_repository.get(profile_id)
+    except (ProfileStoreError, CorruptStoredProfileError):
+        profile = None
+    _clear_tailoring_state()
+    _invalidate_job_discovery_profile_state()
+    if profile is None:
+        st.session_state.pop("profile", None)
+        st.session_state["profile_id"] = ""
+        st.session_state.pop("jobs_profile_id", None)
+        _queue_profile_id_input("")
+        st.session_state["profile_load_status"] = (
+            "The selected profile could not be loaded safely."
+        )
+        return
+    st.session_state["profile"] = profile
+    st.session_state["profile_id"] = profile.id
+    st.session_state["jobs_profile_id"] = profile.id
+    st.session_state["job_discovery_profile_id"] = profile.id
+    _queue_profile_id_input(profile.id)
+    st.session_state["profile_load_status"] = "Loaded from application storage."
+    populate_profile_editor_state(
+        _state(),
+        profile,
+        f"saved:{profile.id}:{profile_change_fingerprint(profile)}",
+    )
 
 
 def _invalidate_job_discovery_profile_state() -> None:
@@ -2307,6 +2358,7 @@ if not st.session_state.get("_profile_bootstrap_complete"):
         )
 
 active_profile = cast(MasterProfile | None, st.session_state.get("profile"))
+profile_options = _profile_options(profile_repository)
 active_route = normalize_route(
     render_application_shell(
         st,
@@ -2314,6 +2366,10 @@ active_route = normalize_route(
         active_profile_id=getattr(active_profile, "id", None)
         or st.session_state.get("job_discovery_profile_id")
         or st.session_state.get("profile_id"),
+        profile_options=profile_options,
+        on_profile_change=lambda profile_id: _activate_profile(
+            profile_id, profile_repository
+        ),
     )
 )
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, MutableMapping, Sequence
 from typing import Any
 
 from resume_tailor.frontend.app_shell_styles import application_shell_css
@@ -28,6 +28,19 @@ def _consume_pending_route(state: MutableMapping[str, Any]) -> AppRoute | None:
 def _select_route(streamlit_module: Any, route: AppRoute) -> None:
     streamlit_module.session_state["app_pending_page"] = route.value
     streamlit_module.rerun()
+
+
+def _select_profile(
+    state: MutableMapping[str, Any], on_profile_change: Callable[[str], None] | None
+) -> None:
+    selected = str(state.get("jobs-profile-selector", "")).strip()
+    if not selected:
+        return
+    state["jobs_profile_id"] = selected
+    state["profile_id"] = selected
+    state.pop("profile", None)
+    if on_profile_change is not None:
+        on_profile_change(selected)
 
 
 def _render_route_control(
@@ -75,6 +88,8 @@ def render_application_shell(
     active_profile_label: str | None = None,
     active_profile_id: str | None = None,
     development_ui: Callable[[], None] | None = None,
+    profile_options: Sequence[tuple[str, str]] | None = None,
+    on_profile_change: Callable[[str], None] | None = None,
 ) -> str:
     """Render canonical navigation and return the selected product route.
 
@@ -101,12 +116,28 @@ def render_application_shell(
                 _render_route_control(streamlit_module, route, active_route, "sidebar")
             with streamlit_module.container(key="pw-profile-context"):
                 streamlit_module.caption("Active profile")
-                label = active_profile_label or state.get("profile_display_name")
-                profile_id = (
-                    active_profile_id or state.get("jobs_profile_id") or state.get("profile_id")
+                profile_id = active_profile_id or state.get("jobs_profile_id") or state.get(
+                    "profile_id"
                 )
-                streamlit_module.markdown(label or "Choose a reviewed profile")
-                streamlit_module.caption(f"Reviewed profile · {profile_id or 'not selected'}")
+                if profile_options:
+                    profile_ids = [profile_id for profile_id, _ in profile_options]
+                    labels = dict(profile_options)
+                    selected = profile_id if profile_id in profile_ids else profile_ids[0]
+                    streamlit_module.selectbox(
+                        "Active profile",
+                        profile_ids,
+                        index=profile_ids.index(selected),
+                        format_func=lambda value: labels[value],
+                        key="jobs-profile-selector",
+                        label_visibility="collapsed",
+                        on_change=_select_profile,
+                        args=(state, on_profile_change),
+                    )
+                    streamlit_module.caption(f"Reviewed · {selected}")
+                else:
+                    label = active_profile_label or state.get("profile_display_name")
+                    streamlit_module.markdown(label or "Choose a reviewed profile")
+                    streamlit_module.caption(f"Reviewed · {profile_id or 'not selected'}")
             if development_ui is not None:
                 with streamlit_module.expander("Offline scenario", expanded=False):
                     development_ui()

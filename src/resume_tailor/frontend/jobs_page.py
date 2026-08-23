@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from datetime import datetime
+from dataclasses import is_dataclass, replace
+from datetime import UTC, datetime
 from html import escape
 from typing import Any, Protocol
 
@@ -11,10 +12,12 @@ from resume_tailor.application.job_discovery.experience import (
     FeedView,
     JobsExperienceService,
 )
+from resume_tailor.application.job_discovery.filtering import filter_recommendations
 from resume_tailor.application.job_discovery.handoff import TailoringHandoff
 from resume_tailor.domain.job_discovery.queries import APPROVED_EXPLORE_SECTORS, FeedKind
 from resume_tailor.frontend.job_feed_view import render_feed
 from resume_tailor.frontend.job_preferences_view import render_preferences
+from resume_tailor.frontend.jobs_filter_view import clear_browse_state, render_browse_controls
 from resume_tailor.frontend.jobs_styles import jobs_css as shared_jobs_css
 from resume_tailor.frontend.saved_jobs_view import render_saved_jobs
 
@@ -81,14 +84,10 @@ def render_jobs_page(
 ) -> None:
     streamlit_module.markdown(jobs_css(), unsafe_allow_html=True)
     with streamlit_module.container(key="jobs-page"):
-        streamlit_module.title("Jobs")
-        streamlit_module.caption(
-            "Evidence-backed job discovery from approved sources, with fit, "
-            "eligibility, evidence, and freshness kept distinct."
-        )
-        streamlit_module.divider()
-        streamlit_module.subheader("Job discovery")
         with streamlit_module.container(key="jobs-header"):
+            header_col, action_col = streamlit_module.columns(
+                [4.6, 1], gap="large", vertical_alignment="top"
+            )
             profiles_result = experience.list_reviewed_profiles()
             if getattr(profiles_result, "warning", None):
                 streamlit_module.warning(profiles_result.warning)
@@ -103,40 +102,33 @@ def render_jobs_page(
                 )
                 return
             profile_ids = [profile.profile_id for profile in profiles]
-            labels = {profile.profile_id: profile.label for profile in profiles}
             owners = {profile.profile_id: profile.user_id for profile in profiles}
-            with streamlit_module.container(key="jobs-header-controls"):
-                profile_col, spacer_col, action_col = streamlit_module.columns(
-                    [1.15, 2.25, 1], gap="medium", vertical_alignment="bottom"
-                )
-                with profile_col:
-                    previous_profile = streamlit_module.session_state.get("jobs_profile_id")
-                    selected_profile = streamlit_module.selectbox(
-                        "Reviewed profile",
-                        profile_ids,
-                        index=profile_ids.index(previous_profile)
-                        if previous_profile in profile_ids
-                        else 0,
-                        format_func=lambda value: f"{labels[value]} - {value}",
-                        key="jobs-profile-selector",
-                    )
-                if previous_profile != selected_profile:
-                    _clear_profile_state(streamlit_module.session_state)
+            previous_profile = streamlit_module.session_state.get("jobs_profile_id")
+            selected_profile = previous_profile
+            if selected_profile not in profile_ids:
+                selected_profile = profile_ids[0]
+            if previous_profile != selected_profile:
+                _clear_profile_state(streamlit_module.session_state)
                 streamlit_module.session_state["jobs_profile_id"] = selected_profile
                 streamlit_module.session_state["profile_id"] = selected_profile
-                preferences = experience.get_preferences(selected_profile)
-                with spacer_col:
-                    streamlit_module.empty()
-                with action_col:
-                    if streamlit_module.button(
-                        "Refresh recommendations",
-                        key="jobs-refresh-tailored",
-                        type="primary",
-                        width="content",
-                        disabled=preferences is None,
-                    ):
-                        _refresh_tailored(experience, selected_profile, streamlit_module)
-                    last_refresh = streamlit_module.session_state.get("jobs_last_tailored_refresh")
+            preferences = experience.get_preferences(selected_profile)
+            with header_col:
+                streamlit_module.title("Jobs")
+                streamlit_module.caption(
+                    "Evidence-backed job discovery from approved sources, with fit, "
+                    "eligibility, evidence, and freshness kept distinct."
+                )
+            with action_col:
+                if streamlit_module.button(
+                    "Refresh recommendations",
+                    key="jobs-refresh-tailored",
+                    type="primary",
+                    width="stretch",
+                    disabled=preferences is None,
+                ):
+                    _refresh_tailored(experience, selected_profile, streamlit_module)
+                last_refresh = streamlit_module.session_state.get("jobs_last_tailored_refresh")
+                if last_refresh is not None:
                     streamlit_module.caption(_refresh_copy(last_refresh))
 
         with streamlit_module.container(key="jobs-section-nav"):
@@ -153,7 +145,7 @@ def render_jobs_page(
             if current_section not in section_options:
                 current_section = section_options[0]
             if pending_section in section_options:
-                streamlit_module.session_state["jobs-active-section"] = current_section
+                streamlit_module.session_state.pop("jobs-active-section", None)
             section = streamlit_module.pills(
                 "Jobs section",
                 section_options,
@@ -195,11 +187,6 @@ def _render_tailored(
             action_key="jobs-open-preferences",
         )
         return
-    _render_section_heading(
-        streamlit_module,
-        "Tailored for you",
-        "Evidence-backed recommendations based on your confirmed preferences.",
-    )
     try:
         feed = experience.load_feed(profile_id, FeedKind.TAILORED)
     except Exception:
@@ -212,25 +199,26 @@ def _render_tailored(
             action_key="jobs-refresh-tailored-failure",
         )
         return
-    _render_filter_row(
+    controls = render_browse_controls(
         streamlit_module,
-        [
-            ("Location", _locations(preferences)),
-            ("Level", _levels(preferences)),
-            ("Max age", f"{getattr(preferences, 'max_posting_age_days', 'unknown')} days"),
-        ],
-        f"{len(feed.visible)} visible roles",
+        section="tailored",
+        items=feed.visible,
+        filter_items=filter_recommendations,
+        now=_browse_now(experience),
     )
+    projected_feed = _project_feed(feed, controls.filtered)
     _render_sort_note(streamlit_module, "Sorted by fit, eligibility, then freshness")
-    _render_feed(experience, profile_id, FeedKind.TAILORED, feed, streamlit_module)
+    _render_feed(
+        experience,
+        profile_id,
+        FeedKind.TAILORED,
+        projected_feed,
+        streamlit_module,
+        base_visible_count=controls.base_count,
+    )
 
 
 def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_module: Any) -> None:
-    _render_section_heading(
-        streamlit_module,
-        "Explore sectors",
-        "Browse approved sectors with freshness-led ordering; fit is a tie-break only.",
-    )
     with streamlit_module.container(key="jobs-explore-controls"):
         control_col, spacer_col, action_col = streamlit_module.columns(
             [1.25, 0.65, 1], gap="medium", vertical_alignment="bottom"
@@ -320,13 +308,23 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
             action_key="jobs-refresh-explore-empty",
         )
         return
-    _render_filter_row(
+    controls = render_browse_controls(
         streamlit_module,
-        [("Sector", sector)],
-        f"{len(feed.visible)} visible roles",
+        section="explore",
+        items=feed.visible,
+        filter_items=filter_recommendations,
+        now=_browse_now(experience),
     )
+    projected_feed = _project_feed(feed, controls.filtered)
     _render_sort_note(streamlit_module, "Newest postings first; fit breaks ties")
-    _render_feed(experience, profile_id, FeedKind.EXPLORE, feed, streamlit_module)
+    _render_feed(
+        experience,
+        profile_id,
+        FeedKind.EXPLORE,
+        projected_feed,
+        streamlit_module,
+        base_visible_count=controls.base_count,
+    )
 
 
 def render_jobs_unavailable(streamlit_module: Any = st) -> None:
@@ -348,6 +346,8 @@ def _render_feed(
     feed_kind: FeedKind,
     feed: FeedView,
     streamlit_module: Any,
+    *,
+    base_visible_count: int | None = None,
 ) -> None:
     selected_key = (
         "jobs_tailored_selected_job_id"
@@ -408,6 +408,7 @@ def _render_feed(
             expanded_excluded=expanded,
             excluded=excluded,
             on_toggle_excluded=toggle_excluded,
+            base_visible_count=base_visible_count,
         )
 
 
@@ -559,6 +560,20 @@ def _clear_profile_state(state: MutableMapping[str, object]) -> None:
         "jobs-pref-excluded-companies",
     ):
         state.pop(key, None)
+    clear_browse_state(state)
+
+
+def _browse_now(experience: JobsPageExperience) -> datetime:
+    now = getattr(experience, "now", None)
+    return now() if callable(now) else datetime.now(UTC)
+
+
+def _project_feed(feed: FeedView, visible: list[Any]) -> FeedView:
+    if hasattr(feed, "model_copy"):
+        return feed.model_copy(update={"visible": visible})
+    if is_dataclass(feed):
+        return replace(feed, visible=visible)
+    raise TypeError("Feed view must support model_copy or dataclass replacement")
 
 
 def _safe_key(value: str) -> str:
