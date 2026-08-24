@@ -46,13 +46,18 @@ deferred work; it is not a feature roadmap.
    Pydantic models and then validated locally. Unknown, duplicate, cross-entry,
    unsupported, numerically inconsistent, ownership-expanding, or provenance-
    losing claims are rejected or review-gated. A rejected or unavailable
-   rewrite falls back to the exact reviewed source text.
+   rewrite falls back to the exact reviewed source text. Posting terminology
+   absent from the literal source may be accepted as a derived normalization
+   only when reviewed same-entry evidence deterministically proves all of its
+   technical components; otherwise it remains review-required or rejected.
 
 7. **Source-versus-rewrite competition.** Source wording is always a candidate.
    A rewrite can win only after material grounded improvement is shown, while
    technical substance, tools, mechanisms, constraints, metrics, ownership,
    outcome, and line fit remain protected. Cosmetic compression is not enough;
-   generated three-line variants remain review-required.
+   generated three-line variants remain review-required. A proven job-aligned
+   semantic normalization is material writing value, but it inherits all
+   relevance and requirement authority from its reviewed evidence IDs.
    Approval makes a material review-required variant eligible, including a
    bounded writer alternative absent from the source seed, but does not force
    it over stronger reviewed wording. Authoritative entry metadata bounds title
@@ -123,14 +128,15 @@ deferred work; it is not a feature roadmap.
     immutable artifacts, immediate byte download, zero provider calls during
     download, and the tracked synthetic reference DOCX used by clean-checkout
     tests. Deferred work includes a richer editor, additional template
-    variants, exact pagination on runtimes without Word, and cross-role writer
-    calibration.
+    variants, exact pagination on runtimes without Word, and continued live
+    calibration against additional role archetypes.
 
 ## Accepted release notes and deferred items
 
-- Automatic rewriting is evidence-grounded and safely falls back to source text;
-  cross-role calibration is still needed to prove materially stronger Gemini
-  alternatives.
+- Automatic rewriting is evidence-grounded and safely falls back to source text.
+  Bounded hardware and software controls prove that posting terminology can add
+  material writing value without manufacturing selection relevance; live model
+  quality remains subject to manual acceptance.
 - Strong rewriting must preserve or surface exact supported tools, platforms,
   mechanisms, metrics, constraints, and engineering outcomes. Compression alone
   is not improvement.

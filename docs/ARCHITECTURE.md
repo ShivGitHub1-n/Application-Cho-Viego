@@ -127,6 +127,21 @@ remains a first-class candidate and wins when a rewrite is not materially
 clearer, tighter, or more readable. Generated wording continues to derive all
 relevance and requirement authority from the reviewed evidence bundle.
 
+The writer may express an already-proven concept using recognizable terminology
+from the posting. This semantic normalization happens after evidence selection
+and is accepted automatically only when a local, typed entailment check proves
+the term from reviewed source text or reviewed structured facts. Proof may use a
+direct reviewed fact or a bounded compositional rule whose required technical
+dimensions are all present. Ordinary linguistic normalization remains safe but
+does not receive material-rewrite authority from this layer. For
+example, authored C++ control code on an STM32 can support `embedded firmware`;
+STM32 interface integration without code authorship cannot. The target term
+must appear in the authoritative posting as well as the rewrite, and the normal
+technology, metric, outcome, ownership, title, provenance, and cross-entry
+validators still run. An unproven semantic addition remains review-required or
+is rejected. This does not add a provider call or create pre-selection generated
+evidence.
+
 The hybrid authority split is explicit:
 
 - the application strategist may choose a semantic portfolio only from supplied
@@ -141,6 +156,9 @@ The hybrid authority split is explicit:
 - deterministic validation rejects unsupported identifiers, numbers,
   technologies, outcomes, ownership expansion, cross-entry claims, or
   provenance loss;
+- deterministic semantic normalization may admit job terminology only when the
+  reviewed same-entry bundle proves every required component; the admitted term
+  is recorded on the typed variant for diagnostics and writing comparison;
 - a variant that introduces content-bearing terminology which deterministic
   checks cannot prove is quarantined for bounded semantic review rather than
   rendered automatically;

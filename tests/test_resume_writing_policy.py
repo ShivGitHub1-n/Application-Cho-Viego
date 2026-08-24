@@ -66,6 +66,10 @@ def test_recruiter_policy_prioritizes_ownership_method_and_supported_xyz() -> No
     assert "accomplished x, measured by y, by doing z" in instructions
     assert "never invent a metric" in instructions
     assert "keep the reviewed source unchanged" in instructions
+    assert "recognizable terminology from the target posting" in instructions
+    assert "never turn integration into authorship" in instructions
+    assert "smallest substantive change" in instructions
+    assert "do not decorate the bullet" in instructions
 
 
 def test_supported_xyz_style_rewrite_preserves_metric_and_facts() -> None:

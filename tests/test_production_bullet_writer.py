@@ -492,6 +492,327 @@ def test_conservative_semantic_normalization_is_not_review_gated() -> None:
     assert diagnostics[0].normalized_unsupported_terms == []
 
 
+def test_evidence_entailed_firmware_terminology_is_validated_and_material() -> None:
+    source = (
+        "Developed STM32 microcontroller control code in C++ for actuator commands and feedback."
+    )
+    rewrite = (
+        "Developed C++ embedded firmware on STM32 for actuator control and feedback."
+    )
+    group = ApprovedEvidenceGroup(
+        entry_id="embedded-entry",
+        authoritative_entry_title="Embedded Developer",
+        evidence_ids=["embedded-control"],
+        source_texts=[source],
+        technologies=["STM32", "C++"],
+        capabilities=["microcontroller programming", "actuator control"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="embedded-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["embedded-control"],
+                preserved_technologies=["STM32", "C++"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["embedded-control"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="embedded-posting",
+            title="Embedded Firmware Engineer",
+            description="Develop embedded firmware in C/C++ for actuator control.",
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED
+    assert accepted[0].material_improvement is True
+    assert "firmware" in accepted[0].entailed_target_terms
+    assert "embedded" in accepted[0].entailed_target_terms
+    assert diagnostics[0].normalized_unsupported_terms == []
+    assert any(
+        "evidence-entailed target terminology" in reason
+        for reason in accepted[0].improvement_reasons
+    )
+
+
+def test_interface_integration_does_not_entail_firmware_authorship() -> None:
+    source = "Integrated Jetson and STM32 interfaces for actuator commands and feedback."
+    rewrite = "Developed C++ embedded firmware on STM32 for actuator control and feedback."
+    group = ApprovedEvidenceGroup(
+        entry_id="integration-entry",
+        authoritative_entry_title="Systems Integrator",
+        evidence_ids=["interface-integration"],
+        source_texts=[source],
+        technologies=["Jetson", "STM32"],
+        capabilities=["interface integration", "actuator control"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="integration-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["interface-integration"],
+                preserved_technologies=["STM32"],
+                evidence_combined=False,
+                confidence=0.9,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["interface-integration"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="firmware-posting",
+            title="Embedded Firmware Engineer",
+            description="Develop C++ firmware for STM32 actuator control.",
+        ),
+    )
+
+    assert not accepted
+    assert rejected[0].validation_status is BulletValidationStatus.REJECTED
+    assert "firmware" in diagnostics[0].normalized_unsupported_terms
+    assert "firmware" not in rejected[0].entailed_target_terms
+
+
+def test_mounts_entail_fixtures_but_not_enclosures() -> None:
+    source = "Designed SolidWorks mounts for LiDAR, cameras, and Jetson modules."
+    group = ApprovedEvidenceGroup(
+        entry_id="mechanical-entry",
+        authoritative_entry_title="Mechanical Designer",
+        evidence_ids=["mount-design"],
+        source_texts=[source],
+        technologies=["SolidWorks", "LiDAR", "Jetson"],
+        capabilities=["mount design"],
+        max_rendered_lines=2,
+    )
+    fixture_rewrite = "Designed SolidWorks fixtures for LiDAR, cameras, and Jetson hardware."
+    enclosure_rewrite = (
+        "Designed SolidWorks fixtures and enclosures for LiDAR, cameras, and Jetson hardware."
+    )
+    service = HybridLlmServices(None, 0, 1, False, False, False)
+    posting = JobPosting(
+        id="mechanical-posting",
+        title="Mechanical Engineer",
+        description="Design SolidWorks fixtures and enclosures for embedded sensing hardware.",
+    )
+
+    accepted, rejected, diagnostics = service._variant_records(
+        [
+            BulletRewrite(
+                entry_id="mechanical-entry",
+                final_bullet_text=fixture_rewrite,
+                source_evidence_ids=["mount-design"],
+                preserved_technologies=["SolidWorks", "LiDAR", "Jetson"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=fixture_rewrite,
+                        supporting_evidence_ids=["mount-design"],
+                    )
+                ],
+            ),
+            BulletRewrite(
+                entry_id="mechanical-entry",
+                final_bullet_text=enclosure_rewrite,
+                source_evidence_ids=["mount-design"],
+                preserved_technologies=["SolidWorks", "LiDAR", "Jetson"],
+                evidence_combined=False,
+                confidence=0.9,
+                claims=[
+                    BulletRewriteClaim(
+                        text=enclosure_rewrite,
+                        supporting_evidence_ids=["mount-design"],
+                    )
+                ],
+            ),
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=posting,
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED
+    assert accepted[0].entailed_target_terms == ["fixtures"]
+    assert accepted[1].validation_status is BulletValidationStatus.REVIEW_REQUIRED
+    assert "enclosures" in diagnostics[1].normalized_unsupported_terms
+
+
+def test_explicit_board_commissioning_entails_pcb_bring_up() -> None:
+    source = (
+        "Commissioned a printed circuit board during initial power-on and inspected supply rails."
+    )
+    rewrite = "Performed PCB bring-up and inspected supply rails during initial power-on."
+    group = ApprovedEvidenceGroup(
+        entry_id="electronics-entry",
+        authoritative_entry_title="Electronics Engineer",
+        evidence_ids=["board-commissioning"],
+        source_texts=[source],
+        capabilities=["board commissioning", "supply-rail inspection"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="electronics-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["board-commissioning"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["board-commissioning"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="electronics-posting",
+            title="Hardware Engineer",
+            description="Perform PCB bring-up and inspect power rails.",
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED
+    assert "pcb bring-up" in accepted[0].entailed_target_terms
+    assert diagnostics[0].normalized_unsupported_terms == []
+
+
+def test_software_data_processing_entails_target_data_pipeline_term() -> None:
+    source = (
+        "Developed Python jobs that extracted, normalized, and loaded distributor records."
+    )
+    rewrite = (
+        "Developed a Python data pipeline to extract, normalize, and load distributor records."
+    )
+    group = ApprovedEvidenceGroup(
+        entry_id="software-entry",
+        authoritative_entry_title="Software Engineer",
+        evidence_ids=["data-processing"],
+        source_texts=[source],
+        technologies=["Python"],
+        capabilities=["data processing", "record normalization"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="software-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["data-processing"],
+                preserved_technologies=["Python"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["data-processing"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="software-posting",
+            title="Data Platform Engineer",
+            description="Develop Python data pipelines for distributor records.",
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED
+    assert accepted[0].material_improvement is True
+    assert accepted[0].entailed_target_terms == ["data pipeline"]
+    assert diagnostics[0].normalized_unsupported_terms == []
+
+
+def test_bench_testing_does_not_entail_hardware_in_the_loop() -> None:
+    source = "Built a bench-level actuator command and state visualization setup."
+    rewrite = "Developed a hardware-in-the-loop actuator test setup."
+    group = ApprovedEvidenceGroup(
+        entry_id="test-entry",
+        authoritative_entry_title="Test Engineer",
+        evidence_ids=["bench-test"],
+        source_texts=[source],
+        capabilities=["actuator commands", "state visualization", "bench testing"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="test-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["bench-test"],
+                evidence_combined=False,
+                confidence=0.9,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["bench-test"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="hil-posting",
+            title="Hardware Test Engineer",
+            description="Develop hardware-in-the-loop actuator test systems.",
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.REVIEW_REQUIRED
+    assert any(
+        "loop" in term or "hardware-in-the-loop" in term
+        for term in diagnostics[0].normalized_unsupported_terms
+    )
+
+
 def test_technical_plural_scope_change_remains_review_gated() -> None:
     source = "Integrated one microprocessor with an embedded microcontroller."
     rewrite = "Integrated microprocessors with embedded microcontrollers."
@@ -1106,6 +1427,114 @@ def test_validated_material_variant_can_win_within_selected_portfolio_entry() ->
         "Validated automated testing for production workflows.",
     }
     assert final.hybrid_diagnostic.rewritten_bullet_count == 1
+
+
+def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence() -> None:
+    source = (
+        "Developed STM32 microcontroller control code in C++ for actuator commands and feedback."
+    )
+    rewritten = (
+        "Developed C++ embedded firmware on STM32 for actuator control and feedback."
+    )
+    profile = MasterProfile(
+        id="semantic-writer-profile",
+        user_id="semantic-writer-user",
+        display_name="Semantic Writer Candidate",
+        experiences=[
+            ResumeItem(
+                id="embedded-entry",
+                title="Embedded Developer",
+                kind=EntityKind.EXPERIENCE,
+            )
+        ],
+        evidence=[
+            EvidenceItem(
+                id="embedded-control",
+                entity_id="embedded-entry",
+                source_text=source,
+                technologies=["STM32", "C++"],
+                capabilities=["microcontroller programming", "actuator control"],
+            ),
+            EvidenceItem(
+                id="embedded-validation",
+                entity_id="embedded-entry",
+                source_text=(
+                    "Validated STM32 actuator feedback with reviewed bench timing traces."
+                ),
+                technologies=["STM32"],
+                capabilities=["actuator validation", "timing analysis"],
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="semantic-writer-posting",
+        title="Embedded Firmware Engineer",
+        description=(
+            "Develop embedded firmware in C/C++ for actuator control and validate feedback."
+        ),
+    )
+    source_only = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        resume_composer=DeterministicResumeComposer(ExactFixedPageFit()),
+    )
+    source_plan = source_only.create_plan(profile, posting, TemplateConstraints())
+    source_resume = source_only.build_document(source_plan, profile, set())
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(
+                bullets=[
+                    BulletRewrite(
+                        entry_id="embedded-entry",
+                        final_bullet_text=rewritten,
+                        source_evidence_ids=["embedded-control"],
+                        preserved_technologies=["STM32", "C++"],
+                        evidence_combined=False,
+                        confidence=0.95,
+                        claims=[
+                            BulletRewriteClaim(
+                                text=rewritten,
+                                supporting_evidence_ids=["embedded-control"],
+                            )
+                        ],
+                    )
+                ]
+            ),
+        )
+    )
+    rewritten_service = _service(fake)
+    rewritten_resume = rewritten_service.build_document(
+        rewritten_service.create_plan(profile, posting, TemplateConstraints()),
+        profile,
+        set(),
+    )
+
+    source_evidence_ids = {
+        evidence_id
+        for bullet in source_resume.experience_bullets["embedded-entry"]
+        for evidence_id in bullet.evidence_ids
+    }
+    rewritten_evidence_ids = {
+        evidence_id
+        for bullet in rewritten_resume.experience_bullets["embedded-entry"]
+        for evidence_id in bullet.evidence_ids
+    }
+    selected_text = {
+        bullet.text for bullet in rewritten_resume.experience_bullets["embedded-entry"]
+    }
+    assert rewritten_evidence_ids == source_evidence_ids
+    assert rewritten in selected_text
+    assert source not in selected_text
+    assert rewritten_resume.review_pending_bullets == []
+    assert rewritten_resume.hybrid_diagnostic is not None
+    assert rewritten_resume.hybrid_diagnostic.rewritten_bullet_count == 1
+    assert any(
+        item.selected
+        and "firmware" in item.entailed_target_terms
+        and "embedded" in item.entailed_target_terms
+        for item in rewritten_resume.hybrid_diagnostic.bullet_variants
+    )
 
 
 def test_weak_rewrite_does_not_displace_selected_source_wording() -> None:

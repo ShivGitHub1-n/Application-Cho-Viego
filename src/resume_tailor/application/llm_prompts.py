@@ -78,8 +78,16 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
             "Tailor the bounded same-entry evidence groups into genuinely job-specific, "
             "natural resume bullets using only authorized evidence IDs. Follow the supplied "
             "provider response contract without explanatory, diagnostic, scoring, support, "
-            "or policy metadata. Omit groups whose source is already stronger than any "
-            "truthful rewrite."
+            "or policy metadata. Prefer employer-recognizable target terminology when the "
+            "complete reviewed bundle proves the same technical concept, even when the source "
+            "uses a more literal description. Make implicit context explicit only when every "
+            "material component is unambiguous: device integration does not prove code authorship, "
+            "ordinary bench testing does not prove hardware-in-the-loop operation, and contribution "
+            "does not prove ownership. Make the smallest substantive change needed for that "
+            "normalization; preserve ownership verbs, singular/plural scope, and qualifiers, and "
+            "do not decorate the evidence with inferred qualities such as real-time, precise, "
+            "robust, production-ready, or scalable. Omit groups whose source is already stronger "
+            "than any truthful rewrite."
         ),
         LlmOperation.SHORTEN_BULLETS: "Shorten the supplied grounded bullet without dropping protected facts.",
         LlmOperation.COVER_LETTER_DRAFT: (

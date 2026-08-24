@@ -423,6 +423,7 @@ def validate_rewrites(
     *,
     max_bullets_per_entry: int = 4,
     max_total_lines: int | None = None,
+    allowed_semantic_terms: list[str] | None = None,
 ) -> None:
     group_by_evidence = {
         evidence_id: group for group in groups for evidence_id in group.evidence_ids
@@ -475,7 +476,12 @@ def validate_rewrites(
                 failures.append(
                     "concise generated title claim conflicts with authoritative entry metadata"
                 )
-        _validate_claim_provenance(bullet, group_by_evidence, failures)
+        _validate_claim_provenance(
+            bullet,
+            group_by_evidence,
+            failures,
+            allowed_semantic_terms=allowed_semantic_terms or [],
+        )
         _validate_protected_facts(
             bullet.final_bullet_text,
             [fact for item in groups_for_bullet for fact in [*item.technologies, *item.metrics]],
@@ -497,6 +503,7 @@ def validate_rewrites(
             list(known_terms),
             failures,
             allow_new_terminology=bullet.support == ClaimConfidence.STRONGLY_IMPLIED,
+            additional_allowed_terms=allowed_semantic_terms or [],
         )
         _validate_ownership(
             bullet.final_bullet_text,
@@ -516,6 +523,7 @@ def validate_rewrites(
                 bullet.support,
                 failures,
                 label="concise alternative",
+                allowed_semantic_terms=allowed_semantic_terms or [],
             )
         entry_bullet_counts[bullet.entry_id] = entry_bullet_counts.get(bullet.entry_id, 0) + 1
         total_lines += _estimated_lines(bullet.final_bullet_text)
@@ -585,6 +593,8 @@ def _validate_claim_provenance(
     bullet: BulletRewrite,
     group_by_evidence: dict[str, ApprovedEvidenceGroup],
     failures: list[str],
+    *,
+    allowed_semantic_terms: list[str],
 ) -> None:
     if not bullet.claims:
         return
@@ -621,6 +631,7 @@ def _validate_claim_provenance(
             claim_terms,
             failures,
             allow_new_terminology=(bullet.support == ClaimConfidence.STRONGLY_IMPLIED),
+            additional_allowed_terms=allowed_semantic_terms,
         )
         _validate_ownership(
             claim.text,
@@ -641,6 +652,7 @@ def _validate_variant_text(
     failures: list[str],
     *,
     label: str,
+    allowed_semantic_terms: list[str],
 ) -> None:
     local_failures: list[str] = []
     source_texts = [source for group in groups for source in group.source_texts]
@@ -662,6 +674,7 @@ def _validate_variant_text(
         list(known_terms),
         local_failures,
         allow_new_terminology=support == ClaimConfidence.STRONGLY_IMPLIED,
+        additional_allowed_terms=allowed_semantic_terms,
     )
     _validate_ownership(
         text,
@@ -721,10 +734,20 @@ def _validate_factual_terms(
     failures: list[str],
     *,
     allow_new_terminology: bool = False,
+    additional_allowed_terms: list[str] | None = None,
 ) -> None:
     if allow_new_terminology:
         return
-    allowed = _special_terms(" ".join(source_texts)) | {term.casefold() for term in technologies}
+    allowed = (
+        _special_terms(" ".join(source_texts))
+        | {term.casefold() for term in technologies}
+        | _special_terms(" ".join(additional_allowed_terms or []))
+        | {
+            token
+            for term in additional_allowed_terms or []
+            for token in re.findall(r"[a-z0-9+.#/-]+", term.casefold())
+        }
+    )
     result_terms = _special_terms(text)
     unsupported = result_terms - allowed
     if unsupported:

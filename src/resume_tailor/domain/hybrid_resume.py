@@ -13,8 +13,8 @@ from resume_tailor.domain.resume_composition import BulletLineFitDiagnostic
 
 EVIDENCE_RETRIEVAL_CONTRACT_VERSION = "resume-evidence-retrieval-v1"
 RESUME_WRITING_CONTRACT_VERSION = "evidence-grounded-bullet-v4"
-RESUME_WRITING_POLICY_VERSION = "technical-recruiter-writing-v6"
-RESUME_WRITING_PROMPT_VERSION = "gemini-batched-writer-v2"
+RESUME_WRITING_POLICY_VERSION = "technical-recruiter-writing-v7"
+RESUME_WRITING_PROMPT_VERSION = "gemini-batched-writer-v3"
 
 
 class RetrievalAdmissionStatus(StrEnum):
@@ -310,6 +310,7 @@ class BulletVariantRecord(BaseModel):
     line_fit: BulletLineFitDiagnostic
     material_improvement: bool = False
     improvement_reasons: list[str] = Field(default_factory=list)
+    entailed_target_terms: list[str] = Field(default_factory=list)
     selected: bool = False
     selection_reason: str | None = None
     future_user_review: bool = False

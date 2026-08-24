@@ -2649,6 +2649,7 @@ class DeterministicResumeComposer:
                 ),
                 rewrite_line_fit=line_fit,
                 material_improvement=writing_variant.material_improvement,
+                semantic_normalization=bool(writing_variant.entailed_target_terms),
             )
             score = round(score + writing_adjustment, 2)
         return _BulletCandidate(
@@ -6831,6 +6832,7 @@ def _rewrite_substance_adjustment(
     source_line_fit: BulletLineFitDiagnostic,
     rewrite_line_fit: BulletLineFitDiagnostic,
     material_improvement: bool,
+    semantic_normalization: bool = False,
 ) -> tuple[tuple[str, ...], tuple[str, ...], float]:
     """Score visible technical substance without rewarding provider novelty."""
 
@@ -6843,13 +6845,21 @@ def _rewrite_substance_adjustment(
         for value in item.technologies
         if value.strip() and _contains_phrase(normalized_source, _normalize(value))
     }
-    engineering_terms = {
+    capability_terms = {
         value.strip()
         for item in evidence_bundle
-        for value in [*item.capabilities, *item.outcomes]
+        for value in item.capabilities
         if len(_meaningful_tokens(_normalize(value))) >= 2
         and _contains_phrase(normalized_source, _normalize(value))
     }
+    outcome_terms = {
+        value.strip()
+        for item in evidence_bundle
+        for value in item.outcomes
+        if len(_meaningful_tokens(_normalize(value))) >= 2
+        and _contains_phrase(normalized_source, _normalize(value))
+    }
+    engineering_terms = capability_terms | outcome_terms
     source_engineering_phrases = {
         phrase
         for phrase in extract_reviewed_text_features(source_text).specific_phrases
@@ -6886,11 +6896,21 @@ def _rewrite_substance_adjustment(
     adjustment = -(
         (lost_technologies * 6.0) + (lost_metrics * 8.0) + (max(0, lost_engineering_terms) * 2.5)
     )
-    if material_improvement and not removed:
+    removed_hard_facts = {
+        term
+        for term in removed
+        if term in technology_terms or term in metric_terms or term in outcome_terms
+    }
+    if material_improvement and (
+        not removed or semantic_normalization and not removed_hard_facts
+    ):
         # A validated, substance-preserving rewrite may influence package
         # selection; provider novelty alone never reaches this branch. A
-        # concise or requirement-foregrounding rewrite earns the larger
-        # package signal; a merely restructured longer sentence does not.
+        # deterministically entailed semantic normalization may replace soft
+        # lexical phrases, but it still receives no bonus after dropping an
+        # exact reviewed technology, metric, or outcome. A concise or requirement-
+        # foregrounding rewrite earns the larger package signal; a merely
+        # restructured longer sentence does not.
         adjustment += (
             8.0
             if (

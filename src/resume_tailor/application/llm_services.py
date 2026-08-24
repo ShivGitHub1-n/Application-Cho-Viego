@@ -40,6 +40,9 @@ from resume_tailor.application.resume_features import (
     extract_reviewed_text_features,
     normalize_reviewed_text,
 )
+from resume_tailor.application.resume_semantic_entailment import (
+    evidence_entailed_target_terminology,
+)
 from resume_tailor.application.resume_writing_policy import (
     DEFAULT_RESUME_WRITING_POLICY,
     ResumeWritingPolicy,
@@ -869,6 +872,7 @@ class HybridLlmServices:
                 "bullet_rewrite": True,
                 "writer_aware_portfolio": True,
                 "claim_level_validation": True,
+                "evidence_entailed_target_terminology": True,
             },
             writing_instructions=list(self._writing_policy.instructions),
             prohibited_phrases=list(self._writing_policy.prohibited_phrases),
@@ -1453,12 +1457,28 @@ class HybridLlmServices:
                     rewrite.target_requirements_addressed
                     or _matched_target_requirements(text, posting)
                 )
+                structured_facts = [
+                    value
+                    for group in source_groups
+                    for value in [
+                        *group.technologies,
+                        *group.capabilities,
+                        *group.metrics,
+                    ]
+                ]
+                semantic_normalization = evidence_entailed_target_terminology(
+                    text,
+                    source_texts,
+                    structured_facts,
+                    [posting.title, *_authoritative_posting_requirements(posting)],
+                )
                 improvement_reasons = _material_improvement_reasons(
                     text,
                     retained_source_texts,
                     posting,
                     line_fit,
                     self._line_estimator,
+                    entailed_target_terms=semantic_normalization.entailed_target_terms,
                 )
                 claims_for_validation = (
                     rewrite.claims
@@ -1490,6 +1510,9 @@ class HybridLlmServices:
                             3,
                             (len(text) + 89) // 90,
                         ),
+                        allowed_semantic_terms=list(
+                            semantic_normalization.entailed_target_terms
+                        ),
                     )
                 except GroundingValidationError as error:
                     validation_failures.extend(dict.fromkeys(error.failures))
@@ -1502,20 +1525,12 @@ class HybridLlmServices:
                         self._writing_policy,
                     ),
                 ]
-                structured_facts = [
-                    value
-                    for group in source_groups
-                    for value in [
-                        *group.technologies,
-                        *group.capabilities,
-                        *group.metrics,
-                    ]
-                ]
                 introduced_semantic_features = _introduced_unverified_semantic_features(
                     text,
                     source_texts,
                     structured_facts,
                     self._writing_policy,
+                    entailed_feature_tokens=semantic_normalization.allowed_feature_tokens,
                 )
                 semantic_review_required = bool(introduced_semantic_features)
                 review_required = (
@@ -1584,6 +1599,9 @@ class HybridLlmServices:
                     line_fit=line_fit,
                     material_improvement=bool(improvement_reasons),
                     improvement_reasons=improvement_reasons,
+                    entailed_target_terms=list(
+                        semantic_normalization.entailed_target_terms
+                    ),
                     future_user_review=review_required,
                 )
                 (rejected if status is BulletValidationStatus.REJECTED else accepted).append(record)
@@ -1592,6 +1610,11 @@ class HybridLlmServices:
                     retained_source_texts,
                     structured_facts,
                 )
+                entailed_special_tokens = {
+                    token
+                    for term in semantic_normalization.entailed_target_terms
+                    for token in re.findall(r"[a-z0-9+.#/-]+", term.casefold())
+                }
                 rejection_codes = list(
                     dict.fromkeys(grounding_failure_code(reason) for reason in reasons)
                 )
@@ -1627,7 +1650,10 @@ class HybridLlmServices:
                         validator_rejection_codes=list(dict.fromkeys(rejection_codes)),
                         validator_rejection_details=validation_reasons,
                         normalized_unsupported_terms=sorted(
-                            set(comparison.normalized_unsupported_terms)
+                            (
+                                set(comparison.normalized_unsupported_terms)
+                                - entailed_special_tokens
+                            )
                             | set(introduced_semantic_features)
                         ),
                         ownership_comparison=comparison.ownership_comparison,
@@ -2413,6 +2439,8 @@ def _material_improvement_reasons(
     posting: JobPosting,
     line_fit: BulletLineFitDiagnostic,
     estimator: TemplateV1BulletLineEstimator,
+    *,
+    entailed_target_terms: tuple[str, ...] = (),
 ) -> list[str]:
     source = " ".join(" ".join(source_texts).split())
     written = " ".join(text.split())
@@ -2439,6 +2467,11 @@ def _material_improvement_reasons(
         reasons.append("restructured weak source wording for clearer technical ownership")
     if _foregrounds_supported_requirement(source, written, posting):
         reasons.append("foregrounded an already-supported target requirement")
+    if entailed_target_terms:
+        reasons.append(
+            "used evidence-entailed target terminology: "
+            + ", ".join(entailed_target_terms)
+        )
     return list(dict.fromkeys(reasons))
 
 
@@ -2575,6 +2608,8 @@ def _introduced_unverified_semantic_features(
     source_texts: list[str],
     structured_facts: list[str],
     policy: ResumeWritingPolicy,
+    *,
+    entailed_feature_tokens: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Quarantine new content-bearing terminology for bounded semantic review.
 
@@ -2603,6 +2638,7 @@ def _introduced_unverified_semantic_features(
         token
         for token in written.meaningful_tokens
         if _linguistic_token(token, linguistic_canonical) not in reviewed_tokens
+        and token not in entailed_feature_tokens
         and not _ordinary_semantic_connective(token, text, reviewed_bundle)
     }
     return sorted(introduced)

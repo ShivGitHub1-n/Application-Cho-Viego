@@ -58,13 +58,24 @@ class ResumeWritingPolicy:
         "Use an Accomplished X, measured by Y, by doing Z structure only when the evidence "
         "supports all included parts; never invent a metric or force the formula.",
         "Materially restructure weak source wording when supported emphasis can improve job fit.",
+        "Prefer recognizable terminology from the target posting when the complete reviewed "
+        "evidence bundle unambiguously entails the same technical concept, even if the source "
+        "uses a more literal description.",
+        "Make implicit technical context explicit only when the evidence proves every material "
+        "component; never turn integration into authorship, testing into hardware-in-the-loop "
+        "operation, contribution into ownership, or one physical artifact into a different one.",
+        "When introducing an entailed target term, make the smallest substantive change needed "
+        "to express it: preserve supported ownership verbs, singular/plural scope, and qualifiers, "
+        "and do not decorate the bullet with unreviewed claims such as real-time, precise, robust, "
+        "production-ready, or scalable.",
         "Return no alternative when the source is already the strongest truthful wording; "
         "synonym swaps, novelty, and shortening alone are not improvements.",
         "Preserve relevant reviewed tools, exact platforms, protocols, engineering methods, "
         "constraints, test conditions, tradeoffs, and metrics unless a real line-fit need makes "
         "careful compression more valuable.",
-        "Prefer an exact supported platform term over a vague abstraction, but never import a "
-        "technology from the posting or from a different evidence entry.",
+        "Prefer an exact supported platform term over a vague abstraction. Job terminology may "
+        "describe an already-proven concept, but it may never import a new technology, method, "
+        "scope, or responsibility from the posting or from a different evidence entry.",
         "Combine multiple authorized IDs only when they describe one tightly connected "
         "engineering contribution; never fuse unrelated achievements into a super-bullet.",
         "Omit a group when neither standard nor concise wording materially improves its source.",

@@ -44,6 +44,16 @@ The MVP returns one recommended strategy. It retains alternatives only for count
 
 Each output bullet must link to one or more evidence identifiers and state its support classification. Inference may modernize terminology but may not add responsibilities, results, tools, scope, or ownership not supported by the profile. Editing a claim invalidates any prior inference approval.
 
+Job-aligned terminology is not automatically an inference requiring approval.
+After semantic selection, a generated variant may make an implicit but
+unambiguous technical context explicit when deterministic entailment proves all
+of the concept's material components from reviewed same-entry evidence. The term
+must also occur in the authoritative posting. Thus explicit STM32 C++ control-code
+authorship can be normalized to `embedded firmware`, while STM32 interface
+integration alone cannot create firmware authorship and ordinary bench testing
+cannot become hardware-in-the-loop testing. Proven normalization is `derived`;
+unproven content-bearing terminology remains review-required or unsupported.
+
 Deterministic page filling never creates wording. With writing disabled, its
 bullet atoms are exact confirmed evidence texts. With writing enabled, it may
 choose a validated variant whose complete same-entry evidence bundle, original
@@ -254,8 +264,9 @@ Approval is an eligibility decision, not a replacement instruction. An approved
 variant still competes with its reviewed source on supported substance,
 clarity, relevance emphasis, and line efficiency. Textual difference alone is
 not material improvement: an accepted rewrite must fix an objective clarity or
-line-fit problem, or materially foreground posting terminology already present
-in its reviewed source authority.
+line-fit problem, materially foreground posting terminology already present in
+its reviewed source authority, or use posting terminology whose semantic
+equivalence is deterministically entailed by that authority.
 
 The approval surface receives every bounded, material, review-required writer
 alternative rather than only variants whose entries appeared in the pre-writer
@@ -280,6 +291,13 @@ Protected facts, claim-level evidence IDs, ownership, outcomes, and cross-entry
 grouping are checked deterministically. Novel content-bearing terminology that
 cannot be proven from the reviewed bundle is review-required; without explicit
 approval the layout search uses the reviewed source bullet instead.
+
+Writing remains downstream of portfolio selection. The strategist reasons over
+the complete reviewed evidence bank, while writer variants inherit relevance,
+requirement coverage, and evidence priority from their reviewed source IDs.
+Moving generated wording ahead of selection would let phrasing manufacture
+authority, so ATS-oriented semantic normalization affects visible expression and
+bounded source-versus-rewrite quality comparison only.
 
 Explicitly approved review-gated wording is used on rebuild while the reviewed
 source remains authoritative for relevance and requirement attribution. The
