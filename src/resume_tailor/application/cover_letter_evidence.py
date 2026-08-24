@@ -49,6 +49,7 @@ class CoverLetterEvidencePortfolio:
         entries = {item.id: item for item in [*profile.experiences, *profile.projects]}
         evidence_by_id = {item.id: item for item in profile.evidence if item.confirmed}
         resume_evidence_ids = self._final_resume_evidence_ids(final_resume, plan)
+        strategy_entry_ids = self._strategy_entry_ids(plan)
         candidates = [
             item
             for item in retrieval.admitted
@@ -62,10 +63,33 @@ class CoverLetterEvidencePortfolio:
                 if item.evidence_id in evidence_by_id and item.entry_id in entries
             ][:3]
             sparse_fallback = bool(candidates)
+        strategy_candidates = [
+            item for item in candidates if item.entry_id in strategy_entry_ids
+        ]
+        # A validated Gemini strategy is a semantic boundary when it supplies at
+        # least two usable story threads. The cover letter remains independent of
+        # resume generation and may choose different facts within those entries,
+        # but it must not reopen an unrelated raw-profile entry for story variety
+        # or page length.
+        strategy_bounded = len({item.entry_id for item in strategy_candidates}) >= 2
+        if strategy_bounded:
+            candidates = strategy_candidates
         candidates_by_entry: dict[str, list[RetrievedEvidence]] = {}
         for candidate in candidates:
             candidates_by_entry.setdefault(candidate.entry_id, []).append(candidate)
-        for thread in candidates_by_entry.values():
+        leadership_requested = self._leadership_requested(posting)
+        for entry_id, thread in list(candidates_by_entry.items()):
+            if not leadership_requested:
+                technical_only = [
+                    item
+                    for item in thread
+                    if not self._has_supervisory_framing(
+                        evidence_by_id[item.evidence_id].source_text
+                    )
+                ]
+                if len(technical_only) >= 2:
+                    thread = technical_only
+                    candidates_by_entry[entry_id] = thread
             thread.sort(key=self._candidate_key)
 
         selected_threads: list[list[RetrievedEvidence]] = []
@@ -81,16 +105,18 @@ class CoverLetterEvidencePortfolio:
                 ),
             )
             thread = ranked_threads[0]
+            if selected_threads and not strategy_bounded and not self._viable_new_thread(thread):
+                break
             selected_threads.append(thread)
             candidates_by_entry.pop(thread[0].entry_id)
             used_requirements.update(self._thread_requirements(thread))
             used_features.update(feature for item in thread for feature in item.meaningful_overlap)
 
-        selected: list[RetrievedEvidence] = []
-        maximum_thread_depth = 3 if len(selected_threads) < 3 else 2
+        selected: list[RetrievedEvidence] = [thread[0] for thread in selected_threads]
+        chosen_by_entry = {thread[0].entry_id: [thread[0]] for thread in selected_threads}
+        maximum_thread_depth = 4
         for thread in selected_threads:
             representative = thread[0]
-            selected.append(representative)
             representative_requirements = self._item_requirements(representative)
             representative_features = set(representative.meaningful_overlap)
             supporting = sorted(
@@ -101,10 +127,20 @@ class CoverLetterEvidencePortfolio:
                     *self._candidate_key(item),
                 ),
             )
-            chosen = [representative]
-            for candidate in supporting:
-                if len(chosen) >= maximum_thread_depth or len(selected) >= 7:
-                    break
+            thread[:] = [representative, *supporting]
+
+        # Add depth round-robin so a strong first entry cannot consume the whole
+        # evidence budget before the other admitted stories receive support.
+        # Four facts per thread gives an abundant profile enough source-faithful
+        # depth for a substantial emergency letter without opening another entry.
+        # Twelve total remains compact for the single provider request.
+        for depth in range(1, maximum_thread_depth):
+            for thread in selected_threads:
+                if len(selected) >= 12 or depth >= len(thread):
+                    continue
+                candidate = thread[depth]
+                representative = thread[0]
+                chosen = chosen_by_entry[representative.entry_id]
                 if candidate.relationship in {
                     EvidenceRelationship.DIRECT,
                     EvidenceRelationship.ADJACENT,
@@ -176,7 +212,7 @@ class CoverLetterEvidencePortfolio:
                     ),
                 )
             )
-        records = records[:7]
+        records = records[:12]
         selected_ids = [record.id for record in records]
         omitted_resume = sorted(resume_evidence_ids - set(selected_ids))
         used_omitted = [
@@ -237,10 +273,10 @@ class CoverLetterEvidencePortfolio:
     def _candidate_key(item: RetrievedEvidence) -> tuple[object, ...]:
         return (
             _RELATIONSHIP_PRIORITY[item.relationship],
-            -len(item.direct_requirement_ids),
-            -len(item.meaningful_overlap),
             -item.contextual_relevance,
             -item.total_score,
+            -len(item.direct_requirement_ids),
+            -len(item.meaningful_overlap),
             item.rank,
             item.evidence_id,
         )
@@ -264,16 +300,57 @@ class CoverLetterEvidencePortfolio:
         has_prior_thread = bool(used_requirements or used_features)
         return (
             _RELATIONSHIP_PRIORITY[best.relationship],
+            -best.contextual_relevance,
+            -best.total_score,
+            -len(direct_requirements),
             -len(direct_requirements - used_requirements) if has_prior_thread else 0,
             -len(requirements - used_requirements) if has_prior_thread else 0,
             -len(features - used_features) if has_prior_thread else 0,
-            -best.total_score,
-            -best.contextual_relevance,
-            -len(direct_requirements),
             -len(features),
             -sum(item.total_score for item in thread[:2]),
             best.rank,
             best.entry_id,
+        )
+
+    @staticmethod
+    def _viable_new_thread(thread: list[RetrievedEvidence]) -> bool:
+        """Require material role context before opening another narrative thread."""
+
+        best = thread[0]
+        if best.relationship is EvidenceRelationship.DIRECT:
+            return True
+        return bool(
+            best.relationship is EvidenceRelationship.ADJACENT
+            and best.contextual_relevance > 0
+            and best.meaningful_overlap
+        )
+
+    @staticmethod
+    def _strategy_entry_ids(plan: TailoringPlan | None) -> set[str]:
+        if plan is None or plan.application_strategy is None:
+            return set()
+        return set(plan.application_strategy.selected_entry_ids)
+
+    @staticmethod
+    def _leadership_requested(posting: JobPosting) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:leadership|lead a team|manage|manager|supervis|mentor|direct reports?)\b",
+                f"{posting.title} {posting.description}",
+                re.IGNORECASE,
+            )
+        )
+
+    @staticmethod
+    def _has_supervisory_framing(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:managed|oversaw|supervised)\b|"
+                r"\bled\s+(?:the\s+)?(?:team|workstream|group)\b|"
+                r"\breview(?:ed|ing)\s+(?:subordinate|junior|team)\b",
+                text,
+                re.IGNORECASE,
+            )
         )
 
     @staticmethod

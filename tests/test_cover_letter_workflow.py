@@ -206,12 +206,16 @@ def test_streamlit_cover_letter_can_start_from_job_context_without_resume(
     )
 
     artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
-    assert artifact.ready_for_review
+    # Cover Letter generation remains independent of Resume Studio. In this
+    # deliberately offline, sparse-source fallback case the exact renderer
+    # correctly keeps the underfilled candidate diagnostic-only.
+    assert not artifact.ready_for_review
     assert artifact.fingerprint_inputs.plan_fingerprint is None
     assert artifact.fingerprint_inputs.final_resume_fingerprint is None
     assert artifact.page_fit.exact_pagination
+    assert artifact.page_fit.status is CoverLetterPageFitStatus.SEVERE_UNDERFILL
     assert not app.exception
-    assert not app.error
+    assert app.error
 
 
 def test_production_streamlit_accepts_grounded_synthetic_senior_role(
@@ -244,7 +248,7 @@ def test_production_streamlit_accepts_grounded_synthetic_senior_role(
     )
 
     assert not app.exception
-    assert not app.error
+    assert app.error
     artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
     accepted = [
         candidate
@@ -263,7 +267,8 @@ def test_production_streamlit_accepts_grounded_synthetic_senior_role(
         if record.id in used_evidence_ids and record.entry_title
     }
 
-    assert artifact.ready_for_review
+    assert not artifact.ready_for_review
+    assert artifact.page_fit.status is CoverLetterPageFitStatus.SEVERE_UNDERFILL
     assert artifact.fingerprint_inputs.posting_fingerprint == posting_fingerprint
     assert artifact.letter.job_title == target_title
     assert synthetic_posting.company_name in letter_text

@@ -51,7 +51,10 @@ class CoverLetterNarrativePlanner:
                     if requirement.strip()
                 )
             )
-            role_connection = "; ".join(matched[:2]) or role_themes[0]
+            role_connection = self._short_text(
+                "; ".join(matched[:2]) or role_themes[0],
+                360,
+            )
             stories.append(
                 CoverLetterNarrativeStory(
                     thread_id=f"story-{index + 1}",

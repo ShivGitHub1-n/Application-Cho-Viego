@@ -524,7 +524,7 @@ class CoverLetterDraftRequest(StrictModel):
 class CoverLetterDraftParagraph(StrictModel):
     purpose: CoverLetterParagraphPurpose
     text: str = Field(min_length=1, max_length=2400)
-    candidate_evidence_ids: list[str] = Field(default_factory=list, max_length=3)
+    candidate_evidence_ids: list[str] = Field(default_factory=list, max_length=4)
     company_research_ids: list[str] = Field(default_factory=list, max_length=3)
     narrative_thread_id: str | None = None
     length_class: CoverLetterLengthClass = CoverLetterLengthClass.STANDARD

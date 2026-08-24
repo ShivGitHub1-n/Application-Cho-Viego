@@ -217,11 +217,48 @@ def test_reasonable_provider_shaped_prose_is_not_falsely_rejected() -> None:
     )
     evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
     grounded = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
+    provider_text = {
+        CoverLetterParagraphPurpose.OPENING: (
+            "Prototype hardware becomes interesting when clean interface decisions "
+            "have to survive a real bench. That is what draws me to the Hardware "
+            "Integration Engineer role at Northstar Controls: the work connects "
+            "microcontrollers and actuator drivers to the practical discipline of "
+            "building and validating the complete system."
+        ),
+        CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION: (
+            "I learned that lesson on an airflow safety controller built around gas "
+            "sensors, comparator circuitry, a timer, and a motor driver. I assembled "
+            "the circuit on a breadboard, integrated the fan and power stage, and "
+            "tested sensor thresholds while tracing problems through the physical "
+            "prototype. The project made the feedback immediate: a design decision "
+            "was useful only when the circuit responded predictably. Adjusting the "
+            "thresholds with the fan and power stage connected kept the testing tied "
+            "to the behavior of the assembled controller."
+        ),
+        CoverLetterParagraphPurpose.CONTRIBUTION: (
+            "The same preference for concrete interfaces shaped my hardware systems "
+            "work. I built wiring harnesses, selected connectors, and documented "
+            "interface-control requirements for prototype positioning hardware. When "
+            "bench tests exposed electrical integration faults, I troubleshot the "
+            "connections rather than treating the schematic and the assembled system "
+            "as separate problems. Selecting the connectors and documenting the "
+            "interfaces gave the subsequent troubleshooting a concrete electrical "
+            "baseline."
+        ),
+        CoverLetterParagraphPurpose.CLOSING: (
+            "Northstar Controls offers the kind of next step I am looking for: work "
+            "integrating microcontrollers, actuator drivers, and hardware prototypes "
+            "where validation shows whether the system works. I would be glad to "
+            "contribute experience designing STM32 actuator controller architecture "
+            "while learning the next system on its own terms."
+        ),
+    }
     provider_shaped = grounded.model_copy(
         update={
             "paragraphs": [
                 paragraph.model_copy(
                     update={
+                        "text": provider_text[paragraph.purpose],
                         "source_bound_sentences": [],
                         "company_research_ids": (
                             paragraph.company_research_ids
@@ -247,10 +284,12 @@ def test_reasonable_provider_shaped_prose_is_not_falsely_rejected() -> None:
     )
 
     assert not validated.rejected_claims
-    assert all(
-        gate.status is not CoverLetterQualityGateStatus.FAILED
+    failed = [
+        (gate.gate, gate.code)
         for gate in validated.quality_gates
-    )
+        if gate.status is CoverLetterQualityGateStatus.FAILED
+    ]
+    assert failed == []
 
 
 def test_invalid_provider_paragraph_is_not_spliced_into_a_fallback_letter() -> None:

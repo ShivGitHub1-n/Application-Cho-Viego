@@ -417,13 +417,18 @@ def _render_download(
     artifact: GeneratedCoverLetterArtifact,
     artifact_current: bool,
 ) -> None:
+    if not artifact.ready_for_review:
+        st.caption("No download is available for this diagnostic candidate.")
+        return
+    if not artifact_current:
+        st.caption("No download is available because this artifact is stale.")
+        return
     if (
         artifact.review_state
         not in {
             CoverLetterReviewState.APPROVED,
             CoverLetterReviewState.DOWNLOADED,
         }
-        or not artifact_current
     ):
         st.caption("Download is enabled after explicit approval of the current artifact.")
         return

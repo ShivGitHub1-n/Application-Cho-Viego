@@ -183,7 +183,13 @@ def test_deterministic_company_connection_uses_grounded_source_detail_without_co
     assert gates["interchangeability"].status is CoverLetterQualityGateStatus.PASSED
     assert gates["resume_complement"].status is CoverLetterQualityGateStatus.PASSED
     assert not any("copied_posting_language" in claim.codes for claim in result.rejected_claims)
-    assert evidence[0].source_text.casefold().rstrip(".") not in combined
+    # The deterministic emergency path is intentionally source-faithful: its
+    # quality comes from selecting and ordering concrete reviewed facts, not
+    # from manufacturing a paraphrased bridge. Each fact should still appear
+    # only once in the narrative.
+    assert combined.count(evidence[0].source_text.casefold().rstrip(".")) == 1
+    assert "same technical problem" not in combined
+    assert "separate constraint joined" not in combined
 
 
 def test_invalid_synthetic_candidate_exposes_all_live_rejection_codes() -> None:
@@ -501,10 +507,13 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
             "implementation evidence",
         )
     )
-    assert 300 <= len(text.split()) <= 425
-    assert len(result.paragraphs) == 5
+    # Sparse source-bound candidates must not be padded with deterministic
+    # pseudo-creative prose merely to reach a target length. Exact page-fit
+    # validation decides whether this candidate can become an artifact.
+    assert 120 <= len(text.split()) <= 425
+    assert 4 <= len(result.paragraphs) <= 5
     assert max(len(paragraph.text.split()) for paragraph in result.paragraphs) <= 135
-    assert diagnostic.narrative_thread_count == 3
+    assert 2 <= diagnostic.narrative_thread_count <= 3
     distinct_threads = []
     for item in evidence:
         if item.entity_id not in {thread.entity_id for thread in distinct_threads}:
@@ -516,10 +525,16 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
     assert len({item for paragraph in body for item in paragraph.candidate_evidence_ids}) == sum(
         len(paragraph.candidate_evidence_ids) for paragraph in body
     )
-    assert len([paragraph for paragraph in body if paragraph.candidate_evidence_ids]) == 3
+    assert (
+        len([paragraph for paragraph in body if paragraph.candidate_evidence_ids])
+        == diagnostic.narrative_thread_count
+    )
     assert "STM32" in text
     assert "sensor" in lowered
     assert "actuator" in lowered
+    assert "worked directly with the hardware" not in lowered
+    assert "same technical problem" not in lowered
+    assert "separate constraint joined" not in lowered
     assert not result.rejected_claims
     assert all(
         claim.status is CoverLetterValidationStatus.SUPPORTED

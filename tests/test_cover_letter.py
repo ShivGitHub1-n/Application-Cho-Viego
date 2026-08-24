@@ -168,7 +168,10 @@ def test_source_bound_fallback_is_used_only_after_richer_candidates_fail() -> No
     assert source_bound.source_bound_sentence_count == source_bound.sentence_count
     assert source_bound.unbound_sentence_count == 0
     assert source_bound.rendering_attempted
-    assert len(artifact.letter.paragraphs) == 5
+    # A source-bound emergency letter uses only the viable evidence threads. It
+    # must not invent or reopen a weak third story merely to satisfy a fixed
+    # paragraph count.
+    assert 4 <= len(artifact.letter.paragraphs) <= 5
     assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
     assert all(
         sentence.posting_fact_ids

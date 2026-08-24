@@ -338,16 +338,22 @@ def test_real_offline_candidate_respects_concise_narrative_policy() -> None:
     )
 
     narrative_words = sum(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs)
-    assert 300 <= narrative_words <= 425
-    assert (
+    # The offline diagnostic candidate remains source-faithful instead of
+    # manufacturing bridge prose to satisfy a word-count target. Its estimated
+    # density is diagnostic only because exact pagination is unavailable.
+    assert 200 <= narrative_words <= 425
+    narrative = " ".join(paragraph.text for paragraph in artifact.letter.paragraphs).casefold()
+    assert "worked directly with the hardware" not in narrative
+    assert "same technical problem" not in narrative
+    assert "separate constraint joined" not in narrative
+    assert artifact.page_fit.estimated_utilization < (
         artifact.letter.layout_profile.acceptable_utilization_floor
-        <= artifact.page_fit.estimated_utilization
-        <= artifact.letter.layout_profile.acceptable_utilization_ceiling
     )
     assert artifact.page_fit.estimated_remaining_lines > 0
     assert not artifact.page_fit.preferred_density_reachable
-    assert artifact.page_fit.underfill_or_overflow == "balanced_one_page"
+    assert artifact.page_fit.underfill_or_overflow == "severe_underfill"
     assert artifact.page_fit.status is CoverLetterPageFitStatus.PAGINATION_UNVERIFIED
+    assert not artifact.ready_for_review
     assert artifact.call_counts.provider_calls == 0
     assert artifact.call_counts.research_network_requests == 0
     assert artifact.call_counts.pagination_attempts == 1

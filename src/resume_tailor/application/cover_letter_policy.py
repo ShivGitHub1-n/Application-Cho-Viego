@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v13"
-COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v4"
-COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v9"
+COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v14"
+COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v5"
+COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v10"
 COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v6:standard-business-brief"
 
 COVER_LETTER_WRITING_CONSTRAINTS = (

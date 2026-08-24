@@ -327,8 +327,13 @@ explicitly preserves metrics, ownership, causality, and outcomes. Cover-letter
 drafting may use its own configured temperature while resume operations retain
 their established setting. Narrative quality remains ahead of small density
 differences. The deterministic emergency writer remains evidence-bound, can
-deepen already selected narrative threads, and filters legacy extracted details
-before using them in prose lists. A content- or page-fit-failed result is a
+deepen already selected narrative threads, and does not open a weaker entry
+merely to obtain a third story or more page length. A compatible validated
+application strategy supplies an entry-level semantic boundary, but Cover
+Letters select their own facts and narrative within it; generation still does
+not require a résumé artifact. The emergency writer uses sentence-scoped,
+minimally transformed reviewed facts and simple transitions rather than
+invented component-list bridges. A content- or page-fit-failed result is a
 diagnostic candidate only and cannot expose approval or DOCX download actions.
 Exact final pagination remains mandatory. The provider returns a minimal
 paragraph/ID contract; provenance, diagnostics, research attribution, cache

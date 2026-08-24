@@ -61,11 +61,14 @@ page fitting, rendering, approval, rebuild, and download never invoke research.
 
 ## Evidence portfolio and writing
 
-The application selects up to three distinct narrative threads when the
-profile can support them and may attach one non-duplicative supporting fact to
-each thread. Direct and adjacent role evidence is preferred before
-complementary evidence. It starts with requirement-ranked reviewed evidence and
-selects independently of the final résumé. Sparse profiles can use
+The application selects up to three viable narrative threads when the profile
+can support them; it does not force a third entry for variety or page length.
+Direct and contextually supported adjacent role evidence is preferred before
+complementary evidence. When a compatible validated application strategy is
+present, its selected entries form the semantic entry boundary, while Cover
+Letters still choose their own facts and narrative independently of the final
+résumé bullet portfolio. Without a strategy, a new thread must independently
+clear the retrieval relationship/context boundary. Sparse profiles can use
 clearly diagnosed adjacent reviewed evidence. Canonical education, reviewed
 skills, or explicit user motivation may be added only through their own typed
 authority.
@@ -96,24 +99,25 @@ work. Cover-letter drafting uses a dedicated default temperature of 0.35; all
 resume operations retain the configured general temperature.
 
 The deterministic writer produces bounded concise, standard, and developed
-variants. Concise and standard variants use two substantive story paragraphs;
-the developed variant can use three distinct evidence threads when the profile
-supports them. The source-bound fallback preserves the ranked narrative-thread
-order and may use up to three already-retrieved, nonredundant facts from a
-thread when fewer than three viable stories exist. Supporting facts from the
-same experience or project remain in that thread rather than becoming
-repetitive paragraphs. Narrative details come from typed reviewed
-technology/outcome fields. For legacy evidence without those fields, extracted
-phrases are filtered as grammatical noun phrases before interpolation, so
-prepositional or action fragments cannot become malformed component lists. The
-writer uses the canonical extracted company unless
+variants. Concise and standard variants use up to two substantive story
+paragraphs; the developed variant can use up to three distinct evidence
+threads when the profile supports them. No fixed story count can admit a weak
+or unrelated entry. The source-bound fallback preserves the ranked
+narrative-thread order and may use up to four already-retrieved,
+nonduplicative facts from each admitted thread, with a twelve-fact global
+bound. Supporting facts from the same experience or project remain in that
+thread rather than becoming repetitive paragraphs. The fallback uses minimal
+grammatical transformations of concrete reviewed evidence and simple
+transitions. It does not synthesize lessons, constraints, component-list
+bridges, or relationships between facts. When leadership is not part of the
+posting, a thread with sufficient technical alternatives omits
+supervisory-framed evidence from fallback story selection; the underlying
+reviewed evidence remains unchanged. The writer uses the canonical extracted company unless
 the user
 supplies a nonblank override, turns imperative posting fragments into noun
 phrases or complete clauses, and keeps validator terminology out of
-employer-facing prose. It may explain another supported constraint,
-relationship, or technical mechanism when the fixed DOCX geometry remains
-underfilled. Sparse evidence produces a shorter typed limitation rather than
-filler.
+employer-facing prose. Sparse evidence produces a shorter diagnostic candidate
+rather than filler.
 One repair request is permitted only after a malformed typed response. A
 semantically invalid response does not cause provider retries and is never
 spliced paragraph-by-paragraph into a deterministic letter. Provider
@@ -140,10 +144,12 @@ not stitched to unrelated deterministic replacements. A complete deterministic
 candidate remains the bounded fallback.
 
 Deterministic candidates use source-derived engineering detail for the
-posting-to-candidate connection and grammatically transform reviewed action
-statements instead of embedding a complete reviewed bullet verbatim. This keeps
-company specificity and resume-complement validation active across different
-accepted final-resume evidence portfolios.
+posting-to-candidate connection and minimally transform reviewed action
+statements into complete first-person sentences. The emergency path is allowed
+to retain source wording because its authority is sentence-scoped; its
+resume-complement check instead rejects repeated evidence IDs or repeated
+narrative threads. Provider prose remains subject to the normal paraphrase and
+interpretation checks.
 
 Likely title spelling inconsistencies are surfaced as nonfatal review warnings;
 the canonical profile title is never silently corrected. Employer-facing prose
@@ -155,7 +161,10 @@ paragraph progression, technical specificity, resume complement, paragraph
 structure, posting-reference quality, closing structure, seniority emphasis,
 resume consistency, review-required claims, research status, and page fit.
 Local naturalness checks reject known malformed parallel lists, basic compound
-subject/verb disagreement, and malformed posting frames. Whole-letter checks
+subject/verb disagreement, malformed posting frames, vague direct referents
+such as `worked directly with the hardware`, duplicated `work ... work`
+frames, and synthetic component bridges such as joining unrelated nouns in the
+`same technical problem`. Whole-letter checks
 also reject a repeated abstract thesis, repeated technical examples, vague
 technical stories, repeated vague referents, formulaic openings, and closings
 that merely restate the letter. Structural failures use typed reasons including
