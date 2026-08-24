@@ -620,9 +620,13 @@ def _render_export(
         pagination_status = (
             "1 page verified" if artifact.pagination_diagnostic.status == "exact" else "Unverified"
         )
+        composition = artifact.composition_diagnostic
+        page_use = f"{composition.final_utilization_ratio:.0%}"
+        density_status = composition.preferred_density_status.value.replace("_", " ")
         streamlit_module.caption(
             f"Strategy: {strategy_status} · Writing: {writing_status} · "
-            f"Validation: Passed · Pagination: {pagination_status}"
+            f"Validation: Passed · Pagination: {pagination_status} · "
+            f"Page use: {page_use} ({density_status})"
         )
         if streamlit_module.button(
             "Verify and prepare export", key="resume-verify-export", type="primary"

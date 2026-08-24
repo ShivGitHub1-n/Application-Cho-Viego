@@ -17,9 +17,11 @@ The engine optimizes the resume as one constrained document, not as independent 
    deterministic requirement/package-selection fallback.
 6. Ask one bounded writer request to improve only strategist-selected evidence,
    then validate every generated claim and compare it with its reviewed source.
-7. Fit the validated strategy by removing lower-priority evidence first, while
-   exact pagination, metadata, duplication, document structure, and export remain
-   deterministic and fail closed.
+7. Fit the validated strategy by consuming positive-value ranked reserve evidence
+   when the rendered core is materially underfilled, then removing lower-priority
+   core evidence if one-page fit requires it. Exact pagination, metadata,
+   duplication, document structure, and export remain deterministic and fail
+   closed.
 
 The MVP returns one recommended strategy. It retains alternatives only for counterfactual explanation, testing, and debugging. A posting outside the recognized engineering taxonomy returns an explicit unsupported result; a recognized posting with no relevant direct profile evidence returns an insufficient-fit result.
 
@@ -60,9 +62,12 @@ does not run generation work. A failed rebuild leaves the prior valid artifact
 and its bytes available for retry.
 
 In Gemini strategy mode, the validated `ApplicationStrategyPlan` is final
-semantic portfolio authority before page fit. The writer receives only its
-selected evidence and cannot add entries, evidence, requirement support, or
-selection authority. In deterministic fallback mode, the existing
+semantic portfolio authority before page fit. The core selection is the writer
+boundary. A small same-call expansion reserve is the only additional evidence
+page fitting may admit after actual rendered geometry shows meaningful underfill;
+it cannot reopen low-priority or unrelated profile evidence. The writer cannot
+add entries, evidence, requirement support, or selection authority. In
+deterministic fallback mode, the existing
 entry-balanced shortlist and full package frontier remain available. Employer
 reputation and other external popularity signals are absent in both modes.
 For both automatic and explicitly approved variants, the complete reviewed

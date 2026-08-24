@@ -16,12 +16,14 @@ fallback for disabled, rejected, or unapproved writing. Metadata, education
 details, and skill values are copied from reviewed profile fields.
 
 The composer has two explicit modes. With a validated
-`ApplicationStrategyPlan`, it constructs candidates only from strategist-selected
-reviewed evidence and uses the strategy's critical/high/medium/optional order as
-the primary rollback key. It never reopens unrelated profile evidence. With no
-validated strategy, it runs the established deterministic package/frontier
-search described below. This is the provider-unavailable fallback, not a claim
-that both modes make the same semantic decision.
+`ApplicationStrategyPlan`, it constructs candidates only from the strategist's
+core selection and bounded expansion reserve. The core selection is rendered
+first. The reserve is considered only for material underfill, and the strategy's
+critical/high/medium/optional order remains the primary authority. It never
+reopens unrelated profile evidence. With no validated strategy, it runs the
+established deterministic package/frontier search described below. This is the
+provider-unavailable fallback, not a claim that both modes make the same semantic
+decision.
 
 The complete reviewed same-entry source bundle is also the ranking authority
 for every automatic or explicitly approved variant. Generated text may improve
@@ -142,13 +144,20 @@ one-bullet project remains valid when its unique value pays for its metadata.
 
 ## Bounded search
 
-The strategist-priority path builds a bounded rollback ladder from the complete
-validated strategy. It removes optional evidence first, then medium, then high,
-then critical, preserving coherent multi-bullet professional entry blocks. It
-evaluates at most the existing 128 estimated states and 12 exact finalists and
-uses the same batched Word/LibreOffice page-count provider. Priority dominates
-tiny density or heuristic-score differences; writing quality, redundancy, line
-cost, and density resolve portfolios with the same retained strategy priority.
+The strategist-priority path builds a bounded rollback ladder from the validated
+core strategy. It removes optional evidence first, then medium, then high, then
+critical, preserving coherent multi-bullet professional entry blocks. If the
+best rendered core estimate is below 82%, it evaluates ranked reserve actions
+within the same existing 128-state budget. Same-entry unused alternatives are
+retained automatically. A new entry must be explicitly present in the strategist's
+same-call reserve and satisfy its coherent-depth requirement. Each cumulative
+addition must fit the rendered planning geometry and improve the existing
+portfolio-quality objective; equal-priority actions are ordered by marginal
+quality per bullet-line cost plus the established two-line new-entry activation
+cost. Expansion stops in the 82%-92% preferred band, above the 95% acceptable
+ceiling, on overflow, or when no positive-value reserve remains. The 12 exact
+finalists use the same batched Word/LibreOffice provider, and an estimated
+one-page expansion that measures as two pages is rejected.
 
 The deterministic fallback path uses the two planning stages below.
 
@@ -224,20 +233,24 @@ occupied-height estimator:
 | Rich firmware deterministic fixture | 78.01% |
 | Rich mixed-disciplinary deterministic fixture | 77.04% |
 
-The legacy estimator calibration remains 72% through 97%, but 72% is not a
-successful composition target. A result below 85% is typed severe underfill or
-insufficient evidence even when exact pagination confirms one page. The ceiling
-anchors the objective to the accepted 96.43% reference without rewarding a
-search for 100% occupancy. Estimated results remain typed `unverified`.
+The legacy deterministic fallback retains its established 72%-97% calibration,
+90%-93% preference, and below-85% investigation behavior. That behavior is not
+retuned by this closeout.
 
-The product-level preferred visual density is approximately 90% through 93%.
-Utilization above that range through approximately 95% remains acceptable and
-receives an above-preferred diagnostic; it is not a target to exceed. Search
-continues toward the preferred range while admissible evidence adds quality. A
-truthful result may stop below 90% and remains acceptable at 85% to 90%. A
-result below 85% requires investigation and a typed quality, evidence,
-profile-completeness, match, validation, retrieval, or search warning. Density never admits weak,
-redundant, unsupported, or unrelated content, and 100% is not a target.
+For a validated Gemini strategy, the production page-use policy is 82%-92%
+preferred and 76%-95% acceptable. Below 76% is `underfilled`; below 69% is
+`severe_underfill`. These bands were chosen to reject the observed roughly
+two-thirds-page artifact while allowing semantic quality to beat small density
+differences. Density never admits weak, redundant, unsupported, or unrelated
+content, and 100% is not a target.
+
+Utilization is not inferred from bullet or character count. The application
+renders each candidate DOCX, reads its actual section geometry and paragraph
+font, spacing, indentation, and wrapping width, and estimates occupied vertical
+height against usable page height. Word or LibreOffice supplies the independent
+exact page count. Thus the occupied-height ratio guides candidate preference,
+while exact one-page pagination remains final export authority. A non-exact
+planning result remains typed `unverified`.
 
 Bound-pruned bullet diagnostics identify the entry, proposed package and bullet
 count, candidate score, vertical page cost, exact configured bound, and whether
@@ -290,14 +303,15 @@ Composition outcomes are:
 
 - `overflow`;
 - `acceptable_one_page`;
+- `underfilled`;
 - `severe_underfill`;
 - `insufficient_evidence`;
 - `unverified`.
 
-An exact result below 72% becomes `insufficient_evidence` when no additional
-nonredundant candidate clears the relevance and structural constraints. It
-remains `severe_underfill` when admissible evidence or a bound-only exclusion
-exists. A 57.81% result with unused admissible evidence cannot be
+In Gemini strategy mode, an exact result below 69% is `severe_underfill`, and a
+result from 69% up to 76% is `underfilled`. In deterministic fallback mode, the
+legacy below-85% outcome contract remains unchanged. A visibly underfilled
+strategy result with unused admissible reserve evidence cannot be
 `acceptable_one_page`.
 
 When the exact-finalist evaluation cap is reached below preferred density, the

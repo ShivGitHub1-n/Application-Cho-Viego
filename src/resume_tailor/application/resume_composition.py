@@ -55,11 +55,17 @@ from resume_tailor.domain.requirement_ranking import (
     ShortTokenContribution,
 )
 from resume_tailor.domain.resume_composition import (
+    STRATEGY_UTILIZATION_ACCEPTABLE_CEILING,
+    STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    STRATEGY_UTILIZATION_IDEAL,
+    STRATEGY_UTILIZATION_PREFERRED_CEILING,
+    STRATEGY_UTILIZATION_PREFERRED_FLOOR,
     TEMPLATE_V1_ACCEPTABLE_DENSITY_CEILING,
     TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR,
     TEMPLATE_V1_IDEAL_DENSITY,
     TEMPLATE_V1_PREFERRED_DENSITY_CEILING,
     TEMPLATE_V1_PREFERRED_DENSITY_FLOOR,
+    TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
     TEMPLATE_V1_UTILIZATION_TARGET_CEILING,
     TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
     BulletLineFitDiagnostic,
@@ -1325,17 +1331,19 @@ class DeterministicResumeComposer:
         started = self._telemetry.clock()
         context = _posting_context(posting)
         variants = _available_variants(baseline)
+        core_selected_ids = set(strategy.selected_evidence_ids)
+        reserve_evidence_ids = set(strategy.reserve_evidence_ids)
+        strategy_evidence_ids = set(strategy.all_strategy_evidence_ids)
         all_candidates = self._all_bullet_candidates(
             profile,
             context,
             variants,
-            set(strategy.selected_evidence_ids),
+            strategy_evidence_ids,
         )
-        selected_ids = set(strategy.selected_evidence_ids)
         candidates = [
             candidate
             for candidate in all_candidates
-            if set(candidate.source_evidence_ids) & selected_ids
+            if set(candidate.source_evidence_ids) & strategy_evidence_ids
         ]
         entry_by_id = {item.id: item for item in [*profile.experiences, *profile.projects]}
         candidates = [
@@ -1360,6 +1368,10 @@ class DeterministicResumeComposer:
                 "The validated application strategy contained no renderable reviewed evidence."
             )
         bullet_by_id = {candidate.evidence_id: candidate for candidate in candidates}
+        candidate_id_by_source: dict[str, str] = {}
+        for candidate in candidates:
+            for evidence_id in candidate.source_evidence_ids:
+                candidate_id_by_source.setdefault(evidence_id, candidate.evidence_id)
         skills = self._rank_skills(profile, context, candidates)
         skill_by_id = {candidate.category_id: candidate for candidate in skills}
         initial_skill_ids = tuple(
@@ -1383,8 +1395,13 @@ class DeterministicResumeComposer:
                 default=priority_order[EvidencePriorityTier.OPTIONAL],
             )
 
+        core_candidates = [
+            candidate
+            for candidate in candidates
+            if set(candidate.source_evidence_ids) & core_selected_ids
+        ]
         removal_order = sorted(
-            candidates,
+            core_candidates,
             key=lambda candidate: (
                 -candidate_priority(candidate),
                 -min(
@@ -1399,7 +1416,15 @@ class DeterministicResumeComposer:
             ),
         )
         bullet_states: list[frozenset[str]] = []
-        current = {candidate.evidence_id for candidate in candidates}
+        current = {
+            candidate.evidence_id
+            for candidate in candidates
+            if set(candidate.source_evidence_ids) & core_selected_ids
+        }
+        if not current:
+            raise ExactPaginationRequiredError(
+                "The validated application strategy contained no renderable core evidence."
+            )
         bullet_states.append(frozenset(current))
         entity_by_id = {item.id: item for item in [*profile.experiences, *profile.projects]}
         for candidate in removal_order:
@@ -1432,16 +1457,61 @@ class DeterministicResumeComposer:
                     counts[priority_order[tier]] += 1
             return cast(tuple[int, int, int, int], tuple(counts))
 
+        def represented_evidence(state: _State) -> set[str]:
+            return {
+                evidence_id
+                for candidate_id in state.bullet_ids
+                for evidence_id in bullet_by_id[candidate_id].source_evidence_ids
+            }
+
+        def strategy_density_priority(utilization_ratio: float) -> int:
+            if (
+                STRATEGY_UTILIZATION_PREFERRED_FLOOR
+                <= utilization_ratio
+                <= STRATEGY_UTILIZATION_PREFERRED_CEILING
+            ):
+                return 0
+            if (
+                STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                <= utilization_ratio
+                <= STRATEGY_UTILIZATION_ACCEPTABLE_CEILING
+            ):
+                return 1
+            return 2
+
+        def strategy_density_distance(utilization_ratio: float) -> float:
+            if utilization_ratio < STRATEGY_UTILIZATION_PREFERRED_FLOOR:
+                return -float(int(utilization_ratio * 50))
+            return abs(utilization_ratio - STRATEGY_UTILIZATION_IDEAL)
+
+        def in_strategy_preferred_band(utilization_ratio: float) -> bool:
+            return (
+                STRATEGY_UTILIZATION_PREFERRED_FLOOR
+                <= utilization_ratio
+                <= STRATEGY_UTILIZATION_PREFERRED_CEILING
+            )
+
+        def strategy_density_status(utilization_ratio: float) -> PreferredDensityStatus:
+            if utilization_ratio < STRATEGY_UTILIZATION_PREFERRED_FLOOR:
+                return PreferredDensityStatus.BELOW_PREFERRED
+            if utilization_ratio <= STRATEGY_UTILIZATION_PREFERRED_CEILING:
+                return PreferredDensityStatus.PREFERRED
+            if utilization_ratio <= STRATEGY_UTILIZATION_ACCEPTABLE_CEILING:
+                return PreferredDensityStatus.ABOVE_PREFERRED
+            return PreferredDensityStatus.OVERFLOW_RISK
+
         def strategy_key(item: _EvaluatedState) -> tuple[object, ...]:
             counts = priority_counts(item.state)
+            reserve_count = len(represented_evidence(item.state) & reserve_evidence_ids)
             return (
                 -counts[0],
                 -counts[1],
                 -counts[2],
                 -counts[3],
-                self._density_priority(item.evaluation.utilization_ratio),
+                strategy_density_priority(item.evaluation.utilization_ratio),
                 -item.quality,
-                self._density_distance(item.evaluation.utilization_ratio),
+                -reserve_count,
+                strategy_density_distance(item.evaluation.utilization_ratio),
                 item.state.key,
             )
 
@@ -1478,6 +1548,11 @@ class DeterministicResumeComposer:
                     utilization_ratio=page.utilization_ratio,
                     exact_page_verification=page.exact,
                     reason=(
+                        "Strategy-compatible reserve evidence fit the rendered planning geometry."
+                        if label.startswith("strategy-expand") and page.fits_one_page
+                        else "Strategy-compatible reserve evidence overflowed and was rejected."
+                        if label.startswith("strategy-expand")
+                        else
                         "Validated strategist portfolio fit the page."
                         if page.fits_one_page
                         else "Lower-priority strategist evidence was rolled back after overflow."
@@ -1557,6 +1632,94 @@ class DeterministicResumeComposer:
             raise ExactPaginationRequiredError(
                 "No strategist-selected portfolio fit the one-page planning estimate."
             )
+        remaining_reserve = list(enumerate(strategy.expansion_reserve))
+        expansion_attempts = 0
+        expansion_base = sorted(evaluated, key=strategy_key)[0]
+        while (
+            expansion_base.evaluation.utilization_ratio
+            < STRATEGY_UTILIZATION_PREFERRED_FLOOR
+            and remaining_reserve
+            and estimated_evaluations < self._bounds.maximum_estimated_page_evaluations
+        ):
+            expansion_options: list[
+                tuple[int, float, int, _EvaluatedState]
+            ] = []
+            for action_index, action in remaining_reserve:
+                if estimated_evaluations >= self._bounds.maximum_estimated_page_evaluations:
+                    break
+                action_candidate_ids = {
+                    candidate_id_by_source[evidence_id]
+                    for evidence_id in action.evidence_ids
+                    if evidence_id in candidate_id_by_source
+                }
+                represented_action_ids = {
+                    evidence_id
+                    for candidate_id in action_candidate_ids
+                    for evidence_id in bullet_by_id[candidate_id].source_evidence_ids
+                    if evidence_id in action.evidence_ids
+                }
+                if len(represented_action_ids) < action.minimum_coherent_depth:
+                    continue
+                expanded_bullets = expansion_base.state.bullet_ids | action_candidate_ids
+                if len(expanded_bullets) > self._bounds.maximum_selected_bullets:
+                    continue
+                expanded_entry_ids = {
+                    bullet_by_id[candidate_id].entry_id
+                    for candidate_id in expanded_bullets
+                }
+                if len(expanded_entry_ids) > self._bounds.maximum_selected_entries:
+                    continue
+                expanded_state = _State(
+                    bullet_ids=frozenset(expanded_bullets),
+                    skill_category_ids=expansion_base.state.skill_category_ids,
+                )
+                if expanded_state.key == expansion_base.state.key:
+                    continue
+                expanded = evaluate(
+                    expanded_state,
+                    exact=False,
+                    label=f"strategy-expand:{action_index + 1}",
+                )
+                expansion_attempts += 1
+                if (
+                    not expanded.evaluation.fits_one_page
+                    or expanded.evaluation.utilization_ratio
+                    > STRATEGY_UTILIZATION_ACCEPTABLE_CEILING
+                ):
+                    continue
+                marginal_value = expanded.quality - expansion_base.quality
+                if marginal_value <= 0:
+                    continue
+                added_candidate_ids = expanded_bullets - expansion_base.state.bullet_ids
+                existing_entries = {
+                    bullet_by_id[candidate_id].entry_id
+                    for candidate_id in expansion_base.state.bullet_ids
+                }
+                new_entries = {
+                    bullet_by_id[candidate_id].entry_id
+                    for candidate_id in added_candidate_ids
+                } - existing_entries
+                page_cost = sum(
+                    bullet_by_id[candidate_id].line_fit.total_vertical_line_cost
+                    for candidate_id in added_candidate_ids
+                ) + (2.0 * len(new_entries))
+                expansion_options.append(
+                    (
+                        priority_order[action.priority],
+                        -(marginal_value / max(1.0, page_cost)),
+                        action_index,
+                        expanded,
+                    )
+                )
+            if not expansion_options:
+                break
+            chosen = min(expansion_options, key=lambda item: item[:3])
+            chosen_index = chosen[2]
+            expansion_base = chosen[3]
+            evaluated.append(expansion_base)
+            remaining_reserve = [
+                item for item in remaining_reserve if item[0] != chosen_index
+            ]
         ordered = sorted(evaluated, key=strategy_key)
         final = ordered[0]
         finalists: list[_EvaluatedState] = []
@@ -1661,11 +1824,17 @@ class DeterministicResumeComposer:
         utilization = final.evaluation.utilization_ratio
         diagnostic = ResumeCompositionDiagnostic(
             outcome=(
-                CompositionOutcome.ACCEPTABLE_ONE_PAGE
-                if utilization >= TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
-                else CompositionOutcome.SEVERE_UNDERFILL
+                CompositionOutcome.SEVERE_UNDERFILL
+                if utilization < TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR
+                else CompositionOutcome.UNDERFILLED
+                if utilization < STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                else CompositionOutcome.ACCEPTABLE_ONE_PAGE
             ),
-            termination_reason=CompositionTerminationReason.TARGET_FINALISTS_FOUND,
+            termination_reason=(
+                CompositionTerminationReason.TARGET_FINALISTS_FOUND
+                if in_strategy_preferred_band(utilization)
+                else CompositionTerminationReason.FRONTIER_EXHAUSTED
+            ),
             selected_experience_ids=[
                 entry.id for entry in profile.experiences if entry.id in selected_entries
             ],
@@ -1692,15 +1861,27 @@ class DeterministicResumeComposer:
                 item.evaluation.utilization_ratio for item in evaluated
             ),
             best_exact_verified_utilization_ratio=(utilization if final.evaluation.exact else None),
-            utilization_target_floor=TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
-            utilization_target_ceiling=TEMPLATE_V1_UTILIZATION_TARGET_CEILING,
-            utilization_target_reached=self._in_target_band(utilization),
-            preferred_density_reached=self._in_preferred_density_band(utilization),
-            preferred_density_status=self._preferred_density_status(utilization),
+            utilization_target_floor=STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+            utilization_target_ceiling=STRATEGY_UTILIZATION_ACCEPTABLE_CEILING,
+            utilization_target_reached=(
+                STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                <= utilization
+                <= STRATEGY_UTILIZATION_ACCEPTABLE_CEILING
+            ),
+            preferred_density_floor=STRATEGY_UTILIZATION_PREFERRED_FLOOR,
+            preferred_density_ceiling=STRATEGY_UTILIZATION_PREFERRED_CEILING,
+            acceptable_density_ceiling=STRATEGY_UTILIZATION_ACCEPTABLE_CEILING,
+            ideal_density=STRATEGY_UTILIZATION_IDEAL,
+            preferred_density_reached=in_strategy_preferred_band(utilization),
+            preferred_density_status=strategy_density_status(utilization),
             underfill_reasons=(
                 []
-                if utilization >= TEMPLATE_V1_DENSITY_INVESTIGATION_FLOOR
-                else [CompositionUnderfillReason.EVIDENCE_LIMITED]
+                if utilization >= STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                else [
+                    CompositionUnderfillReason.QUALITY_LIMITED
+                    if strategy.expansion_reserve
+                    else CompositionUnderfillReason.EVIDENCE_LIMITED
+                ]
             ),
             normalized_posting_features=_maximal_phrases(list(context.features.specific_phrases))[
                 :30
@@ -1713,10 +1894,11 @@ class DeterministicResumeComposer:
             ),
             verification_provider=final.evaluation.provider,
             verification_failure=verification_failure,
-            additional_evidence_unavailable=True,
+            additional_evidence_unavailable=not bool(remaining_reserve),
             reason=(
-                "Validated Gemini strategy defined the candidate portfolio; deterministic "
-                "page fitting removed lower-priority strategy evidence only when required."
+                "Validated Gemini strategy defined the core portfolio and bounded expansion "
+                "reserve; deterministic page fitting added only positive-marginal reserve "
+                "evidence and rolled back lower-priority content only when required."
             ),
             beam_width=self._bounds.beam_width,
             maximum_page_evaluations=(
@@ -1730,7 +1912,7 @@ class DeterministicResumeComposer:
             maximum_selected_entries=self._bounds.maximum_selected_entries,
             estimated_page_evaluations=estimated_evaluations,
             exact_page_evaluations=exact_evaluations,
-            expansion_operations=max(0, len(bullet_states) - 1),
+            expansion_operations=max(0, len(bullet_states) - 1) + expansion_attempts,
         )
         self._telemetry.record(
             GenerationStage.PORTFOLIO_PAGE_FIT_SEARCH,

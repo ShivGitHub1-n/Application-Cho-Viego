@@ -21,8 +21,9 @@ from resume_tailor.domain.models import (
     StructuredResume,
 )
 from resume_tailor.domain.resume_composition import (
+    STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
     TEMPLATE_V1_UTILIZATION_TARGET_CEILING,
-    TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
 )
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.rendering import (
@@ -455,6 +456,12 @@ def test_page_utilization_uses_static_template_v1_calibration_floor(
         profile,
         measurement,
     )
+    underfilled_diagnostic = diagnose_docx_page_utilization(
+        complete_path,
+        profile,
+        measurement,
+        severe_underfill_threshold=0.65,
+    )
     canonical_diagnostic = diagnose_docx_page_utilization(
         REFERENCE,
         profile,
@@ -473,11 +480,15 @@ def test_page_utilization_uses_static_template_v1_calibration_floor(
 
     assert sparse_diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL
     assert complete_diagnostic.status is PageUtilizationStatus.SEVERE_UNDERFILL
+    assert underfilled_diagnostic.status is PageUtilizationStatus.UNDERFILLED
     assert canonical_diagnostic.status is PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
     assert overflow_diagnostic.status is PageUtilizationStatus.OVERFLOW
     assert complete_diagnostic.estimated_utilization_ratio == pytest.approx(0.6693699731903485)
     assert canonical_diagnostic.estimated_utilization_ratio == pytest.approx(0.964343163538874)
-    assert complete_diagnostic.severe_underfill_threshold == TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
+    assert complete_diagnostic.underfill_threshold == STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+    assert complete_diagnostic.severe_underfill_threshold == (
+        TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR
+    )
     assert (
         canonical_diagnostic.estimated_utilization_ratio <= TEMPLATE_V1_UTILIZATION_TARGET_CEILING
     )

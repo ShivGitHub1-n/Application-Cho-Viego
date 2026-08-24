@@ -8,9 +8,11 @@ from resume_tailor.application.title_integrity import conflicting_role_titles
 from resume_tailor.domain.application_strategy import (
     ApplicationRolePriority,
     ApplicationStrategyPlan,
+    EvidencePriorityTier,
     LowPriorityEntry,
     StrategyEntryPlan,
     StrategyEvidenceChoice,
+    StrategyExpansionAction,
     StrategyValidationIssue,
     StrategyValidationIssueCode,
 )
@@ -215,6 +217,158 @@ class DeterministicApplicationStrategyValidator:
                 "Provider strategy contained no eligible reviewed evidence."
             )
 
+        selected_entry_ids = {item.entry_id for item in selected_entries}
+        strategy_entry_ids = set(selected_entry_ids)
+        expansion_reserve: list[StrategyExpansionAction] = []
+
+        def add_reserve_action(
+            *,
+            entry_id: str,
+            evidence_ids: list[str],
+            priority: EvidencePriorityTier,
+            reason: str,
+            minimum_coherent_depth: int,
+        ) -> None:
+            entry = entries.get(entry_id)
+            if entry is None:
+                issues.append(
+                    StrategyValidationIssue(
+                        code=StrategyValidationIssueCode.UNKNOWN_ENTRY,
+                        entry_id=entry_id,
+                        detail="Expansion reserve referenced an unknown profile entry.",
+                    )
+                )
+                return
+            requires_heading = entry_id not in selected_entry_ids
+            effective_minimum = max(
+                minimum_coherent_depth,
+                2 if requires_heading and entry.kind is EntityKind.EXPERIENCE else 1,
+            )
+            if requires_heading and entry_id not in strategy_entry_ids:
+                if len(strategy_entry_ids) >= maximum_selected_entries:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.STRUCTURAL_LIMIT,
+                            entry_id=entry_id,
+                            detail="Reserve entry was outside the bounded selected-entry limit.",
+                        )
+                    )
+                    return
+            accepted_ids: list[str] = []
+            for evidence_id in evidence_ids:
+                if len(used_evidence) >= maximum_selected_evidence:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.STRUCTURAL_LIMIT,
+                            entry_id=entry_id,
+                            evidence_id=evidence_id,
+                            detail=(
+                                "Reserve evidence was outside the final selected-evidence bound."
+                            ),
+                        )
+                    )
+                    continue
+                source = evidence.get(evidence_id)
+                if source is None:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.UNKNOWN_EVIDENCE,
+                            entry_id=entry_id,
+                            evidence_id=evidence_id,
+                            detail="Expansion reserve referenced an unknown evidence item.",
+                        )
+                    )
+                    continue
+                if source.entity_id != entry_id:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.WRONG_ENTRY,
+                            entry_id=entry_id,
+                            evidence_id=evidence_id,
+                            detail="Reserve evidence ownership did not match its entry.",
+                        )
+                    )
+                    continue
+                if not source.confirmed:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.UNCONFIRMED_EVIDENCE,
+                            entry_id=entry_id,
+                            evidence_id=evidence_id,
+                            detail="Unreviewed evidence cannot enter the expansion reserve.",
+                        )
+                    )
+                    continue
+                if source.id in used_evidence:
+                    issues.append(
+                        StrategyValidationIssue(
+                            code=StrategyValidationIssueCode.DUPLICATE_EVIDENCE,
+                            entry_id=entry_id,
+                            evidence_id=evidence_id,
+                            detail="Core and reserve evidence may appear only once.",
+                        )
+                    )
+                    continue
+                used_evidence.add(source.id)
+                accepted_ids.append(source.id)
+            if len(accepted_ids) < effective_minimum:
+                used_evidence.difference_update(accepted_ids)
+                issues.append(
+                    StrategyValidationIssue(
+                        code=StrategyValidationIssueCode.STRUCTURAL_LIMIT,
+                        entry_id=entry_id,
+                        detail=(
+                            "Expansion action did not retain its minimum coherent evidence depth."
+                        ),
+                    )
+                )
+                return
+            safe_reason = reason.strip() or "Adds distinct reviewed application evidence."
+            if _contains_conflicting_title_or_seniority(safe_reason, entry.title):
+                issues.append(
+                    StrategyValidationIssue(
+                        code=StrategyValidationIssueCode.TITLE_INTEGRITY,
+                        entry_id=entry_id,
+                        detail="Conflicting title language was removed from reserve diagnostics.",
+                    )
+                )
+                safe_reason = "Adds distinct reviewed application evidence."
+            strategy_entry_ids.add(entry_id)
+            expansion_reserve.append(
+                StrategyExpansionAction(
+                    entry_id=entry_id,
+                    evidence_ids=accepted_ids,
+                    priority=priority,
+                    marginal_value_reason=safe_reason,
+                    requires_entry_heading=requires_heading,
+                    minimum_coherent_depth=effective_minimum,
+                )
+            )
+
+        for proposed_entry in output.selected_entries:
+            for alternative in [
+                *proposed_entry.selected_evidence,
+                *proposed_entry.alternative_evidence,
+            ]:
+                if alternative.evidence_id in used_evidence:
+                    continue
+                add_reserve_action(
+                    entry_id=proposed_entry.entry_id,
+                    evidence_ids=[alternative.evidence_id],
+                    priority=alternative.priority,
+                    reason="Ranked same-entry alternative from the application strategist.",
+                    minimum_coherent_depth=1,
+                )
+
+        for proposed_action in output.expansion_reserve:
+            add_reserve_action(
+                entry_id=proposed_action.entry_id,
+                evidence_ids=proposed_action.evidence_ids,
+                priority=proposed_action.priority,
+                reason=proposed_action.marginal_value_reason,
+                minimum_coherent_depth=proposed_action.minimum_coherent_depth,
+            )
+
         selected_ids = [
             choice.evidence_id for entry in selected_entries for choice in entry.evidence
         ]
@@ -240,13 +394,14 @@ class DeterministicApplicationStrategyValidator:
             LowPriorityEntry(entry_id=item.entry_id, reason=item.reason)
             for item in output.low_priority_entries
             if item.entry_id in entries
-            and item.entry_id not in {selected.entry_id for selected in selected_entries}
+            and item.entry_id not in strategy_entry_ids
         ]
         thesis = output.application_thesis.strip() or plan.strategy.primary_focus
         return ApplicationStrategyPlan(
             application_thesis=thesis,
             role_priorities=safe_role_priorities,
             selected_entries=selected_entries,
+            expansion_reserve=expansion_reserve,
             low_priority_entries=low_priority_entries,
             global_evidence_priority=global_priority,
             validation_issues=issues,
@@ -272,6 +427,7 @@ class DeterministicApplicationStrategyValidator:
             for item in [*retrieval.admitted, *retrieval.rejected]
         }
         seen: set[str] = set()
+        core_seen: set[str] = set()
         failures: list[str] = []
         if len(strategy.selected_entries) > maximum_selected_entries:
             failures.append("strategy exceeds selected-entry bound")
@@ -292,19 +448,53 @@ class DeterministicApplicationStrategyValidator:
                 if choice.evidence_id in seen:
                     failures.append(f"duplicate strategy evidence: {choice.evidence_id}")
                 seen.add(choice.evidence_id)
+                core_seen.add(choice.evidence_id)
                 unsupported = set(choice.requirement_ids) - relationships.get(
                     choice.evidence_id,
                     set(),
                 )
                 if unsupported:
                     failures.append(f"unsupported requirement attribution: {choice.evidence_id}")
+        strategy_entries = {item.entry_id for item in strategy.selected_entries}
+        all_strategy_entries = set(strategy_entries)
+        for action in strategy.expansion_reserve:
+            entry = entries.get(action.entry_id)
+            if entry is None:
+                failures.append(f"unknown reserve entry: {action.entry_id}")
+                continue
+            requires_heading = action.entry_id not in strategy_entries
+            if action.requires_entry_heading != requires_heading:
+                failures.append(f"incorrect reserve heading authority: {action.entry_id}")
+            effective_minimum = max(
+                action.minimum_coherent_depth,
+                2 if requires_heading and entry.kind is EntityKind.EXPERIENCE else 1,
+            )
+            valid_depth = 0
+            for evidence_id in action.evidence_ids:
+                source = evidence.get(evidence_id)
+                if source is None:
+                    failures.append(f"unknown reserve evidence: {evidence_id}")
+                    continue
+                if source.entity_id != entry.id:
+                    failures.append(f"wrong reserve evidence owner: {evidence_id}")
+                if not source.confirmed:
+                    failures.append(f"unconfirmed reserve evidence: {evidence_id}")
+                if evidence_id in seen:
+                    failures.append(f"duplicate strategy evidence: {evidence_id}")
+                seen.add(evidence_id)
+                valid_depth += 1
+            if valid_depth < effective_minimum:
+                failures.append(f"incoherent reserve action: {action.entry_id}")
+            all_strategy_entries.add(action.entry_id)
+        if len(all_strategy_entries) > maximum_selected_entries:
+            failures.append("strategy reserve exceeds selected-entry bound")
         if len(seen) > maximum_selected_evidence:
             failures.append("strategy exceeds selected-evidence bound")
         if strategy.global_evidence_priority != list(
             dict.fromkeys(strategy.global_evidence_priority)
         ):
             failures.append("strategy global priority contains duplicates")
-        if set(strategy.global_evidence_priority) != seen:
+        if set(strategy.global_evidence_priority) != core_seen:
             failures.append("strategy global priority does not match selected evidence")
         if failures:
             raise ApplicationStrategyValidationError("; ".join(failures))

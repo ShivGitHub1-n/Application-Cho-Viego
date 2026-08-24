@@ -28,6 +28,7 @@ from resume_tailor.domain.llm_models import (
     ProposedLowPriorityEntry,
     ProposedStrategyEntry,
     ProposedStrategyEvidence,
+    ProposedStrategyExpansionAction,
     ProposedStrategyRolePriority,
 )
 from resume_tailor.domain.models import (
@@ -83,6 +84,72 @@ class UnverifiedPageFit(ControlledPageFit):
                 "provider": "unavailable exact paginator",
                 "verification_failure": "Controlled paginator unavailable.",
             }
+        )
+
+
+class UnderfillExpansionPageFit:
+    def __init__(self, *, exact_overflow_above: int | None = None) -> None:
+        self.exact_overflow_above = exact_overflow_above
+        self.observed: list[tuple[int, bool, float, int]] = []
+
+    @staticmethod
+    def _bullet_count(resume: object) -> int:
+        return sum(
+            len(items)
+            for section in (resume.experience_bullets, resume.project_bullets)
+            for items in section.values()
+        )
+
+    def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
+        bullet_count = self._bullet_count(resume)
+        utilization = min(0.96, 0.23 + (0.04 * bullet_count))
+        overflow = bool(
+            attempt_exact
+            and self.exact_overflow_above is not None
+            and bullet_count > self.exact_overflow_above
+        )
+        self.observed.append((bullet_count, attempt_exact, utilization, 2 if overflow else 1))
+        return PageFitEvaluation(
+            status=(
+                PageUtilizationStatus.OVERFLOW
+                if overflow
+                else PageUtilizationStatus.SEVERE_UNDERFILL
+                if utilization < 0.69
+                else PageUtilizationStatus.UNDERFILLED
+                if utilization < 0.76
+                else PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+            ),
+            page_count=2 if overflow else 1,
+            exact=attempt_exact,
+            provider="controlled rendered-DOCX geometry and exact paginator",
+            utilization_ratio=utilization,
+            fits_one_page=not overflow,
+        )
+
+    def evaluate_batch(self, resumes: list[object]) -> list[PageFitEvaluation]:
+        return [self.evaluate(resume, attempt_exact=True) for resume in resumes]
+
+
+class OneStepAlternativePageFit(UnderfillExpansionPageFit):
+    def __init__(self, core_bullets: int = 11) -> None:
+        super().__init__()
+        self.core_bullets = core_bullets
+
+    def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
+        bullet_count = self._bullet_count(resume)
+        utilization = 0.67 if bullet_count <= self.core_bullets else 0.84
+        self.observed.append((bullet_count, attempt_exact, utilization, 1))
+        return PageFitEvaluation(
+            status=(
+                PageUtilizationStatus.SEVERE_UNDERFILL
+                if bullet_count <= self.core_bullets
+                else PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+            ),
+            page_count=1,
+            exact=attempt_exact,
+            provider="controlled rendered-DOCX geometry and exact paginator",
+            utilization_ratio=utilization,
+            fits_one_page=True,
         )
 
 
@@ -150,6 +217,18 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
             ["SolidWorks"],
         ),
         _evidence(
+            "mech",
+            "mech-feedback",
+            "Tuned encoder feedback and current limits during actuator bench validation.",
+            ["encoders", "current sensing"],
+        ),
+        _evidence(
+            "mech",
+            "mech-repeat",
+            "Implemented STM32 motor control with PWM and encoder feedback.",
+            ["STM32", "PWM"],
+        ),
+        _evidence(
             "rd",
             "rd-wiring",
             "Integrated sensors, wiring, and embedded controllers on a physical prototype.",
@@ -160,6 +239,18 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
             "rd-test",
             "Built a hardware test fixture and documented bring-up findings.",
             ["test fixture"],
+        ),
+        _evidence(
+            "rd",
+            "rd-power",
+            "Prototyped regulated power distribution and protected sensor interfaces.",
+            ["power distribution", "sensors"],
+        ),
+        _evidence(
+            "rd",
+            "rd-validation",
+            "Recorded repeatable electrical and mechanical validation results across builds.",
+            ["validation"],
         ),
         _evidence(
             "digital",
@@ -186,6 +277,12 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
             ["CI"],
         ),
         _evidence(
+            "software",
+            "software-observability",
+            "Added structured telemetry and failure diagnostics to a production Python service.",
+            ["Python", "telemetry"],
+        ),
+        _evidence(
             "hand",
             "hand-build",
             "Assembled a motorized robotic hand with embedded sensing.",
@@ -198,6 +295,12 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
             ["computer vision"],
         ),
         _evidence(
+            "hand",
+            "hand-control",
+            "Validated closed-loop finger motion using motor-current and position feedback.",
+            ["feedback control"],
+        ),
+        _evidence(
             "arm",
             "arm-cad",
             "Designed and 3D-printed actuator mounts for a long-reach mechanism.",
@@ -208,6 +311,12 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
             "arm-test",
             "Validated actuator fit, range, and mechanical alignment on the bench.",
             ["actuator"],
+        ),
+        _evidence(
+            "arm",
+            "arm-transmission",
+            "Built and tested a compact mechanical transmission for the long-reach actuator.",
+            ["mechanical transmission", "actuator"],
         ),
         _evidence(
             "resume-tool",
@@ -286,11 +395,50 @@ def _selection(
     )
 
 
+def _hardware_core_entries(
+    *,
+    mechatronics_alternatives: list[str] | None = None,
+) -> list[ProposedStrategyEntry]:
+    entries = [
+        _selection(
+            "mech",
+            ["mech-control", "mech-interfaces", "mech-safety", "mech-cad"],
+            EvidencePriorityTier.CRITICAL,
+        ),
+        _selection(
+            "rd",
+            ["rd-wiring", "rd-test", "rd-power", "rd-validation"],
+            EvidencePriorityTier.HIGH,
+        ),
+        _selection(
+            "hand",
+            ["hand-build", "hand-vision", "hand-control"],
+            EvidencePriorityTier.MEDIUM,
+        ),
+    ]
+    alternatives = mechatronics_alternatives or []
+    if alternatives:
+        entries[0] = entries[0].model_copy(
+            update={
+                "alternative_evidence": [
+                    ProposedStrategyEvidence(
+                        evidence_id=evidence_id,
+                        priority=EvidencePriorityTier.HIGH,
+                        source_wording=SourceWordingAssessment.STRONG,
+                    )
+                    for evidence_id in alternatives
+                ]
+            }
+        )
+    return entries
+
+
 def _strategy_result(
     selected_entries: list[ProposedStrategyEntry],
     *,
     thesis: str,
     low_priority: list[str] | None = None,
+    expansion_reserve: list[ProposedStrategyExpansionAction] | None = None,
 ) -> ApplicationStrategyResult:
     return ApplicationStrategyResult(
         metadata=metadata(LlmOperation.APPLICATION_STRATEGY),
@@ -300,6 +448,7 @@ def _strategy_result(
                 ProposedStrategyRolePriority(theme="Deliver the role's material technical work")
             ],
             selected_entries=selected_entries,
+            expansion_reserve=expansion_reserve or [],
             low_priority_entries=[
                 ProposedLowPriorityEntry(
                     entry_id=entry_id,
@@ -319,6 +468,7 @@ def _service(
     *,
     writing: bool = False,
     maximum_bullets: int = 24,
+    page_fit: object | None = None,
 ) -> TailorResumeService:
     return TailorResumeService(
         DeterministicResumeOptimizer(),
@@ -333,7 +483,7 @@ def _service(
             enable_application_strategy=True,
         ),
         resume_composer=DeterministicResumeComposer(
-            ControlledPageFit(maximum_bullets=maximum_bullets)
+            page_fit or ControlledPageFit(maximum_bullets=maximum_bullets)
         ),
     )
 
@@ -498,6 +648,198 @@ def test_page_fit_removes_optional_strategy_evidence_before_high_or_critical() -
     assert "arm" not in resume.project_bullets
     assert resume.composition_diagnostic is not None
     assert resume.composition_diagnostic.verification_status.value == "exact"
+
+
+def test_severe_underfill_consumes_existing_same_entry_alternative() -> None:
+    profile = _mixed_profile()
+    result = _strategy_result(
+        _hardware_core_entries(mechatronics_alternatives=["mech-feedback"]),
+        thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+        low_priority=["digital", "software", "resume-tool", "arm"],
+    )
+    page_fit = OneStepAlternativePageFit()
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert plan.application_strategy is not None
+    assert plan.application_strategy.selected_evidence_ids == [
+        "mech-control",
+        "mech-interfaces",
+        "mech-safety",
+        "mech-cad",
+        "rd-wiring",
+        "rd-test",
+        "rd-power",
+        "rd-validation",
+        "hand-build",
+        "hand-vision",
+        "hand-control",
+    ]
+    assert plan.application_strategy.reserve_evidence_ids == ["mech-feedback"]
+    assert any(
+        count == 11 and utilization == 0.67
+        for count, _, utilization, _ in page_fit.observed
+    )
+    assert resume.composition_diagnostic is not None
+    assert "mech-feedback" in resume.composition_diagnostic.selected_bullet_ids
+    assert resume.composition_diagnostic.final_utilization_ratio == 0.84
+    assert resume.composition_diagnostic.page_count == 1
+    assert resume.composition_diagnostic.verification_status.value == "exact"
+    assert "digital" not in resume.experience_bullets
+    assert "resume-tool" not in resume.project_bullets
+
+
+def test_ranked_reserve_prefers_distinct_portfolio_value_and_can_open_project() -> None:
+    profile = _mixed_profile()
+    reserve = [
+        ProposedStrategyExpansionAction(
+            entry_id="arm",
+            evidence_ids=["arm-cad", "arm-test", "arm-transmission"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason=(
+                "Adds distinct actuator, CAD, transmission, and mechanical validation proof."
+            ),
+            minimum_coherent_depth=2,
+        )
+    ]
+    result = _strategy_result(
+        _hardware_core_entries(
+            mechatronics_alternatives=["mech-repeat", "mech-feedback"]
+        ),
+        thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+        expansion_reserve=reserve,
+        low_priority=["digital", "software", "resume-tool"],
+    )
+    page_fit = UnderfillExpansionPageFit()
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert plan.application_strategy is not None
+    assert plan.application_strategy.expansion_reserve[-1].requires_entry_heading is True
+    assert plan.application_strategy.expansion_reserve[-1].minimum_coherent_depth == 2
+    assert resume.composition_diagnostic is not None
+    assert resume.composition_diagnostic.final_utilization_ratio == 0.83
+    assert resume.composition_diagnostic.bullet_counts == {
+        "mech": 5,
+        "rd": 4,
+        "hand": 3,
+        "arm": 3,
+    }
+    assert "arm" in resume.project_bullets
+    assert len(resume.project_bullets["arm"]) == 3
+    assert "mech-feedback" in resume.composition_diagnostic.selected_bullet_ids
+    assert "mech-repeat" not in resume.composition_diagnostic.selected_bullet_ids
+    assert "digital" not in resume.experience_bullets
+    assert "software" not in resume.experience_bullets
+    assert "resume-tool" not in resume.project_bullets
+
+
+def test_new_professional_reserve_entry_requires_coherent_depth() -> None:
+    profile = _mixed_profile()
+    result = _strategy_result(
+        _hardware_core_entries(),
+        thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+        expansion_reserve=[
+            ProposedStrategyExpansionAction(
+                entry_id="digital",
+                evidence_ids=["digital-ai"],
+                priority=EvidencePriorityTier.OPTIONAL,
+                marginal_value_reason="One isolated supporting item.",
+                minimum_coherent_depth=1,
+            )
+        ],
+    )
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+
+    assert plan.application_strategy is not None
+    assert plan.application_strategy.expansion_reserve == []
+    assert StrategyValidationIssueCode.STRUCTURAL_LIMIT in {
+        item.code for item in plan.application_strategy.validation_issues
+    }
+
+
+def test_exact_two_page_expansion_is_rejected_for_verified_core() -> None:
+    profile = _mixed_profile()
+    result = _strategy_result(
+        _hardware_core_entries(mechatronics_alternatives=["mech-feedback"]),
+        thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+    )
+    page_fit = OneStepAlternativePageFit()
+
+    def exact_batch(resumes: list[object]) -> list[PageFitEvaluation]:
+        evaluations: list[PageFitEvaluation] = []
+        for resume in resumes:
+            count = page_fit._bullet_count(resume)
+            evaluations.append(
+                PageFitEvaluation(
+                    status=(
+                        PageUtilizationStatus.OVERFLOW
+                        if count > 11
+                        else PageUtilizationStatus.SEVERE_UNDERFILL
+                    ),
+                    page_count=2 if count > 11 else 1,
+                    exact=True,
+                    provider="controlled exact paginator",
+                    utilization_ratio=0.84 if count > 11 else 0.67,
+                    fits_one_page=count <= 11,
+                )
+            )
+        return evaluations
+
+    page_fit.evaluate_batch = exact_batch  # type: ignore[method-assign]
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert resume.composition_diagnostic is not None
+    assert "mech-feedback" not in resume.composition_diagnostic.selected_bullet_ids
+    assert resume.composition_diagnostic.page_count == 1
+    assert resume.composition_diagnostic.verification_status.value == "exact"
+
+
+def test_underfilled_software_strategy_expands_only_with_software_reserve() -> None:
+    profile = _mixed_profile()
+    software_entries = [
+        _selection("digital", ["digital-ai", "digital-docs"], EvidencePriorityTier.CRITICAL),
+        _selection("software", ["software-api", "software-tests"], EvidencePriorityTier.HIGH),
+        _selection("resume-tool", ["resume-rag", "resume-ui"], EvidencePriorityTier.HIGH),
+    ]
+    result = _strategy_result(
+        software_entries,
+        thesis="Center the reviewed software delivery and AI evaluation portfolio.",
+        expansion_reserve=[
+            ProposedStrategyExpansionAction(
+                entry_id="software",
+                evidence_ids=["software-observability"],
+                priority=EvidencePriorityTier.HIGH,
+                marginal_value_reason="Adds distinct production telemetry and diagnostics proof.",
+                minimum_coherent_depth=1,
+            )
+        ],
+        low_priority=["mech", "rd", "hand", "arm"],
+    )
+    page_fit = OneStepAlternativePageFit(core_bullets=6)
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _software_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert _selected_entry_ids(resume) == {"digital", "software", "resume-tool"}
+    assert resume.composition_diagnostic is not None
+    assert "software-observability" in resume.composition_diagnostic.selected_bullet_ids
+    assert resume.composition_diagnostic.final_utilization_ratio == 0.84
 
 
 def test_writer_receives_only_strategy_evidence_and_total_calls_are_bounded() -> None:

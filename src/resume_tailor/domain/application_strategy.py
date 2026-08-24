@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v1"
+APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v2"
 
 
 class EvidencePriorityTier(StrEnum):
@@ -55,6 +55,15 @@ class LowPriorityEntry(BaseModel):
     reason: str = Field(min_length=1, max_length=300)
 
 
+class StrategyExpansionAction(BaseModel):
+    entry_id: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1, max_length=4)
+    priority: EvidencePriorityTier
+    marginal_value_reason: str = Field(min_length=1, max_length=300)
+    requires_entry_heading: bool
+    minimum_coherent_depth: int = Field(ge=1, le=4)
+
+
 class StrategyValidationIssue(BaseModel):
     code: StrategyValidationIssueCode
     entry_id: str | None = None
@@ -67,6 +76,7 @@ class ApplicationStrategyPlan(BaseModel):
     application_thesis: str = Field(min_length=1, max_length=500)
     role_priorities: list[ApplicationRolePriority] = Field(default_factory=list)
     selected_entries: list[StrategyEntryPlan] = Field(min_length=1)
+    expansion_reserve: list[StrategyExpansionAction] = Field(default_factory=list)
     low_priority_entries: list[LowPriorityEntry] = Field(default_factory=list)
     global_evidence_priority: list[str] = Field(min_length=1)
     validation_issues: list[StrategyValidationIssue] = Field(default_factory=list)
@@ -87,6 +97,18 @@ class ApplicationStrategyPlan(BaseModel):
     def selected_entry_ids(self) -> list[str]:
         return [entry.entry_id for entry in self.selected_entries]
 
+    @property
+    def reserve_evidence_ids(self) -> list[str]:
+        return [
+            evidence_id
+            for action in self.expansion_reserve
+            for evidence_id in action.evidence_ids
+        ]
+
+    @property
+    def all_strategy_evidence_ids(self) -> list[str]:
+        return list(dict.fromkeys([*self.selected_evidence_ids, *self.reserve_evidence_ids]))
+
     def priority_for(self, evidence_id: str) -> EvidencePriorityTier | None:
         return next(
             (
@@ -106,6 +128,7 @@ __all__ = [
     "EvidencePriorityTier",
     "LowPriorityEntry",
     "SourceWordingAssessment",
+    "StrategyExpansionAction",
     "StrategyEntryPlan",
     "StrategyEvidenceChoice",
     "StrategyValidationIssue",

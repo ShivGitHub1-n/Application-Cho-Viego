@@ -29,7 +29,10 @@ from resume_tailor.domain.models import (
     StructuredBullet,
     StructuredResume,
 )
-from resume_tailor.domain.resume_composition import TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
+from resume_tailor.domain.resume_composition import (
+    STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
+)
 from resume_tailor.domain.resume_metadata import compose_date_range, education_end_date
 from resume_tailor.infrastructure.adaptive_docx import render_structured_resume
 from resume_tailor.infrastructure.static_template_docx import render_template_v1_resume
@@ -456,7 +459,8 @@ class ManagedResumeRenderer:
     _body_font = "Helvetica"
     _body_size = 9
     _max_overflow_reductions = 32
-    _severe_underfill_threshold = TEMPLATE_V1_UTILIZATION_TARGET_FLOOR
+    _underfill_threshold = STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+    _severe_underfill_threshold = TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR
 
     def __init__(
         self,
@@ -583,6 +587,7 @@ class ManagedResumeRenderer:
                     path,
                     self._layout_profile,
                     measurement,
+                    underfill_threshold=self._underfill_threshold,
                     severe_underfill_threshold=self._severe_underfill_threshold,
                 )
                 return candidate
@@ -620,6 +625,7 @@ class ManagedResumeRenderer:
             path,
             self._layout_profile,
             provisional,
+            underfill_threshold=self._underfill_threshold,
             severe_underfill_threshold=self._severe_underfill_threshold,
         )
         estimated_page_count = max(
@@ -940,7 +946,8 @@ def diagnose_docx_page_utilization(
     layout_profile: LayoutProfile,
     measurement: PageCountMeasurement,
     *,
-    severe_underfill_threshold: float = TEMPLATE_V1_UTILIZATION_TARGET_FLOOR,
+    underfill_threshold: float = STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    severe_underfill_threshold: float = TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
 ) -> PageUtilizationDiagnostic:
     """Estimate occupied vertical space while keeping exact page count authoritative."""
 
@@ -966,9 +973,11 @@ def diagnose_docx_page_utilization(
     elif measurement.page_count == 1 and ratio < severe_underfill_threshold:
         status = PageUtilizationStatus.SEVERE_UNDERFILL
         message = (
-            "The resume is one page but severely underfilled; no additional admissible "
-            "evidence was selected."
+            "The resume is one page but severely underfilled."
         )
+    elif measurement.page_count == 1 and ratio < underfill_threshold:
+        status = PageUtilizationStatus.UNDERFILLED
+        message = "The resume is one page but remains below acceptable page utilization."
     elif measurement.page_count == 1:
         status = PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
         message = "The resume is an acceptably utilized one-page composition."
@@ -982,6 +991,7 @@ def diagnose_docx_page_utilization(
         estimated_occupied_height_twips=occupied,
         usable_height_twips=usable_height,
         estimated_utilization_ratio=ratio,
+        underfill_threshold=underfill_threshold,
         severe_underfill_threshold=severe_underfill_threshold,
         uncontrolled_blank_paragraph_count=blank_paragraphs,
         message=message,

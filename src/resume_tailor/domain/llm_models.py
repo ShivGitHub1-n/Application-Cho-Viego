@@ -280,10 +280,22 @@ class ProposedLowPriorityEntry(StrictModel):
     reason: str = Field(min_length=1, max_length=300)
 
 
+class ProposedStrategyExpansionAction(StrictModel):
+    entry_id: str
+    evidence_ids: list[str] = Field(min_length=1, max_length=4)
+    priority: EvidencePriorityTier
+    marginal_value_reason: str = Field(min_length=1, max_length=300)
+    minimum_coherent_depth: int = Field(default=1, ge=1, le=4)
+
+
 class ApplicationStrategyOutput(StrictModel):
     application_thesis: str = Field(min_length=1, max_length=500)
     role_priorities: list[ProposedStrategyRolePriority] = Field(default_factory=list)
     selected_entries: list[ProposedStrategyEntry] = Field(min_length=1)
+    expansion_reserve: list[ProposedStrategyExpansionAction] = Field(
+        default_factory=list,
+        max_length=8,
+    )
     low_priority_entries: list[ProposedLowPriorityEntry] = Field(default_factory=list)
     global_evidence_priority: list[str] = Field(min_length=1)
 

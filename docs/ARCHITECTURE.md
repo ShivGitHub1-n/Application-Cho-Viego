@@ -95,15 +95,19 @@ receives the normalized full posting, every eligible confirmed evidence atom,
 authoritative entry metadata, deterministic evidence/requirement relationships,
 reviewed skill context, and structural bounds. It returns an application thesis,
 ordered role priorities, selected entries, desired depth, selected and fallback
-evidence IDs, global evidence priority, and meaningful low-priority omissions.
+evidence IDs, a small ranked underfill-expansion reserve, global evidence
+priority, and meaningful low-priority omissions. Same-entry fallback evidence
+is retained automatically; the explicit reserve is the bounded way to authorize
+a new entry when it adds distinct portfolio value.
 The deterministic validator removes unknown, duplicated, cross-entry,
 unconfirmed, structurally impossible, title-conflicting, or unsupported
 requirement references item by item. A valid remainder survives; the system does
 not replace it with unrelated heuristic selections.
 
 The validated `ApplicationStrategyPlan` is persisted on the tailoring plan and
-structured resume and is included in artifact identity. It defines the only
-bullet evidence eligible for the writer and the primary page-fit portfolio.
+structured resume and is included in artifact identity. Its core selection
+defines the only bullet evidence eligible for the writer. Its core plus validated
+reserve defines the only evidence eligible for page fitting.
 This fixes the former handoff where an advisory recommendation saw only already
 narrowed deterministic candidates, then the composer reopened the full profile
 and re-decided the portfolio. When the strategist is unavailable or its valid
@@ -140,10 +144,13 @@ The hybrid authority split is explicit:
   order may affect readability and line fit, but cannot create selection
   authority. Explicit approval makes a review-required variant eligible; it
   does not force that wording to replace a stronger source candidate;
-- in Gemini strategy mode, deterministic page fitting evaluates bounded
-  strategy-only rollback states and removes optional, then medium, then high or
-  critical evidence only as exact one-page fit requires; within equal priority,
-  readability, redundancy, line cost, and quality remain deterministic;
+- in Gemini strategy mode, deterministic page fitting first renders the core
+  strategy. Below the 82% preferred floor, it may add only validated ranked
+  reserve actions with positive marginal portfolio value, stopping at 82%-92%,
+  the 95% acceptable ceiling, overflow, or reserve exhaustion. It still removes
+  optional, then medium, then high or critical core evidence when one-page fit
+  requires rollback; within equal priority, readability, redundancy, line cost,
+  and quality remain deterministic;
 - in fallback mode, the existing optimizer remains authoritative for final entry
   selection and its full deterministic package frontier;
 - deterministic code remains authoritative for structure, duplication,

@@ -190,6 +190,7 @@ class LayoutProfile(BaseModel):
 class PageUtilizationStatus(StrEnum):
     OVERFLOW = "overflow"
     ACCEPTABLE_ONE_PAGE = "acceptable_one_page"
+    UNDERFILLED = "underfilled"
     SEVERE_UNDERFILL = "severe_underfill"
     UNVERIFIED = "unverified"
 
@@ -201,6 +202,7 @@ class PageUtilizationDiagnostic(BaseModel):
     estimated_occupied_height_twips: int = Field(ge=0)
     usable_height_twips: int = Field(gt=0)
     estimated_utilization_ratio: float = Field(ge=0)
+    underfill_threshold: float = Field(gt=0, lt=1)
     severe_underfill_threshold: float = Field(gt=0, lt=1)
     uncontrolled_blank_paragraph_count: int = Field(default=0, ge=0)
     message: str
