@@ -494,18 +494,20 @@ def test_conservative_semantic_normalization_is_not_review_gated() -> None:
 
 def test_evidence_entailed_firmware_terminology_is_validated_and_material() -> None:
     source = (
-        "Developed STM32 microcontroller control code in C++ for actuator commands and feedback."
+        "Supported STM32F4 peripherals in STM32CubeIDE and contributed C++ integration "
+        "code for sensor I/O, serial communication, GPIO, and prototype control outputs."
     )
     rewrite = (
-        "Developed C++ embedded firmware on STM32 for actuator control and feedback."
+        "Contributed embedded C++ firmware in STM32CubeIDE for STM32F4 sensor I/O, "
+        "serial communication, GPIO, and prototype control outputs."
     )
     group = ApprovedEvidenceGroup(
         entry_id="embedded-entry",
         authoritative_entry_title="Embedded Developer",
         evidence_ids=["embedded-control"],
         source_texts=[source],
-        technologies=["STM32", "C++"],
-        capabilities=["microcontroller programming", "actuator control"],
+        technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
+        capabilities=["sensor I/O", "serial communication", "prototype control"],
         max_rendered_lines=2,
     )
 
@@ -517,7 +519,7 @@ def test_evidence_entailed_firmware_terminology_is_validated_and_material() -> N
                 entry_id="embedded-entry",
                 final_bullet_text=rewrite,
                 source_evidence_ids=["embedded-control"],
-                preserved_technologies=["STM32", "C++"],
+                preserved_technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
                 evidence_combined=False,
                 confidence=0.95,
                 claims=[
@@ -534,7 +536,10 @@ def test_evidence_entailed_firmware_terminology_is_validated_and_material() -> N
         posting=JobPosting(
             id="embedded-posting",
             title="Embedded Firmware Engineer",
-            description="Develop embedded firmware in C/C++ for actuator control.",
+            description=(
+                "Develop and run embedded C/C++ firmware for microcontroller peripherals, "
+                "sensor I/O, serial communication, and hardware test outputs."
+            ),
         ),
     )
 
@@ -548,6 +553,220 @@ def test_evidence_entailed_firmware_terminology_is_validated_and_material() -> N
         "evidence-entailed target terminology" in reason
         for reason in accepted[0].improvement_reasons
     )
+
+
+def test_contribution_scoped_firmware_development_normalization_is_validated() -> None:
+    source = (
+        "Supported STM32F4 peripherals in STM32CubeIDE and contributed C++ integration "
+        "code for sensor I/O, serial communication, GPIO, and prototype control outputs."
+    )
+    rewrite = (
+        "Contributed to embedded C++ firmware development for STM32F4 in STM32CubeIDE, "
+        "integrating sensor I/O, serial communication, GPIO, and prototype control outputs."
+    )
+    group = ApprovedEvidenceGroup(
+        entry_id="embedded-entry",
+        authoritative_entry_title="Hardware Engineering Intern",
+        evidence_ids=["embedded-control"],
+        source_texts=[source],
+        technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
+        capabilities=["sensor I/O", "serial communication", "prototype control"],
+        max_rendered_lines=2,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="embedded-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["embedded-control"],
+                preserved_technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["embedded-control"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="embedded-posting",
+            title="Mechatronics Hardware Intern",
+            description=(
+                "Develop and run embedded C/C++ firmware for microcontroller peripherals, "
+                "sensor I/O, serial communication, and hardware test outputs."
+            ),
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED, diagnostics[
+        0
+    ].model_dump()
+    assert accepted[0].material_improvement is True
+    assert {"embedded", "firmware"} <= set(accepted[0].entailed_target_terms)
+
+
+def test_technical_foregrounding_can_remove_non_target_supervisory_framing() -> None:
+    source = (
+        "Led the hardware and embedded-safety workstream, reviewing subordinate designs "
+        "and developing supervisory safety logic, emergency-stop control strategies, "
+        "and drive-by-wire documentation."
+    )
+    rewrite = (
+        "Developed supervisory safety logic, emergency-stop control strategies, and "
+        "drive-by-wire documentation, reviewing hardware and embedded-safety designs."
+    )
+    group = ApprovedEvidenceGroup(
+        entry_id="safety-entry",
+        authoritative_entry_title="Mechatronics Engineer",
+        evidence_ids=["safety-control"],
+        source_texts=[source],
+        capabilities=[
+            "supervisory safety logic",
+            "emergency-stop control strategies",
+            "drive-by-wire documentation",
+        ],
+        max_rendered_lines=3,
+    )
+
+    accepted, rejected, diagnostics = HybridLlmServices(
+        None, 0, 1, False, False, False
+    )._variant_records(
+        [
+            BulletRewrite(
+                entry_id="safety-entry",
+                final_bullet_text=rewrite,
+                source_evidence_ids=["safety-control"],
+                evidence_combined=False,
+                confidence=0.95,
+                claims=[
+                    BulletRewriteClaim(
+                        text=rewrite,
+                        supporting_evidence_ids=["safety-control"],
+                    )
+                ],
+            )
+        ],
+        [group],
+        provider="fake",
+        model="fake-writer",
+        posting=JobPosting(
+            id="hands-on-safety-posting",
+            title="Mechatronics Test Engineer",
+            description=(
+                "Build and debug electromechanical prototypes, validate emergency-stop "
+                "behavior, and document embedded hardware tests."
+            ),
+        ),
+    )
+
+    assert not rejected
+    assert accepted[0].validation_status is BulletValidationStatus.VALIDATED, diagnostics[
+        0
+    ].model_dump()
+    assert accepted[0].material_improvement is True
+    assert (
+        "foregrounded technical evidence over non-target supervisory framing"
+        in accepted[0].improvement_reasons
+    )
+
+
+def test_title_conflict_technical_rewrite_can_win_without_supervisory_inflation() -> None:
+    source = (
+        "As Lead Mechatronics Engineer, led the hardware and embedded-safety workstream, "
+        "reviewing subordinate designs and developing supervisory safety logic, "
+        "emergency-stop control strategies, and drive-by-wire documentation."
+    )
+    rewritten = (
+        "Developed supervisory safety logic, emergency-stop control strategies, and "
+        "drive-by-wire documentation, reviewing hardware and embedded-safety designs."
+    )
+    profile = MasterProfile(
+        id="title-safe-writer-profile",
+        user_id="title-safe-writer-user",
+        display_name="Title Safe Candidate",
+        experiences=[
+            ResumeItem(
+                id="safety-entry",
+                title="Mechatronics Engineer",
+                kind=EntityKind.EXPERIENCE,
+            )
+        ],
+        evidence=[
+            EvidenceItem(
+                id="safety-control",
+                entity_id="safety-entry",
+                source_text=source,
+                capabilities=[
+                    "supervisory safety logic",
+                    "emergency-stop control strategies",
+                    "drive-by-wire documentation",
+                ],
+            ),
+            EvidenceItem(
+                id="safety-test",
+                entity_id="safety-entry",
+                source_text=(
+                    "Validated emergency-stop behavior on a reviewed electromechanical prototype."
+                ),
+                capabilities=["emergency-stop validation", "prototype testing"],
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="hands-on-safety-posting",
+        title="Mechatronics Test Engineer",
+        description=(
+            "Build and debug electromechanical prototypes, validate emergency-stop "
+            "behavior, and document embedded hardware tests."
+        ),
+    )
+    fake = FakeResumeLanguageModel(
+        rewrite_bullets=BulletRewriteResult(
+            metadata=metadata(LlmOperation.REWRITE_BULLETS),
+            output=BulletRewriteOutput(
+                bullets=[
+                    BulletRewrite(
+                        entry_id="safety-entry",
+                        final_bullet_text=rewritten,
+                        source_evidence_ids=["safety-control"],
+                        evidence_combined=False,
+                        confidence=0.95,
+                        claims=[
+                            BulletRewriteClaim(
+                                text=rewritten,
+                                supporting_evidence_ids=["safety-control"],
+                            )
+                        ],
+                    )
+                ]
+            ),
+        )
+    )
+    service = _service(fake)
+
+    final = service.build_document(
+        service.create_plan(profile, posting, TemplateConstraints()),
+        profile,
+        set(),
+    )
+
+    selected_text = {
+        bullet.text for bullet in final.experience_bullets["safety-entry"]
+    }
+    assert rewritten in selected_text
+    assert all("Lead Mechatronics Engineer" not in text for text in selected_text)
+    assert all("subordinate" not in text.casefold() for text in selected_text)
+    assert final.hybrid_diagnostic is not None
+    assert final.hybrid_diagnostic.rewritten_bullet_count == 1
 
 
 def test_interface_integration_does_not_entail_firmware_authorship() -> None:
@@ -1431,10 +1650,12 @@ def test_validated_material_variant_can_win_within_selected_portfolio_entry() ->
 
 def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence() -> None:
     source = (
-        "Developed STM32 microcontroller control code in C++ for actuator commands and feedback."
+        "Supported STM32F4 peripherals in STM32CubeIDE and contributed C++ integration "
+        "code for sensor I/O, serial communication, GPIO, and prototype control outputs."
     )
     rewritten = (
-        "Developed C++ embedded firmware on STM32 for actuator control and feedback."
+        "Contributed embedded C++ firmware in STM32CubeIDE for STM32F4 sensor I/O, "
+        "serial communication, GPIO, and prototype control outputs."
     )
     profile = MasterProfile(
         id="semantic-writer-profile",
@@ -1452,17 +1673,15 @@ def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence
                 id="embedded-control",
                 entity_id="embedded-entry",
                 source_text=source,
-                technologies=["STM32", "C++"],
-                capabilities=["microcontroller programming", "actuator control"],
+                technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
+                capabilities=["sensor I/O", "serial communication", "prototype control"],
             ),
             EvidenceItem(
                 id="embedded-validation",
                 entity_id="embedded-entry",
-                source_text=(
-                    "Validated STM32 actuator feedback with reviewed bench timing traces."
-                ),
-                technologies=["STM32"],
-                capabilities=["actuator validation", "timing analysis"],
+                source_text="Validated STM32F4 GPIO outputs with reviewed bench timing traces.",
+                technologies=["STM32F4", "GPIO"],
+                capabilities=["hardware validation", "timing analysis"],
             ),
         ],
     )
@@ -1470,7 +1689,8 @@ def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence
         id="semantic-writer-posting",
         title="Embedded Firmware Engineer",
         description=(
-            "Develop embedded firmware in C/C++ for actuator control and validate feedback."
+            "Develop and run embedded C/C++ firmware for STM32 peripherals, sensor I/O, "
+            "serial communication, and hardware test outputs."
         ),
     )
     source_only = TailorResumeService(
@@ -1489,7 +1709,7 @@ def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence
                         entry_id="embedded-entry",
                         final_bullet_text=rewritten,
                         source_evidence_ids=["embedded-control"],
-                        preserved_technologies=["STM32", "C++"],
+                        preserved_technologies=["STM32F4", "STM32CubeIDE", "C++", "GPIO"],
                         evidence_combined=False,
                         confidence=0.95,
                         claims=[
@@ -1529,6 +1749,15 @@ def test_entailed_firmware_rewrite_is_applied_without_changing_selected_evidence
     assert rewritten_resume.review_pending_bullets == []
     assert rewritten_resume.hybrid_diagnostic is not None
     assert rewritten_resume.hybrid_diagnostic.rewritten_bullet_count == 1
+    writer_request = fake.requests["rewrite_bullets"][0]
+    assert isinstance(writer_request, BulletRewriteRequest)
+    contributed_group = next(
+        group
+        for group in writer_request.groups
+        if group.evidence_ids == ["embedded-control"]
+    )
+    assert "retain contribution language" in contributed_group.shortlist_reason
+    assert {"embedded", "firmware"} <= set(contributed_group.entailed_target_terms)
     assert any(
         item.selected
         and "firmware" in item.entailed_target_terms

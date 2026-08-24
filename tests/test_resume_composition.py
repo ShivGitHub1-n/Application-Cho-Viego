@@ -2438,6 +2438,86 @@ def test_expansion_priority_prefers_skills_and_selected_blocks_over_weak_new_ent
     assert "weak-new-support" not in by_source
 
 
+def test_skills_use_strategy_compatible_reviewed_evidence_without_category_leakage() -> None:
+    profile = _synthetic_profile(
+        experiences=[
+            {
+                "id": "hardware-entry",
+                "title": "Prototype Engineer",
+                "kind": "experience",
+            },
+            {
+                "id": "analytics-entry",
+                "title": "Analytics Developer",
+                "kind": "experience",
+            },
+        ],
+        projects=[],
+        technical_skills=[
+            {
+                "id": "tools",
+                "category": "Tools",
+                "values": [
+                    "Power BI",
+                    "VS Code",
+                    "Jupyter Notebook",
+                    "Matplotlib",
+                    "SolidWorks",
+                    "Arduino",
+                ],
+            }
+        ],
+        evidence=[
+            {
+                "id": "hardware-proof",
+                "entity_id": "hardware-entry",
+                "source_text": (
+                    "Designed CAD fixtures in SolidWorks and programmed Arduino C++ "
+                    "motor-control tests for a physical prototype."
+                ),
+                "technologies": ["SolidWorks", "Arduino", "C++"],
+                "capabilities": ["CAD fixture design", "motor-control testing"],
+            },
+            {
+                "id": "analytics-proof",
+                "entity_id": "analytics-entry",
+                "source_text": (
+                    "Built Power BI reports with VS Code, Jupyter Notebook, and Matplotlib "
+                    "for finance analytics."
+                ),
+                "technologies": ["Power BI", "VS Code", "Jupyter Notebook", "Matplotlib"],
+            },
+        ],
+    )
+    posting = JobPosting(
+        id="prototype-posting",
+        title="Electromechanical Prototype Engineer",
+        description=(
+            "Create CAD fixtures and 3D-printed parts, then develop embedded C/C++ test "
+            "code for motors and physical hardware."
+        ),
+    )
+    composer = DeterministicResumeComposer(FixedRatioPageFitEvaluator(0.88))
+    context = _posting_context(posting)
+    strategy_compatible = [
+        candidate
+        for candidate in composer._rank_bullets(profile, context)
+        if candidate.evidence_id == "hardware-proof"
+    ]
+
+    skills = composer._rank_skills(
+        profile,
+        context,
+        strategy_compatible,
+        strategy_constrained=True,
+    )
+
+    assert [item.category_id for item in skills] == ["tools"]
+    selected = [skill.value for skill in skills[0].category.skills]
+    assert selected == ["SolidWorks", "Arduino"]
+    assert not ({"Power BI", "VS Code", "Jupyter Notebook", "Matplotlib"} & set(selected))
+
+
 def test_large_profile_keeps_late_strong_evidence_and_search_runtime_bounded() -> None:
     experiences: list[dict[str, object]] = []
     evidence: list[dict[str, object]] = []

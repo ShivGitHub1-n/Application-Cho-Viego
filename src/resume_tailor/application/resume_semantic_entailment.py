@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from resume_tailor.application.resume_features import (
@@ -21,6 +22,7 @@ class SemanticNormalizationResult:
 class _EvidenceDimension:
     indicators: tuple[str, ...]
     minimum_matches: int = 1
+    patterns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -41,7 +43,8 @@ _PROGRAMMABLE_DEVICE = _EvidenceDimension(
         "bare-metal",
         "embedded controller",
         "embedded processor",
-    )
+    ),
+    patterns=(r"\bstm32[a-z0-9-]*\b", r"\besp32[a-z0-9-]*\b"),
 )
 _SOFTWARE_IMPLEMENTATION = _EvidenceDimension(
     (
@@ -69,6 +72,21 @@ _IMPLEMENTATION_OWNERSHIP = _EvidenceDimension(
         "created",
         "coded",
     )
+)
+_SOFTWARE_AUTHORSHIP_OR_CONTRIBUTION = _EvidenceDimension(
+    (
+        "developed",
+        "implemented",
+        "programmed",
+        "wrote",
+        "authored",
+        "built",
+        "created",
+        "coded",
+    ),
+    patterns=(
+        r"\bcontribut(?:e|es|ed|ing)\b[^.;]{0,90}\b(?:code|software|firmware|drivers?|programming)\b",
+    ),
 )
 _PHYSICAL_HARDWARE = _EvidenceDimension(
     (
@@ -133,11 +151,11 @@ _SEMANTIC_RULES: tuple[_SemanticRule, ...] = (
         evidence_dimensions=(
             _PROGRAMMABLE_DEVICE,
             _SOFTWARE_IMPLEMENTATION,
-            _IMPLEMENTATION_OWNERSHIP,
+            _SOFTWARE_AUTHORSHIP_OR_CONTRIBUTION,
         ),
         reason=(
             "programmable-device evidence includes explicit software implementation and "
-            "authorship"
+            "authorship or contribution"
         ),
     ),
     _SemanticRule(
@@ -326,14 +344,18 @@ def evidence_entailed_target_terminology(
         reasons.extend(f"{term!r}: {rule.reason}" for term in generated_rule_terms)
 
     ordered_terms = tuple(dict.fromkeys(entailed))
-    allowed_tokens = frozenset(
+    allowed_tokens = {
         token
         for term in ordered_terms
         for token in extract_reviewed_text_features(term).meaningful_tokens
-    )
+    }
+    if "firmware" in ordered_terms:
+        # `contributed to firmware development` preserves contribution scope;
+        # ownership expansion is still rejected independently.
+        allowed_tokens.add("development")
     return SemanticNormalizationResult(
         entailed_target_terms=ordered_terms,
-        allowed_feature_tokens=allowed_tokens,
+        allowed_feature_tokens=frozenset(allowed_tokens),
         support_reasons=tuple(dict.fromkeys(reasons)),
     )
 
@@ -341,6 +363,7 @@ def evidence_entailed_target_terminology(
 def _dimension_is_satisfied(text: str, dimension: _EvidenceDimension) -> bool:
     return (
         sum(_contains_phrase(text, indicator) for indicator in dimension.indicators)
+        + sum(bool(re.search(pattern, text)) for pattern in dimension.patterns)
         >= dimension.minimum_matches
     )
 

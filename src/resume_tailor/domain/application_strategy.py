@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v4"
+APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v5"
 APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS = 8
 APPLICATION_STRATEGY_CORE_DEPTH_RESERVE_MAXIMUM_ACTIONS = 8
 

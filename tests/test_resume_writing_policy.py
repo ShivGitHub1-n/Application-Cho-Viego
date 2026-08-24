@@ -68,7 +68,11 @@ def test_recruiter_policy_prioritizes_ownership_method_and_supported_xyz() -> No
     assert "keep the reviewed source unchanged" in instructions
     assert "recognizable terminology from the target posting" in instructions
     assert "never turn integration into authorship" in instructions
-    assert "smallest substantive change" in instructions
+    assert "do not limit the editorial improvement to a synonym swap" in instructions
+    assert "retain that contribution scope" in instructions
+    assert "exact supported device or platform name" in instructions
+    assert "entailed_target_terms is nonempty" in instructions
+    assert "cosmetic near-synonym" in instructions
     assert "do not decorate the bullet" in instructions
 
 

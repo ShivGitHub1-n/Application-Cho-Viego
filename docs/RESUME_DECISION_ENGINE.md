@@ -82,6 +82,15 @@ add entries, evidence, requirement support, or selection authority. In
 deterministic fallback mode, the existing
 entry-balanced shortlist and full package frontier remain available. Employer
 reputation and other external popularity signals are absent in both modes.
+
+Within an aligned entry, the strategist chooses evidence at the abstraction
+level of the posting's actual work. Concrete reviewed implementation, firmware,
+device-interface, control, and physical-test evidence should normally beat an
+abstract architecture summary for hands-on responsibilities when both consume
+the same scarce space; architecture-focused work may reverse that judgment.
+This instruction is symmetric across domains and creates no title, entry, or
+role quota. Evidence whose facts are strong but whose literal wording hides an
+unambiguous target concept can be marked as a rewrite candidate.
 For both automatic and explicitly approved variants, the complete reviewed
 same-entry source bundle remains the authority for admission, relationship,
 requirement coverage, and technical-signal matching. Generated word order and
@@ -210,6 +219,14 @@ still win. When a selected project has another high-context direct or adjacent
 bullet, the expansion order gives that second substantive bullet a bounded
 coherence preference before opening a shallow complementary block.
 
+In strategist mode, reviewed source evidence already inside the validated
+core/reserve boundary anchors selected-evidence skill support. A named skill in
+that evidence can survive even when it is the only relevant member of a broad
+source category; category members demonstrated only by omitted entries do not
+hitchhike into the row. Generated wording is not consulted for this relevance
+decision. The complete profile still proves whether a skill is reviewed and
+truthful, while deterministic fallback keeps its established category rules.
+
 Planning separates contextual relevance from intrinsic evidence strength.
 Marginal portfolio contribution rewards new direct requirement coverage before
 repeated adjacent or complementary coverage, while quantified outcomes and
@@ -298,6 +315,19 @@ requirement coverage, and evidence priority from their reviewed source IDs.
 Moving generated wording ahead of selection would let phrasing manufacture
 authority, so ATS-oriented semantic normalization affects visible expression and
 bounded source-versus-rewrite quality comparison only.
+
+The material-writing comparison is not limited to compression. It can recognize
+an evidence-entailed normalization such as contributed STM32F4 C++ integration
+code expressed as contributed embedded firmware, while preserving the
+contribution verb and exact tools and interfaces. It can also recognize a
+technical-foregrounding rewrite that removes non-target supervisory framing
+from a hands-on application without dropping exact technologies, metrics, or
+outcomes. Interface integration alone still cannot become firmware authorship,
+and generated terms still inherit all relevance from the selected reviewed IDs.
+The writer request includes the locally proven target terms for each evidence
+group so the provider can prefer a useful normalization over a cosmetic
+paraphrase. The validator recomputes that proof on returned text; the hint never
+creates evidence, requirement coverage, or pre-selection relevance.
 
 Explicitly approved review-gated wording is used on rebuild while the reviewed
 source remains authoritative for relevance and requirement attribution. The

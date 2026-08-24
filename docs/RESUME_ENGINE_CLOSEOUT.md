@@ -63,12 +63,31 @@ deferred work; it is not a feature roadmap.
    it over stronger reviewed wording. Authoritative entry metadata bounds title
    and seniority claims.
 
+   The writer may materially restructure selected evidence instead of making
+   only compressed paraphrases. A target term such as `embedded firmware` can
+   be accepted automatically from reviewed STM32-family C++ code authorship or
+   contribution when the posting uses the term and contribution scope is
+   preserved. Integration without code remains insufficient. For hands-on
+   roles, a grounded rewrite can foreground technical safety/control substance
+   over unnecessary supervisory framing; title, ownership, tools, metrics, and
+   outcomes remain deterministic validation boundaries.
+   Each selected writer group receives the locally proven target terms for that
+   exact reviewed bundle. The model may use the hint, but deterministic
+   validation recomputes entailment and the selected evidence IDs remain fixed.
+
 8. **Skills and portfolio composition.** Reviewed skill categories and
    demonstrated skills can support the skills section and measured fit, but
    cannot create experience claims without linked evidence. Composition keeps
    per-skill provenance, coherent entries, bounded rows, and deterministic
    tie-breaking. Canonical profile skill data is never mutated by display
    grouping.
+
+   In Gemini strategy mode, only reviewed source evidence in the validated
+   core/reserve boundary supplies selected-evidence skill support. This permits
+   a directly demonstrated SolidWorks- or Arduino-like skill to survive a broad
+   source category without admitting unrelated tools demonstrated only by
+   omitted entries. Generated wording does not create skill relevance, and
+   deterministic fallback retains its established rules.
 
 ## Rendering, artifacts, and configuration
 

@@ -1373,7 +1373,12 @@ class DeterministicResumeComposer:
         for candidate in candidates:
             for evidence_id in candidate.source_evidence_ids:
                 candidate_id_by_source.setdefault(evidence_id, candidate.evidence_id)
-        skills = self._rank_skills(profile, context, candidates)
+        skills = self._rank_skills(
+            profile,
+            context,
+            candidates,
+            strategy_constrained=True,
+        )
         skill_by_id = {candidate.category_id: candidate for candidate in skills}
         initial_skill_ids = tuple(
             candidate.category_id for candidate in skills[: constraints.max_skill_lines]
@@ -2650,6 +2655,10 @@ class DeterministicResumeComposer:
                 rewrite_line_fit=line_fit,
                 material_improvement=writing_variant.material_improvement,
                 semantic_normalization=bool(writing_variant.entailed_target_terms),
+                technical_foregrounding=(
+                    "foregrounded technical evidence over non-target supervisory framing"
+                    in writing_variant.improvement_reasons
+                ),
             )
             score = round(score + writing_adjustment, 2)
         return _BulletCandidate(
@@ -2703,11 +2712,24 @@ class DeterministicResumeComposer:
         profile: MasterProfile,
         context: _PostingContext,
         bullets: list[_BulletCandidate],
+        *,
+        strategy_constrained: bool = False,
     ) -> list[_SkillCandidate]:
         confirmed_evidence_text = _normalize(
             " ".join(evidence.source_text for evidence in profile.evidence if evidence.confirmed)
         )
-        relevant_evidence_text = _normalize(" ".join(candidate.text for candidate in bullets))
+        confirmed_evidence_by_id = {
+            evidence.id: evidence for evidence in profile.evidence if evidence.confirmed
+        }
+        relevant_evidence = [
+            confirmed_evidence_by_id[evidence_id]
+            for candidate in bullets
+            for evidence_id in candidate.source_evidence_ids
+            if evidence_id in confirmed_evidence_by_id
+        ]
+        relevant_evidence_text = _normalize(
+            " ".join(evidence.source_text for evidence in relevant_evidence)
+        )
         source_categories = profile.technical_skills or _display_categories_from_declared_skills(
             profile,
             context,
@@ -2790,7 +2812,7 @@ class DeterministicResumeComposer:
                 if (
                     assessment.relationship is EvidenceRelationship.REJECTED
                     and supported_by_relevant_evidence
-                    and category_relevant_support_ratio >= 0.5
+                    and (strategy_constrained or category_relevant_support_ratio >= 0.5)
                 ):
                     relationship_base = 20.0
                 elif (
@@ -2819,7 +2841,7 @@ class DeterministicResumeComposer:
                     }
                     or (
                         supported_by_relevant_evidence
-                        and category_relevant_support_ratio >= 0.5
+                        and (strategy_constrained or category_relevant_support_ratio >= 0.5)
                         and (features.technical_specificity >= 0.08 or is_display_regrouped)
                     )
                     or (
@@ -2831,7 +2853,9 @@ class DeterministicResumeComposer:
                         and features.technical_specificity >= 0.12
                     )
                 )
-                complementary = supported or (
+                complementary = (
+                    supported_by_relevant_evidence if strategy_constrained else supported
+                ) or (
                     features.technical_specificity >= 0.08 and category_match_is_primary
                 )
                 scored.append(
@@ -6833,6 +6857,7 @@ def _rewrite_substance_adjustment(
     rewrite_line_fit: BulletLineFitDiagnostic,
     material_improvement: bool,
     semantic_normalization: bool = False,
+    technical_foregrounding: bool = False,
 ) -> tuple[tuple[str, ...], tuple[str, ...], float]:
     """Score visible technical substance without rewarding provider novelty."""
 
@@ -6902,15 +6927,18 @@ def _rewrite_substance_adjustment(
         if term in technology_terms or term in metric_terms or term in outcome_terms
     }
     if material_improvement and (
-        not removed or semantic_normalization and not removed_hard_facts
+        not removed
+        or (semantic_normalization or technical_foregrounding)
+        and not removed_hard_facts
     ):
         # A validated, substance-preserving rewrite may influence package
         # selection; provider novelty alone never reaches this branch. A
-        # deterministically entailed semantic normalization may replace soft
-        # lexical phrases, but it still receives no bonus after dropping an
-        # exact reviewed technology, metric, or outcome. A concise or requirement-
-        # foregrounding rewrite earns the larger package signal; a merely
-        # restructured longer sentence does not.
+        # deterministically entailed semantic normalization or a bounded shift
+        # away from non-target supervisory framing may replace soft lexical
+        # phrases, but neither receives a bonus after dropping an exact reviewed
+        # technology, metric, or outcome. A concise or requirement-foregrounding
+        # rewrite earns the larger package signal; a merely restructured longer
+        # sentence does not.
         adjustment += (
             8.0
             if (

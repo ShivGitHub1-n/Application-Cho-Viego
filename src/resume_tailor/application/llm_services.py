@@ -2465,6 +2465,14 @@ def _material_improvement_reasons(
         and _removes_source_clarity_issue(source, written)
     ):
         reasons.append("restructured weak source wording for clearer technical ownership")
+    if _foregrounds_technical_evidence_over_non_target_supervision(
+        source,
+        written,
+        posting,
+    ):
+        reasons.append(
+            "foregrounded technical evidence over non-target supervisory framing"
+        )
     if _foregrounds_supported_requirement(source, written, posting):
         reasons.append("foregrounded an already-supported target requirement")
     if entailed_target_terms:
@@ -2488,6 +2496,68 @@ def _removes_source_clarity_issue(source: str, written: str) -> bool:
         and not vague_opening.search(written)
         or not source_features.responsibility_signals
         and bool(written_features.responsibility_signals)
+    )
+
+
+_SUPERVISORY_FRAMING = re.compile(
+    r"\b(?:subordinate(?:s| designs?)?|direct reports?|people management|"
+    r"manag(?:e|ed|ing) (?:a |the )?(?:team|staff|engineers)|"
+    r"supervis(?:e|ed|ing) (?:a |the )?(?:team|staff|engineers)|"
+    r"led\b[^,.;]{0,80}\b(?:team|workstream|group))\b",
+    re.IGNORECASE,
+)
+_LEADERSHIP_ROLE_CONTEXT = re.compile(
+    r"\b(?:leadership|people management|direct reports?|subordinates?|team lead|technical lead|"
+    r"manag(?:e|ement|ing) (?:a |the )?(?:team|staff|engineers)|"
+    r"supervis(?:e|ion|ing) (?:a |the )?(?:team|staff|engineers)|"
+    r"mentor(?:ing)? (?:a |the )?(?:team|staff|engineers))\b",
+    re.IGNORECASE,
+)
+_SUPERVISORY_TOKENS = frozenset(
+    {
+        "direct",
+        "led",
+        "managed",
+        "managing",
+        "management",
+        "people",
+        "reports",
+        "staff",
+        "subordinate",
+        "subordinates",
+        "supervised",
+        "supervising",
+        "team",
+        "workstream",
+    }
+)
+
+
+def _foregrounds_technical_evidence_over_non_target_supervision(
+    source: str,
+    written: str,
+    posting: JobPosting,
+) -> bool:
+    """Recognize a safe emphasis change, never erase role-relevant leadership."""
+
+    source_supervisory = len(_SUPERVISORY_FRAMING.findall(source))
+    written_supervisory = len(_SUPERVISORY_FRAMING.findall(written))
+    if (
+        source_supervisory == 0
+        or written_supervisory >= source_supervisory
+        or _LEADERSHIP_ROLE_CONTEXT.search(f"{posting.title} {posting.description}")
+    ):
+        return False
+    source_features = extract_reviewed_text_features(source)
+    written_features = extract_reviewed_text_features(written)
+    shared_technical_tokens = (
+        source_features.meaningful_tokens
+        & written_features.meaningful_tokens
+        - _SUPERVISORY_TOKENS
+    )
+    return (
+        len(shared_technical_tokens) >= 5
+        and written_features.technical_specificity >= 0.12
     )
 
 

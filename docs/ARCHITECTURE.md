@@ -127,6 +127,15 @@ remains a first-class candidate and wins when a rewrite is not materially
 clearer, tighter, or more readable. Generated wording continues to derive all
 relevance and requirement authority from the reviewed evidence bundle.
 
+Within an already aligned entry, the strategist chooses the evidence
+abstraction that best proves the posting's owned work. A hands-on implementation
+or test responsibility can therefore favor concrete reviewed firmware, device,
+interface, control, or physical-test evidence over a more abstract architecture
+summary; an architecture role can make the opposite choice. This remains
+provider judgment over supplied evidence IDs, not a deterministic role rule.
+The versioned strategist request carries the prompt contract version so a prompt
+change cannot silently reuse an older cached strategy.
+
 The writer may express an already-proven concept using recognizable terminology
 from the posting. This semantic normalization happens after evidence selection
 and is accepted automatically only when a local, typed entailment check proves
@@ -141,6 +150,24 @@ technology, metric, outcome, ownership, title, provenance, and cross-entry
 validators still run. An unproven semantic addition remains review-required or
 is rejected. This does not add a provider call or create pre-selection generated
 evidence.
+
+Direct code contribution also remains contribution: reviewed STM32-family
+microcontroller code, including a specific part such as STM32F4, may entail the
+term `embedded firmware` when the posting uses it, but the rewrite must preserve
+the source's contribution scope and cannot upgrade it to development ownership.
+The writer may materially restructure and foreground supported technical
+substance rather than stop at compression or synonym swaps. For a hands-on
+posting it may remove unnecessary supervisory framing when the reviewed
+technical contribution remains specific and the posting does not request
+leadership; explicit titles, technologies, metrics, outcomes, and ownership
+remain protected.
+
+Each writer group now carries `entailed_target_terms`, computed locally from its
+reviewed source bundle and matched posting requirements. This is a post-selection
+editorial hint, not evidence: it helps the writer use a proven target term rather
+than improvise a near-synonym, while the validator independently recomputes the
+same entailment from the returned text. It adds no provider call and cannot alter
+the selected evidence IDs.
 
 The hybrid authority split is explicit:
 
@@ -185,6 +212,15 @@ The hybrid authority split is explicit:
 - deterministic code remains authoritative for structure, duplication,
   metadata-plus-bullet page cost, exact page fit, and export in both modes;
 - Template V1 alone owns DOCX formatting.
+
+In Gemini strategy mode, technical-skill display relevance is bounded by the
+same strategy-compatible reviewed source evidence (core plus reserve). A skill
+named in that reviewed evidence may anchor its canonical source row even when
+other members of the row are unrelated; those unrelated members cannot enter
+merely because they are demonstrated elsewhere in the full profile. The full
+profile remains truth authority, while the validated strategy boundary supplies
+application relevance. Deterministic fallback retains its established skill
+composition behavior.
 
 Cache identity includes profile and posting fingerprints, evidence bundles,
 ordered shortlist IDs, exact source text, prompt, writing-policy and contract

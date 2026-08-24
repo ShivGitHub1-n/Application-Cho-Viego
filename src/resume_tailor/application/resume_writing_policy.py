@@ -42,7 +42,7 @@ class ResumeWritingPolicy:
         ("coordinate", "coordinated", "collaborate", "collaborated"),
         ("debug", "debugged", "diagnose", "diagnosed", "troubleshoot", "troubleshot"),
         ("automate", "automated", "automation"),
-        ("integrate", "integrated", "integration"),
+        ("integrate", "integrated", "integrating", "integration"),
         ("normalize", "normalized", "normalizing", "normalization"),
         ("define", "defined", "defining", "include", "included", "including"),
     )
@@ -64,10 +64,25 @@ class ResumeWritingPolicy:
         "Make implicit technical context explicit only when the evidence proves every material "
         "component; never turn integration into authorship, testing into hardware-in-the-loop "
         "operation, contribution into ownership, or one physical artifact into a different one.",
-        "When introducing an entailed target term, make the smallest substantive change needed "
-        "to express it: preserve supported ownership verbs, singular/plural scope, and qualifiers, "
+        "When introducing an entailed target term, constrain the newly introduced concept to what "
+        "the evidence proves, but do not limit the editorial improvement to a synonym swap. "
+        "Materially restructure, reorder, and foreground supported technical substance when that "
+        "produces a stronger target-specific bullet. Preserve supported ownership verbs, "
+        "singular/plural scope, and qualifiers, "
         "and do not decorate the bullet with unreviewed claims such as real-time, precise, robust, "
         "production-ready, or scalable.",
+        "For hands-on roles, prefer supported implementation, integration, control, test, and "
+        "safety substance over unnecessary supervisory framing. Preserve supported leadership "
+        "when the posting actually values management, supervision, or team leadership.",
+        "Identify each source claim's ownership scope before writing. When the source says "
+        "contributed, contributing, supported, or assisted, retain that contribution scope; "
+        "never rewrite the claim with developed, implemented, authored, built, created, owned, "
+        "or led.",
+        "Keep an exact supported device or platform name instead of adding a broader class label "
+        "solely because the posting uses it.",
+        "When a group's entailed_target_terms is nonempty, return one materially restructured "
+        "rewrite using at least one listed term. Do not replace it with a cosmetic near-synonym, "
+        "and do not treat the term as permission to change ownership, scope, tools, or facts.",
         "Return no alternative when the source is already the strongest truthful wording; "
         "synonym swaps, novelty, and shortening alone are not improvements.",
         "Preserve relevant reviewed tools, exact platforms, protocols, engineering methods, "

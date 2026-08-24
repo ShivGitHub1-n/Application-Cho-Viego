@@ -1074,6 +1074,13 @@ def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_ov
     )
     assert "Reserve count is not a quality target" in prompt
     assert "Never shrink the core" in prompt
+    assert "concrete implementation evidence" in prompt
+    assert "hands-on implementation, integration, or test work" in prompt
+    assert "rewrite_candidate" in prompt
+    assert (
+        fake.requests["recommend_application_strategy"][0].contract_version
+        == APPLICATION_STRATEGY_CONTRACT_VERSION
+    )
     assert STRATEGY_UTILIZATION_PREFERRED_FLOOR == 0.88
     assert STRATEGY_UTILIZATION_PREFERRED_CEILING == 0.93
     assert STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR == 0.84

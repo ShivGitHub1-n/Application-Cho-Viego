@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 from resume_tailor.application.resume_features import TemplateV1BulletLineEstimator
+from resume_tailor.application.resume_semantic_entailment import (
+    evidence_entailed_target_terminology,
+)
 from resume_tailor.application.resume_writing_policy import (
     DEFAULT_RESUME_WRITING_POLICY,
     ResumeWritingPolicy,
 )
+from resume_tailor.application.title_integrity import conflicting_role_titles
+from resume_tailor.domain.application_strategy import SourceWordingAssessment
 from resume_tailor.domain.hybrid_resume import (
     EvidenceRetrievalResult,
     RetrievedEvidence,
@@ -17,6 +23,11 @@ from resume_tailor.domain.models import EvidenceItem, MasterProfile, StructuredR
 from resume_tailor.domain.requirement_ranking import (
     EvidenceRelationship,
     PostingRequirement,
+)
+
+_CONTRIBUTION_SCOPED_SOURCE = re.compile(
+    r"\b(?:assist(?:ed|ing)?|collaborat(?:ed|ing)?|contribut(?:e|ed|ing)?|support(?:ed|ing)?)\b",
+    re.IGNORECASE,
 )
 
 
@@ -46,6 +57,15 @@ def build_writer_shortlist(
         else []
     )
     strategy_evidence_set = set(strategy_evidence_ids)
+    strategy_wording = (
+        {
+            choice.evidence_id: choice.source_wording
+            for entry in resume.application_strategy.selected_entries
+            for choice in entry.evidence
+        }
+        if resume.application_strategy is not None
+        else {}
+    )
     retrieval_candidates = (
         [*retrieval.admitted, *retrieval.rejected] if strategy_evidence_set else retrieval.admitted
     )
@@ -130,6 +150,7 @@ def build_writer_shortlist(
             estimator,
             diagnostics,
             entry_titles.get(item.entry_id, ""),
+            strategy_wording.get(item.evidence_id),
         )
         for item in selected
     ]
@@ -143,6 +164,7 @@ def _group_for(
     estimator: TemplateV1BulletLineEstimator,
     diagnostics: list[WriterShortlistCandidate],
     authoritative_entry_title: str,
+    source_wording: SourceWordingAssessment | None,
 ) -> ApprovedEvidenceGroup:
     requirement_ids = [
         *retrieved.direct_requirement_ids,
@@ -151,6 +173,42 @@ def _group_for(
     ]
     diagnostic = next(item for item in diagnostics if item.evidence_id == retrieved.evidence_id)
     line_fit = estimator.estimate(evidence.source_text)
+    posting_requirement_texts = [
+        requirements[requirement_id].text
+        for requirement_id in dict.fromkeys(requirement_ids)
+        if requirement_id in requirements
+    ]
+    entailed_target_terms = evidence_entailed_target_terminology(
+        " ".join(posting_requirement_texts),
+        [evidence.source_text],
+        [*evidence.technologies, *evidence.capabilities, *evidence.outcomes],
+        posting_requirement_texts,
+    ).entailed_target_terms
+    shortlist_reason = diagnostic.selection_reason
+    if source_wording is SourceWordingAssessment.REWRITE_CANDIDATE:
+        shortlist_reason += (
+            " The validated strategist marked the facts as strong but the source wording as "
+            "a rewrite candidate; seek a materially stronger entailed expression."
+        )
+    if authoritative_entry_title and conflicting_role_titles(
+        evidence.source_text, authoritative_entry_title
+    ):
+        shortlist_reason += (
+            " The source contains a conflicting self-title; retain its technical facts, use only "
+            "the authoritative title, and avoid unnecessary seniority or supervisory framing."
+        )
+    if _CONTRIBUTION_SCOPED_SOURCE.search(evidence.source_text):
+        shortlist_reason += (
+            " The reviewed claim is contribution-scoped; retain contribution language and do "
+            "not upgrade it to development, implementation, authorship, ownership, or leadership."
+        )
+    if entailed_target_terms:
+        shortlist_reason += (
+            " Deterministic post-selection entailment permits these target terms without "
+            "changing evidence authority: "
+            + ", ".join(entailed_target_terms)
+            + "."
+        )
     return ApprovedEvidenceGroup(
         entry_id=evidence.entity_id,
         authoritative_entry_title=authoritative_entry_title,
@@ -161,13 +219,10 @@ def _group_for(
         metrics=list(evidence.outcomes),
         relationship_tier=retrieved.relationship,
         posting_requirement_ids=list(dict.fromkeys(requirement_ids)),
-        posting_requirements=[
-            requirements[requirement_id].text
-            for requirement_id in dict.fromkeys(requirement_ids)
-            if requirement_id in requirements
-        ],
+        posting_requirements=posting_requirement_texts,
+        entailed_target_terms=list(entailed_target_terms),
         intrinsic_evidence_strength=retrieved.intrinsic_evidence_strength,
-        shortlist_reason=diagnostic.selection_reason,
+        shortlist_reason=shortlist_reason,
         max_rendered_lines=max(1, min(3, line_fit.expected_line_count)),
     )
 

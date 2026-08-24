@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_CONTRACT_VERSION,
     APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
     EvidencePriorityTier,
     SourceWordingAssessment,
@@ -246,6 +247,7 @@ class ApplicationStrategyConstraintsInput(StrictModel):
     maximum_skill_lines: int = Field(gt=0)
 
 class ApplicationStrategyRequest(StrictModel):
+    contract_version: str = APPLICATION_STRATEGY_CONTRACT_VERSION
     posting_id: str
     title: str
     normalized_full_posting: str
@@ -402,6 +404,7 @@ class ApprovedEvidenceGroup(StrictModel):
     relationship_tier: EvidenceRelationship = EvidenceRelationship.REJECTED
     posting_requirement_ids: list[str] = Field(default_factory=list)
     posting_requirements: list[str] = Field(default_factory=list)
+    entailed_target_terms: list[str] = Field(default_factory=list)
     intrinsic_evidence_strength: float = Field(default=0, ge=0)
     shortlist_reason: str = ""
     max_rendered_lines: int = Field(gt=0)
