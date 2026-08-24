@@ -1332,6 +1332,7 @@ class DeterministicResumeComposer:
         context = _posting_context(posting)
         variants = _available_variants(baseline)
         core_selected_ids = set(strategy.selected_evidence_ids)
+        core_selected_entry_ids = set(strategy.selected_entry_ids)
         reserve_evidence_ids = set(strategy.reserve_evidence_ids)
         strategy_evidence_ids = set(strategy.all_strategy_evidence_ids)
         all_candidates = self._all_bullet_candidates(
@@ -1395,14 +1396,9 @@ class DeterministicResumeComposer:
                 default=priority_order[EvidencePriorityTier.OPTIONAL],
             )
 
-        core_candidates = [
-            candidate
-            for candidate in candidates
-            if set(candidate.source_evidence_ids) & core_selected_ids
-        ]
-        removal_order = sorted(
-            core_candidates,
-            key=lambda candidate: (
+
+        def removal_key(candidate: _BulletCandidate) -> tuple[object, ...]:
+            return (
                 -candidate_priority(candidate),
                 -min(
                     (
@@ -1413,8 +1409,8 @@ class DeterministicResumeComposer:
                     default=len(global_rank),
                 ),
                 candidate.evidence_id,
-            ),
-        )
+            )
+
         bullet_states: list[frozenset[str]] = []
         current = {
             candidate.evidence_id
@@ -1427,14 +1423,43 @@ class DeterministicResumeComposer:
             )
         bullet_states.append(frozenset(current))
         entity_by_id = {item.id: item for item in [*profile.experiences, *profile.projects]}
-        for candidate in removal_order:
-            current.discard(candidate.evidence_id)
+        while current:
             counts = Counter(bullet_by_id[item].entry_id for item in current)
-            for entry_id, count in list(counts.items()):
-                if entity_by_id[entry_id].kind is EntityKind.EXPERIENCE and count == 1:
-                    current.difference_update(
-                        [item for item in current if bullet_by_id[item].entry_id == entry_id]
-                    )
+            removable_depth = [
+                bullet_by_id[candidate_id]
+                for candidate_id in current
+                if counts[bullet_by_id[candidate_id].entry_id]
+                > (
+                    2
+                    if entity_by_id[bullet_by_id[candidate_id].entry_id].kind
+                    is EntityKind.EXPERIENCE
+                    else 1
+                )
+            ]
+            if removable_depth:
+                current.discard(min(removable_depth, key=removal_key).evidence_id)
+            else:
+                remaining_entry_ids = sorted(counts)
+                if len(remaining_entry_ids) <= 1:
+                    break
+                entry_to_remove = min(
+                    remaining_entry_ids,
+                    key=lambda entry_id: min(
+                        (
+                            removal_key(bullet_by_id[candidate_id])
+                            for candidate_id in current
+                            if bullet_by_id[candidate_id].entry_id == entry_id
+                        ),
+                        default=(0, 0, entry_id),
+                    ),
+                )
+                current.difference_update(
+                    [
+                        candidate_id
+                        for candidate_id in current
+                        if bullet_by_id[candidate_id].entry_id == entry_to_remove
+                    ]
+                )
             if current:
                 state = frozenset(current)
                 if state not in bullet_states:
@@ -1503,7 +1528,15 @@ class DeterministicResumeComposer:
         def strategy_key(item: _EvaluatedState) -> tuple[object, ...]:
             counts = priority_counts(item.state)
             reserve_count = len(represented_evidence(item.state) & reserve_evidence_ids)
+            retained_core_entries = len(
+                core_selected_entry_ids
+                & {
+                    bullet_by_id[candidate_id].entry_id
+                    for candidate_id in item.state.bullet_ids
+                }
+            )
             return (
+                -retained_core_entries,
                 -counts[0],
                 -counts[1],
                 -counts[2],
@@ -1752,13 +1785,13 @@ class DeterministicResumeComposer:
                     )
                     continue
                 marginal_value = expanded.quality - expansion_base.quality
-                if marginal_value <= 0:
+                if marginal_value < self._minimum_marginal_score:
                     iterations[-1] = iterations[-1].model_copy(
                         update={
                             "accepted": False,
                             "reason": (
-                                "Reserve action added no positive deterministic marginal portfolio "
-                                "value; later actions remain eligible."
+                                "Reserve action did not clear the established material marginal "
+                                "portfolio-value floor; later actions remain eligible."
                             ),
                         }
                     )
@@ -1767,7 +1800,7 @@ class DeterministicResumeComposer:
                 iterations[-1] = iterations[-1].model_copy(
                     update={
                         "reason": (
-                            "Reserve action fit the rendered planning geometry with positive "
+                            "Reserve action fit the rendered planning geometry with material "
                             "marginal value and was retained as an exact-pagination sibling."
                         )
                     }

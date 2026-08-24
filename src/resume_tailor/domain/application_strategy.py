@@ -4,11 +4,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v3"
-APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE = 16
-APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS = 8
-APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS = 10
-APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS = 12
+APPLICATION_STRATEGY_CONTRACT_VERSION = "gemini-application-strategy-v4"
+APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS = 8
+APPLICATION_STRATEGY_CORE_DEPTH_RESERVE_MAXIMUM_ACTIONS = 8
 
 
 class EvidencePriorityTier(StrEnum):
@@ -21,6 +19,11 @@ class EvidencePriorityTier(StrEnum):
 class SourceWordingAssessment(StrEnum):
     STRONG = "strong"
     REWRITE_CANDIDATE = "rewrite_candidate"
+
+
+class StrategyExpansionOrigin(StrEnum):
+    STRATEGIST = "strategist"
+    CORE_ENTRY_DEPTH = "core_entry_depth"
 
 
 class StrategyValidationIssueCode(StrEnum):
@@ -66,6 +69,7 @@ class StrategyExpansionAction(BaseModel):
     marginal_value_reason: str = Field(min_length=1, max_length=300)
     requires_entry_heading: bool
     minimum_coherent_depth: int = Field(ge=1, le=4)
+    origin: StrategyExpansionOrigin = StrategyExpansionOrigin.STRATEGIST
 
 
 class StrategyValidationIssue(BaseModel):
@@ -127,15 +131,14 @@ class ApplicationStrategyPlan(BaseModel):
 
 __all__ = [
     "APPLICATION_STRATEGY_CONTRACT_VERSION",
-    "APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE",
+    "APPLICATION_STRATEGY_CORE_DEPTH_RESERVE_MAXIMUM_ACTIONS",
     "APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS",
-    "APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS",
-    "APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS",
     "ApplicationRolePriority",
     "ApplicationStrategyPlan",
     "EvidencePriorityTier",
     "LowPriorityEntry",
     "SourceWordingAssessment",
+    "StrategyExpansionOrigin",
     "StrategyExpansionAction",
     "StrategyEntryPlan",
     "StrategyEvidenceChoice",

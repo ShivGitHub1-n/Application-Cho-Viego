@@ -29,10 +29,7 @@ from resume_tailor.domain.llm_models import (
 )
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.infrastructure.config import Settings
-from resume_tailor.infrastructure.gemini_adapter import (
-    GeminiResumeLanguageModel,
-    _with_strategy_reserve_floor,
-)
+from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
 from resume_tailor.infrastructure.gemini_canary import (
     MINIMAL_STRUCTURED_OUTPUT_CANARY_SCHEMA,
     MINIMAL_WRITER_CANARY_EVIDENCE_ID,
@@ -246,7 +243,7 @@ def test_minimal_canary_config_matches_documented_contract() -> None:
     }
 
 
-def test_application_strategy_has_a_bounded_deep_reserve_output_budget() -> None:
+def test_application_strategy_has_a_bounded_non_forced_reserve_output_budget() -> None:
     adapter = object.__new__(GeminiResumeLanguageModel)
     adapter._max_output_tokens = 2048
     adapter._application_strategy_max_output_tokens = 4096
@@ -257,13 +254,10 @@ def test_application_strategy_has_a_bounded_deep_reserve_output_budget() -> None
     assert adapter._output_token_budget(LlmOperation.ANALYZE_OPPORTUNITY) == 2048
     assert adapter._output_token_budget(LlmOperation.REWRITE_BULLETS) == 8192
 
-    transform = _with_strategy_reserve_floor(
-        gemini_schema_transform(ApplicationStrategyOutput),
-        8,
-    )
+    transform = gemini_schema_transform(ApplicationStrategyOutput)
     reserve_schema = transform.schema["properties"]["expansion_reserve"]
-    assert reserve_schema["minItems"] == 8
-    assert reserve_schema["maxItems"] == 12
+    assert "minItems" not in reserve_schema
+    assert reserve_schema["maxItems"] == 8
     assert transform.provider_audit.unsupported_keyword_paths == ()
 
 

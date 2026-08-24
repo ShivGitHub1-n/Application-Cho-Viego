@@ -80,13 +80,21 @@ and line cost; they cannot manufacture a new compound requirement such as a
 technical phrase assembled from unrelated source fragments.
 
 Reserve coverage is deliberately broader than the core without becoming final
-selection. When the deterministic request context contains at least sixteen
-materially related reviewed atoms, the single strategist response must expose at
-least eight independently ranked reserve actions, targets ten, and may return at
-most twelve. Smaller banks have no minimum. Gemini still chooses the IDs and
-ranks their marginal contribution; deterministic code only identifies that the
-bank is deep enough to require a useful frontier. Core plus reserve remains
-subject to the existing 24-evidence truthfulness and computation bound.
+selection. It has no provider-schema minimum or count target and may contain at
+most eight Gemini actions; a weak transferable item is not made valuable by an
+underfilled page. Deterministic validation derives up to eight additional
+same-entry depth actions only from direct, adjacent, or complementary reviewed
+evidence inside Gemini-selected core entries. New entries still require explicit
+Gemini authority. Core plus reserve remains subject to the existing 24-evidence
+truthfulness and computation bound.
+
+A bounded portfolio-dominance audit catches one catastrophic strategy shape
+without re-running recruiter selection deterministically: an entirely omitted
+entry with two independently direct atoms may trigger one Gemini repair only
+when its top-two contextual support and requirement breadth Pareto-dominate a
+proposed new-entry reserve. The audit does not force the omitted entry, compare
+titles, or reward libraries beyond their top two atoms. If the repaired plan
+remains invalid, the established deterministic fallback is explicit.
 
 Entry admission is package-aware. Each credible experience or project receives
 a deterministic best package at every reachable depth after validated writing

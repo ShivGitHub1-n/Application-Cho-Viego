@@ -6,6 +6,7 @@ import re
 from resume_tailor.application.resume_features import normalize_reviewed_text
 from resume_tailor.application.title_integrity import conflicting_role_titles
 from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_CORE_DEPTH_RESERVE_MAXIMUM_ACTIONS,
     ApplicationRolePriority,
     ApplicationStrategyPlan,
     EvidencePriorityTier,
@@ -13,10 +14,11 @@ from resume_tailor.domain.application_strategy import (
     StrategyEntryPlan,
     StrategyEvidenceChoice,
     StrategyExpansionAction,
+    StrategyExpansionOrigin,
     StrategyValidationIssue,
     StrategyValidationIssueCode,
 )
-from resume_tailor.domain.hybrid_resume import EvidenceRetrievalResult
+from resume_tailor.domain.hybrid_resume import EvidenceRetrievalResult, RetrievedEvidence
 from resume_tailor.domain.llm_models import ApplicationStrategyOutput
 from resume_tailor.domain.models import (
     ClaimCandidate,
@@ -27,6 +29,7 @@ from resume_tailor.domain.models import (
     MasterProfile,
     TailoringPlan,
 )
+from resume_tailor.domain.requirement_ranking import EvidenceRelationship
 
 
 class ApplicationStrategyValidationError(ValueError):
@@ -55,6 +58,9 @@ class DeterministicApplicationStrategyValidator:
                 *item.complementary_requirement_ids,
             }
             for item in [*retrieval.admitted, *retrieval.rejected]
+        }
+        retrieved_by_id = {
+            item.evidence_id: item for item in [*retrieval.admitted, *retrieval.rejected]
         }
         requirement_ids = {item.id for item in retrieval.posting_requirements}
         issues: list[StrategyValidationIssue] = []
@@ -228,6 +234,7 @@ class DeterministicApplicationStrategyValidator:
             priority: EvidencePriorityTier,
             reason: str,
             minimum_coherent_depth: int,
+            origin: StrategyExpansionOrigin = StrategyExpansionOrigin.STRATEGIST,
         ) -> None:
             entry = entries.get(entry_id)
             if entry is None:
@@ -342,6 +349,7 @@ class DeterministicApplicationStrategyValidator:
                     marginal_value_reason=safe_reason,
                     requires_entry_heading=requires_heading,
                     minimum_coherent_depth=effective_minimum,
+                    origin=origin,
                 )
             )
 
@@ -359,6 +367,65 @@ class DeterministicApplicationStrategyValidator:
                     reason="Ranked same-entry alternative from the application strategist.",
                     minimum_coherent_depth=1,
                 )
+
+        proposed_reserve_evidence_ids = {
+            evidence_id
+            for action in output.expansion_reserve
+            for evidence_id in action.evidence_ids
+        }
+        selected_entry_priority = {
+            entry.entry_id: min(
+                (choice.priority for choice in entry.evidence),
+                key=_priority_order,
+            )
+            for entry in selected_entries
+        }
+        derived_depth_actions = 0
+        eligible_core_depth = sorted(
+            (
+                item
+                for item in retrieved_by_id.values()
+                if item.entry_id in selected_entry_ids
+                and item.evidence_id not in used_evidence
+                and item.evidence_id not in proposed_reserve_evidence_ids
+                and item.relationship
+                in {
+                    EvidenceRelationship.DIRECT,
+                    EvidenceRelationship.ADJACENT,
+                    EvidenceRelationship.COMPLEMENTARY,
+                }
+            ),
+            key=lambda item: (
+                _relationship_order(item.relationship),
+                -item.contextual_relevance,
+                -item.intrinsic_evidence_strength,
+                -item.total_score,
+                item.rank,
+                item.evidence_id,
+            ),
+        )
+        for item in eligible_core_depth:
+            if (
+                derived_depth_actions
+                >= APPLICATION_STRATEGY_CORE_DEPTH_RESERVE_MAXIMUM_ACTIONS
+                or len(used_evidence) >= maximum_selected_evidence
+            ):
+                break
+            add_reserve_action(
+                entry_id=item.entry_id,
+                evidence_ids=[item.evidence_id],
+                priority=_derived_depth_priority(
+                    selected_entry_priority[item.entry_id],
+                    item.relationship,
+                ),
+                reason=(
+                    "Adds deterministically related reviewed depth inside a strategist-selected "
+                    "core entry."
+                ),
+                minimum_coherent_depth=1,
+                origin=StrategyExpansionOrigin.CORE_ENTRY_DEPTH,
+            )
+            derived_depth_actions += 1
 
         for proposed_action in output.expansion_reserve:
             add_reserve_action(
@@ -406,6 +473,79 @@ class DeterministicApplicationStrategyValidator:
             global_evidence_priority=global_priority,
             validation_issues=issues,
         )
+
+    @staticmethod
+    def dominated_new_entry_reserve_notes(
+        strategy: ApplicationStrategyPlan,
+        retrieval: EvidenceRetrievalResult,
+    ) -> list[str]:
+        """Detect only catastrophic reserve substitutions, not ordinary ranking differences.
+
+        A provider-selected core remains semantic authority. This audit is deliberately
+        narrower: it asks for one bounded repair when a new-entry reserve is Pareto-dominated
+        by an entirely omitted entry with at least two independent direct evidence atoms.
+        The top-two comparison prevents a large evidence library from winning by volume.
+        """
+
+        direct_by_entry: dict[str, list[RetrievedEvidence]] = {}
+        for item in [*retrieval.admitted, *retrieval.rejected]:
+            if item.relationship is EvidenceRelationship.DIRECT:
+                direct_by_entry.setdefault(item.entry_id, []).append(item)
+        for items in direct_by_entry.values():
+            items.sort(
+                key=lambda item: (
+                    -item.contextual_relevance,
+                    -item.intrinsic_evidence_strength,
+                    -item.total_score,
+                    item.evidence_id,
+                )
+            )
+
+        core_entry_ids = set(strategy.selected_entry_ids)
+        new_reserve_entry_ids = {
+            action.entry_id
+            for action in strategy.expansion_reserve
+            if action.requires_entry_heading
+            and action.origin is StrategyExpansionOrigin.STRATEGIST
+        }
+        planned_entry_ids = core_entry_ids | new_reserve_entry_ids
+        omitted_entry_ids = set(direct_by_entry) - planned_entry_ids
+        notes: list[str] = []
+        for reserve_entry_id in sorted(new_reserve_entry_ids):
+            reserve_direct = direct_by_entry.get(reserve_entry_id, [])
+            reserve_requirement_ids = {
+                requirement_id
+                for item in reserve_direct
+                for requirement_id in item.direct_requirement_ids
+            }
+            for omitted_entry_id in sorted(omitted_entry_ids):
+                omitted_direct = direct_by_entry.get(omitted_entry_id, [])
+                if len(omitted_direct) < 2:
+                    continue
+                omitted_requirement_ids = {
+                    requirement_id
+                    for item in omitted_direct
+                    for requirement_id in item.direct_requirement_ids
+                }
+                dominates = (
+                    len(reserve_direct) < 2
+                    or (
+                        omitted_direct[1].contextual_relevance
+                        > reserve_direct[0].contextual_relevance
+                        and len(omitted_requirement_ids) >= len(reserve_requirement_ids)
+                    )
+                )
+                if not dominates:
+                    continue
+                notes.append(
+                    "Revise the application portfolio: omitted entry "
+                    f"{omitted_entry_id!r} has a coherent direct-evidence package that "
+                    f"materially dominates new-entry reserve {reserve_entry_id!r}. Do not "
+                    "pad the reserve; reconsider the omitted entry or remove the dominated "
+                    "reserve action."
+                )
+                break
+        return notes
 
     def validate_persisted(
         self,
@@ -568,6 +708,45 @@ class DeterministicApplicationStrategyReconciler:
                 "report": report,
             }
         )
+
+
+def _priority_order(priority: EvidencePriorityTier) -> int:
+    return {
+        EvidencePriorityTier.CRITICAL: 0,
+        EvidencePriorityTier.HIGH: 1,
+        EvidencePriorityTier.MEDIUM: 2,
+        EvidencePriorityTier.OPTIONAL: 3,
+    }[priority]
+
+
+def _relationship_order(relationship: EvidenceRelationship) -> int:
+    return {
+        EvidenceRelationship.DIRECT: 0,
+        EvidenceRelationship.ADJACENT: 1,
+        EvidenceRelationship.COMPLEMENTARY: 2,
+        EvidenceRelationship.INCIDENTAL: 3,
+        EvidenceRelationship.REJECTED: 4,
+    }[relationship]
+
+
+def _derived_depth_priority(
+    core_priority: EvidencePriorityTier,
+    relationship: EvidenceRelationship,
+) -> EvidencePriorityTier:
+    minimum_rank = {
+        EvidenceRelationship.DIRECT: 1,
+        EvidenceRelationship.ADJACENT: 2,
+        EvidenceRelationship.COMPLEMENTARY: 3,
+        EvidenceRelationship.INCIDENTAL: 3,
+        EvidenceRelationship.REJECTED: 3,
+    }[relationship]
+    rank = max(_priority_order(core_priority), minimum_rank)
+    return (
+        EvidencePriorityTier.HIGH,
+        EvidencePriorityTier.HIGH,
+        EvidencePriorityTier.MEDIUM,
+        EvidencePriorityTier.OPTIONAL,
+    )[rank]
 
 
 __all__ = [

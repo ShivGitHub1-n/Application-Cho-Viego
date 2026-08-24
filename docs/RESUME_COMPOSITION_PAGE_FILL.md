@@ -145,30 +145,36 @@ one-bullet project remains valid when its unique value pays for its metadata.
 ## Bounded search
 
 The strategist-priority path builds a bounded rollback ladder from the validated
-core strategy. It removes optional evidence first, then medium, then high, then
-critical, preserving coherent multi-bullet professional entry blocks. If the
-best rendered core estimate is below 88%, it evaluates ranked reserve actions
-within the same existing 128-state budget. Same-entry unused alternatives are
-retained automatically. A new entry must be explicitly present in the strategist's
-same-call reserve and satisfy its coherent-depth requirement. Each cumulative
-addition must fit the rendered planning geometry and improve the existing
-portfolio-quality objective; equal-priority actions are ordered by marginal
-quality per bullet-line cost plus the established two-line new-entry activation
-cost. Every positive-value sibling considered at a step remains eligible for the
-exact finalist batch; the cumulative lane still follows only its best estimated
-action. Expansion stops in the 88%-93% preferred band, above the 95% acceptable
-ceiling, on overflow, or when no positive-value reserve remains. The 12 exact
+core strategy. It trims excess depth across every selected entry before removing
+an entry block, then removes optional evidence before medium, high, or critical
+evidence. This prevents a coherent core entry from disappearing merely because
+its minimum-depth state was never constructed. If the best rendered core estimate
+is below 88%, it evaluates ranked reserve actions within the same existing
+128-state budget. Same-entry unused alternatives are retained automatically, and
+validation derives a bounded source-wording depth reserve from deterministically
+related evidence inside Gemini-selected core entries. A new entry must still be
+explicitly present in the strategist's same-call reserve and satisfy its
+coherent-depth requirement. Each cumulative addition must fit the rendered
+planning geometry and clear the established material marginal-value floor used
+by ordinary composition; equal-priority actions are ordered by marginal quality
+per bullet-line cost plus the established two-line new-entry activation cost.
+Every material-value sibling considered at a step remains eligible for the exact
+finalist batch; the cumulative lane still follows only its best estimated action.
+Expansion stops in the 88%-93% preferred band, above the 95% acceptable ceiling,
+on overflow, or when no materially valuable reserve remains. The 12 exact
 finalists use the same batched Word/LibreOffice provider. An estimated one-page
 winner that measures as two pages is rejected without hiding later fitting
 siblings.
 
 The strategist reserve is a next-best evidence bench, not a draft rendering.
-Deep request banks with at least sixteen deterministically material reviewed
-atoms use a provider-schema floor of eight actions, target ten, and cap at twelve
-in the same call. Smaller banks may return fewer without padding. Gemini selects
-and orders the reserve semantically; deterministic validation continues to
-remove invalid ownership, duplicates, unconfirmed evidence, incoherent new
-professional entries, and structural overages before page fitting sees it.
+Its provider schema has no minimum or target and caps the optional bench at eight
+actions. Gemini selects and orders new-entry reserve authority semantically;
+deterministic validation continues to remove invalid ownership, duplicates,
+unconfirmed evidence, incoherent new professional entries, and structural
+overages before page fitting sees it. A top-two Pareto-dominance audit may request
+one bounded Gemini repair when an omitted directly aligned entry materially
+dominates a proposed new-entry reserve. This is a catastrophic-regression guard,
+not a deterministic portfolio rewrite.
 
 The deterministic fallback path uses the two planning stages below.
 
@@ -327,7 +333,7 @@ strategy result with unused admissible reserve evidence cannot be
 
 An underfilled exact result remains exportable only as a last-resort truthful
 artifact. Before returning it, the composer considers every validated reserve
-action within its bounds and retains every positive-value estimated sibling for
+action within its bounds and retains every material-value estimated sibling for
 exact pagination. Iteration diagnostics distinguish coherent-depth, bullet/entry
 bound, planning overflow, utilization ceiling, nonpositive marginal value, exact
 overflow, and fitting exact-finalist outcomes. Resume Studio shows a clear warning

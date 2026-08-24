@@ -14,9 +14,9 @@ from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.application_strategy import (
     APPLICATION_STRATEGY_CONTRACT_VERSION,
     APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
-    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
     EvidencePriorityTier,
     SourceWordingAssessment,
+    StrategyExpansionOrigin,
     StrategyValidationIssueCode,
 )
 from resume_tailor.domain.hybrid_resume import HybridPlanningStatus
@@ -768,6 +768,154 @@ def test_page_fit_removes_optional_strategy_evidence_before_high_or_critical() -
     assert resume.composition_diagnostic.verification_status.value == "exact"
 
 
+def test_core_rollback_trims_depth_before_eliminating_a_selected_entry() -> None:
+    profile = _mixed_profile()
+    result = _strategy_result(
+        [
+            _selection(
+                "mech",
+                ["mech-control", "mech-interfaces", "mech-safety"],
+                EvidencePriorityTier.OPTIONAL,
+            ),
+            _selection(
+                "rd",
+                ["rd-wiring", "rd-test", "rd-power"],
+                EvidencePriorityTier.HIGH,
+            ),
+            _selection(
+                "hand",
+                ["hand-build", "hand-control"],
+                EvidencePriorityTier.HIGH,
+            ),
+        ],
+        thesis="Preserve every strategist-selected application-story entry before extra depth.",
+    )
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, maximum_bullets=5)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert _selected_entry_ids(resume) == {"mech", "rd", "hand"}
+    assert len(resume.experience_bullets["mech"]) == 2
+    assert len(resume.experience_bullets["rd"]) == 2
+    assert len(resume.project_bullets["hand"]) == 1
+
+
+def test_dominated_new_entry_reserve_gets_one_bounded_strategy_repair() -> None:
+    profile = _deep_hardware_profile()
+    weak_first_pass = _strategy_result(
+        [
+            _selection(
+                "rd",
+                ["rd-wiring", "rd-test", "rd-power", "rd-validation"],
+                EvidencePriorityTier.CRITICAL,
+            ),
+            _selection(
+                "hand",
+                ["hand-build", "hand-vision", "hand-control"],
+                EvidencePriorityTier.HIGH,
+            ),
+        ],
+        thesis="Use a physical-system core, then fill from a broad transferable bench.",
+        expansion_reserve=[
+            ProposedStrategyExpansionAction(
+                entry_id="digital",
+                evidence_ids=["digital-ai", "digital-docs"],
+                priority=EvidencePriorityTier.HIGH,
+                marginal_value_reason="Adds generic automation and documentation support.",
+                minimum_coherent_depth=2,
+            ),
+            ProposedStrategyExpansionAction(
+                entry_id="resume-tool",
+                evidence_ids=["resume-rag", "resume-ui"],
+                priority=EvidencePriorityTier.MEDIUM,
+                marginal_value_reason="Adds a generic software workflow.",
+            ),
+            ProposedStrategyExpansionAction(
+                entry_id="arm",
+                evidence_ids=["arm-cad", "arm-test", "arm-transmission"],
+                priority=EvidencePriorityTier.MEDIUM,
+                marginal_value_reason="Adds a coherent actuator-design project.",
+                minimum_coherent_depth=2,
+            ),
+        ],
+    )
+    repaired = _strategy_result(
+        _hardware_core_entries(),
+        thesis="Center direct mechatronics, hardware integration, and physical-system proof.",
+        expansion_reserve=[
+            ProposedStrategyExpansionAction(
+                entry_id="arm",
+                evidence_ids=["arm-cad", "arm-test", "arm-transmission"],
+                priority=EvidencePriorityTier.MEDIUM,
+                marginal_value_reason="Adds a coherent actuator-design project.",
+                minimum_coherent_depth=2,
+            )
+        ],
+        low_priority=["digital", "software", "resume-tool"],
+    )
+    fake = FakeResumeLanguageModel(
+        recommend_application_strategy=[weak_first_pass, repaired]
+    )
+    service = _service(fake, page_fit=UnderfillExpansionPageFit())
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert fake.calls["recommend_application_strategy"] == 2
+    repair_request = fake.requests["recommend_application_strategy"][1]
+    assert repair_request.correction_notes
+    assert all("mech" in note for note in repair_request.correction_notes)
+    assert any("digital" in note for note in repair_request.correction_notes)
+    assert "mech" in resume.experience_bullets
+    assert "digital" not in resume.experience_bullets
+    assert "resume-tool" not in resume.project_bullets
+
+
+def test_underfill_uses_material_core_depth_and_rejects_weak_positive_fill() -> None:
+    profile = _mixed_profile()
+    result = _strategy_result(
+        _hardware_core_entries(),
+        thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+        expansion_reserve=[
+            ProposedStrategyExpansionAction(
+                entry_id="digital",
+                evidence_ids=["digital-ai", "digital-docs"],
+                priority=EvidencePriorityTier.HIGH,
+                marginal_value_reason="Adds generic automation and documentation support.",
+                minimum_coherent_depth=2,
+            ),
+            ProposedStrategyExpansionAction(
+                entry_id="arm",
+                evidence_ids=["arm-cad", "arm-test", "arm-transmission"],
+                priority=EvidencePriorityTier.MEDIUM,
+                marginal_value_reason="Adds distinct actuator and mechanical validation proof.",
+                minimum_coherent_depth=2,
+            ),
+        ],
+        low_priority=["software", "resume-tool"],
+    )
+    fake = FakeResumeLanguageModel(recommend_application_strategy=result)
+    service = _service(fake, page_fit=UnderfillExpansionPageFit())
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert plan.application_strategy is not None
+    assert any(
+        action.origin is StrategyExpansionOrigin.CORE_ENTRY_DEPTH
+        for action in plan.application_strategy.expansion_reserve
+    )
+    assert "digital" not in resume.experience_bullets
+    assert "arm" in resume.project_bullets
+    assert resume.composition_diagnostic is not None
+    assert any(
+        "material marginal portfolio-value floor" in item.reason
+        for item in resume.composition_diagnostic.page_fill_iterations
+    )
+
+
 def test_severe_underfill_consumes_existing_same_entry_alternative() -> None:
     profile = _mixed_profile()
     result = _strategy_result(
@@ -796,7 +944,13 @@ def test_severe_underfill_consumes_existing_same_entry_alternative() -> None:
         "hand-vision",
         "hand-control",
     ]
-    assert plan.application_strategy.reserve_evidence_ids == ["mech-feedback"]
+    assert plan.application_strategy.reserve_evidence_ids == [
+        "mech-feedback",
+        "mech-repeat",
+    ]
+    assert plan.application_strategy.expansion_reserve[-1].origin is (
+        StrategyExpansionOrigin.CORE_ENTRY_DEPTH
+    )
     assert any(
         count == 11 and utilization == 0.69
         for count, _, utilization, _ in page_fit.observed
@@ -918,8 +1072,8 @@ def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_ov
         LlmOperation.APPLICATION_STRATEGY,
         fake.requests["recommend_application_strategy"][0],
     )
-    assert "approximately 10 independent reserve actions" in prompt
-    assert "returning only one or two is not a complete frontier" in prompt
+    assert "Reserve count is not a quality target" in prompt
+    assert "Never shrink the core" in prompt
     assert STRATEGY_UTILIZATION_PREFERRED_FLOOR == 0.88
     assert STRATEGY_UTILIZATION_PREFERRED_CEILING == 0.93
     assert STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR == 0.84
@@ -953,7 +1107,7 @@ def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_ov
     assert fake.calls["recommend_application_strategy"] == 1
     assert fake.calls["rewrite_bullets"] == 0
     assert diagnostic.estimated_page_evaluations < diagnostic.maximum_estimated_page_evaluations
-    assert diagnostic.exact_page_evaluations < diagnostic.maximum_exact_finalist_evaluations
+    assert diagnostic.exact_page_evaluations <= diagnostic.maximum_exact_finalist_evaluations
     assert any(
         item.candidate_id.startswith("strategy-exact:")
         and ":reserve-1" in item.candidate_id
@@ -1038,18 +1192,6 @@ def test_deep_hardware_strategy_exposes_bounded_reserve_and_fills_existing_page_
             priority=EvidencePriorityTier.MEDIUM,
             marginal_value_reason="Adds distinct mechanical-transmission evidence.",
         ),
-        ProposedStrategyExpansionAction(
-            entry_id="mech",
-            evidence_ids=["mech-repeat"],
-            priority=EvidencePriorityTier.OPTIONAL,
-            marginal_value_reason="Potentially repeats existing motor-control evidence.",
-        ),
-        ProposedStrategyExpansionAction(
-            entry_id="mech",
-            evidence_ids=["mech-thermal"],
-            priority=EvidencePriorityTier.MEDIUM,
-            marginal_value_reason="Adds distinct thermal fault-recovery evidence.",
-        ),
     ]
     page_fit = DeepReserveCoveragePageFit()
     fake = FakeResumeLanguageModel(
@@ -1068,11 +1210,11 @@ def test_deep_hardware_strategy_exposes_bounded_reserve_and_fills_existing_page_
     assert plan.application_strategy is not None
     assert plan.application_strategy.contract_version == APPLICATION_STRATEGY_CONTRACT_VERSION
     assert len(plan.application_strategy.expansion_reserve) == 10
+    assert sum(
+        action.origin is StrategyExpansionOrigin.CORE_ENTRY_DEPTH
+        for action in plan.application_strategy.expansion_reserve
+    ) == 2
     request = fake.requests["recommend_application_strategy"][0]
-    assert request.constraints.target_expansion_reserve_actions == (
-        APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS
-    )
-    assert request.constraints.minimum_expansion_reserve_actions == 8
     assert request.constraints.maximum_expansion_reserve_actions == (
         APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS
     )
@@ -1111,7 +1253,10 @@ def test_new_professional_reserve_entry_requires_coherent_depth() -> None:
     plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
 
     assert plan.application_strategy is not None
-    assert plan.application_strategy.expansion_reserve == []
+    assert all(
+        action.entry_id != "digital"
+        for action in plan.application_strategy.expansion_reserve
+    )
     assert StrategyValidationIssueCode.STRUCTURAL_LIMIT in {
         item.code for item in plan.application_strategy.validation_issues
     }
@@ -1198,9 +1343,7 @@ def test_underfilled_software_strategy_expands_only_with_software_reserve() -> N
     resume = service.build_document(plan, profile, set())
 
     request = fake.requests["recommend_application_strategy"][0]
-    assert request.constraints.minimum_expansion_reserve_actions == 0
-    assert request.constraints.target_expansion_reserve_actions == 10
-    assert request.constraints.maximum_expansion_reserve_actions == 12
+    assert request.constraints.maximum_expansion_reserve_actions == 8
     assert _selected_entry_ids(resume) == {"digital", "software", "resume-tool"}
     assert resume.composition_diagnostic is not None
     assert "software-observability" in resume.composition_diagnostic.selected_bullet_ids

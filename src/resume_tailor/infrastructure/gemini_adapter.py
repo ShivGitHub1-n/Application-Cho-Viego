@@ -4,8 +4,6 @@ import json
 import os
 import re
 import time
-from copy import deepcopy
-from dataclasses import replace
 from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
@@ -59,8 +57,6 @@ from resume_tailor.infrastructure.gemini_request_diagnostics import (
     build_request_shape_diagnostic,
 )
 from resume_tailor.infrastructure.gemini_schema import (
-    GeminiSchemaTransform,
-    audit_gemini_schema,
     gemini_schema_transform,
     transform_gemini_schema,
 )
@@ -74,27 +70,6 @@ from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 
 OutputType = TypeVar("OutputType", bound=BaseModel)
 ResultType = TypeVar("ResultType", bound=ModelResult)
-
-
-def _with_strategy_reserve_floor(
-    transform: GeminiSchemaTransform,
-    minimum_actions: int,
-) -> GeminiSchemaTransform:
-    if minimum_actions <= 0:
-        return transform
-    schema = deepcopy(transform.schema)
-    properties = schema.get("properties")
-    if not isinstance(properties, dict):
-        raise ValueError("Application strategy provider schema has no properties")
-    reserve_schema = properties.get("expansion_reserve")
-    if not isinstance(reserve_schema, dict):
-        raise ValueError("Application strategy provider schema has no expansion reserve")
-    reserve_schema["minItems"] = minimum_actions
-    return replace(
-        transform,
-        schema=schema,
-        provider_audit=audit_gemini_schema(schema),
-    )
 
 
 class _ProviderCachePayload(BaseModel):
@@ -284,12 +259,6 @@ class GeminiResumeLanguageModel:
                         else None
                     ),
                 )
-                if operation is LlmOperation.APPLICATION_STRATEGY:
-                    strategy_request = cast(ApplicationStrategyRequest, request)
-                    schema_transform = _with_strategy_reserve_floor(
-                        schema_transform,
-                        strategy_request.constraints.minimum_expansion_reserve_actions,
-                    )
             provider_config = self._types.GenerateContentConfig(
                 system_instruction=system_prompt(),
                 temperature=self._temperature,

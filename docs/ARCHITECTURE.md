@@ -99,12 +99,13 @@ evidence IDs, a bounded ranked underfill-expansion reserve, global evidence
 priority, and meaningful low-priority omissions. Same-entry fallback evidence
 is retained automatically; the explicit reserve is the bounded way to authorize
 a new entry when it adds distinct portfolio value. When materially useful unused
-evidence exists, the same strategist call returns multiple independent reserve
-actions so exact pagination can reject one without exhausting the strategy. A
-deep material bank carries a typed floor of eight actions, a target of ten, and
-a hard maximum of twelve; shallow banks carry no minimum. The provider schema
-enforces that request-specific floor before the existing deterministic validator
-removes invalid actions item by item.
+evidence exists, the same strategist call may return independent reserve actions
+so exact pagination can reject one without exhausting the strategy. Reserve size
+is never a target: the provider schema has no minimum and caps the optional bench
+at eight actions. Deterministic validation also derives a bounded same-entry depth
+reserve from direct, adjacent, or complementary reviewed evidence inside entries
+Gemini already selected for the core. That supplies page-fit depth without asking
+Gemini to weaken the application story or populate a quota.
 The deterministic validator removes unknown, duplicated, cross-entry,
 unconfirmed, structurally impossible, title-conflicting, or unsupported
 requirement references item by item. A valid remainder survives; the system does
@@ -152,10 +153,12 @@ The hybrid authority split is explicit:
   does not force that wording to replace a stronger source candidate;
 - in Gemini strategy mode, deterministic page fitting first renders the core
   strategy. Below the 88% preferred floor, it may add only validated ranked
-  reserve actions with positive marginal portfolio value, stopping at 88%-93%,
-  the 95% acceptable ceiling, overflow, or reserve exhaustion. It still removes
-  optional, then medium, then high or critical core evidence when one-page fit
-  requires rollback. Every positive-value sibling remains eligible for the
+  reserve actions that clear the same established material marginal-value floor
+  used by ordinary composition, stopping at 88%-93%,
+  the 95% acceptable ceiling, overflow, or reserve exhaustion. Rollback trims
+  excess depth across core entries before removing an entire strategist-selected
+  entry, then removes optional, medium, high, or critical evidence only when
+  one-page fit requires it. Every material-value sibling remains eligible for the
   bounded exact-pagination batch, so an estimated winner that becomes two pages
   cannot hide a later fitting action. Within equal priority, readability,
   redundancy, line cost, and quality remain deterministic;
@@ -171,12 +174,17 @@ versions, relevant writer flags, provider, and model. Page-fit thresholds are
 deliberately excluded, so a validated wording variant is not regenerated merely
 because a layout budget changes. Normal strategist-enabled generation makes one
 strategist request and one writer request. The pair shares one additional repair
-request, used only when a typed provider response is malformed. Timeouts, network
+request, used only when a typed provider response is malformed or the bounded
+portfolio-dominance audit detects a catastrophic substitution. Timeouts, network
 failures, grounding rejections, and safety failures
 do not enter a retry loop. The Gemini SDK retry count is explicitly one attempt.
-The strategist has a dedicated 4,096-token output ceiling so the bounded deep
-reserve can coexist with the core plan without changing writer, extraction, or
-general provider budgets.
+The strategist has a dedicated 4,096-token output ceiling so the bounded typed
+portfolio can coexist with the core plan without changing writer, extraction, or
+general provider budgets. If a new-entry reserve is Pareto-dominated by a wholly
+omitted entry with two independently direct reviewed evidence atoms, one bounded
+same-request-contract repair may reconsider the portfolio. The comparison uses
+only the top two direct atoms and requirement breadth, so profile volume alone
+cannot trigger it.
 Provider, parsing, validation, request, repair, and cache diagnostics are typed.
 Per-rewrite diagnostics retain only the authorized evidence IDs and reviewed
 source used by the smoke route, reconstructed claim, mapping outcome, typed

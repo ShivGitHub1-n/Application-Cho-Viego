@@ -50,10 +50,7 @@ from resume_tailor.application.skill_composition import (
 )
 from resume_tailor.application.writer_shortlist import build_writer_shortlist
 from resume_tailor.domain.application_strategy import (
-    APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE,
     APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
-    APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS,
-    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
 )
 from resume_tailor.domain.generated_artifact import GenerationStage
 from resume_tailor.domain.hybrid_resume import (
@@ -523,14 +520,14 @@ class HybridLlmServices:
                 "bank was available."
             )
             return plan
+        portfolio_repair_used = False
         result = self._execute_strategy_request(
             generation_key,
             self._language_model.recommend_application_strategy,
             request,
         )
-        calls = self._generation_call_counts.get(generation_key, 0)
-        cache_hits = self._generation_cache_hits.get(generation_key, 0)
         if result is None:
+            calls = self._generation_call_counts.get(generation_key, 0)
             self._record_stage(
                 ResumeProviderStage.APPLICATION_STRATEGIST,
                 ResumeProviderStageStatus.REJECTED,
@@ -539,21 +536,57 @@ class HybridLlmServices:
             )
             enriched = plan
         else:
-            try:
-                validated = self._application_strategy_validator.validate(
-                    result.output,
-                    profile,
-                    retrieval,
-                    plan,
-                )
-                enriched = self._application_strategy_reconciler.reconcile(
-                    plan,
-                    profile,
-                    validated,
-                )
-            except ApplicationStrategyValidationError as error:
-                self._last_validation_failures = [str(error)]
-                enriched = plan
+            enriched = plan
+            current_result: ApplicationStrategyResult | None = result
+            while current_result is not None:
+                try:
+                    validated = self._application_strategy_validator.validate(
+                        current_result.output,
+                        profile,
+                        retrieval,
+                        plan,
+                    )
+                    correction_notes = (
+                        self._application_strategy_validator.dominated_new_entry_reserve_notes(
+                            validated,
+                            retrieval,
+                        )
+                    )
+                    if correction_notes:
+                        self._last_validation_failures = correction_notes
+                        if (
+                            not portfolio_repair_used
+                            and self._generation_call_counts.get(generation_key, 0)
+                            < self._max_calls
+                        ):
+                            portfolio_repair_used = True
+                            corrected_request = request.model_copy(
+                                update={"correction_notes": correction_notes}
+                            )
+                            current_result = self._execute_strategy_request(
+                                generation_key,
+                                self._language_model.recommend_application_strategy,
+                                corrected_request,
+                            )
+                            continue
+                        raise ApplicationStrategyValidationError(
+                            "Gemini strategy retained a materially dominated new-entry reserve."
+                        )
+                    enriched = self._application_strategy_reconciler.reconcile(
+                        plan,
+                        profile,
+                        validated,
+                    )
+                    self._last_validation_failures = []
+                    break
+                except ApplicationStrategyValidationError as error:
+                    if not self._last_validation_failures:
+                        self._last_validation_failures = [str(error)]
+                    enriched = plan
+                    break
+        calls = self._generation_call_counts.get(generation_key, 0)
+        cache_hits = self._generation_cache_hits.get(generation_key, 0)
+        if result is not None:
             self._record_stage(
                 ResumeProviderStage.APPLICATION_STRATEGIST,
                 (
@@ -564,7 +597,12 @@ class HybridLlmServices:
                 calls,
                 (
                     "Gemini selected a portfolio from the complete reviewed evidence bank; "
-                    "deterministic evidence and structural validation accepted the usable plan."
+                    "deterministic evidence, portfolio-dominance, and structural validation "
+                    + (
+                        "accepted the bounded repaired plan."
+                        if portfolio_repair_used
+                        else "accepted the usable plan."
+                    )
                     if enriched.application_strategy is not None
                     else "Gemini returned no usable reviewed-evidence portfolio; deterministic "
                     "fallback retained."
@@ -614,7 +652,14 @@ class HybridLlmServices:
     ) -> ApplicationStrategyResult | None:
         """Run one strategy request and at most one malformed-output repair."""
 
-        maximum_requests = min(self._max_calls, 1 + min(1, self._retry_count))
+        remaining_requests = max(
+            0,
+            self._max_calls - self._generation_call_counts.get(generation_key, 0),
+        )
+        maximum_requests = min(
+            remaining_requests,
+            1 + min(1, self._retry_count),
+        )
         current_request = request
         for attempt_index in range(maximum_requests):
             self._telemetry.increment("provider_calls")
@@ -2101,10 +2146,6 @@ class HybridLlmServices:
         retrieval: EvidenceRetrievalResult,
     ) -> ApplicationStrategyRequest:
         retrieved = {item.evidence_id: item for item in [*retrieval.admitted, *retrieval.rejected]}
-        materially_related_count = sum(
-            item.relationship is not EvidenceRelationship.REJECTED
-            for item in retrieval.admitted
-        )
         evidence_by_entry: defaultdict[str, list[StrategyEvidenceInput]] = defaultdict(list)
         for item in profile.evidence:
             if not item.confirmed:
@@ -2181,15 +2222,6 @@ class HybridLlmServices:
             constraints=ApplicationStrategyConstraintsInput(
                 maximum_selected_entries=7,
                 maximum_selected_evidence=24,
-                minimum_expansion_reserve_actions=(
-                    APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS
-                    if materially_related_count
-                    >= APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE
-                    else 0
-                ),
-                target_expansion_reserve_actions=(
-                    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS
-                ),
                 maximum_expansion_reserve_actions=(
                     APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS
                 ),
