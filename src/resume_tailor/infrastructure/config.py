@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_api_key_env_var: str = "GEMINI_API_KEY"
     llm_temperature: float = 0.1
     llm_max_output_tokens: int = 2048
+    llm_application_strategy_max_output_tokens: int = Field(default=4096, gt=0)
     llm_bullet_rewrite_max_output_tokens: int = 8192
     llm_profile_extraction_max_output_tokens: int = 8192
     llm_timeout_seconds: int = 30

@@ -162,6 +162,14 @@ finalists use the same batched Word/LibreOffice provider. An estimated one-page
 winner that measures as two pages is rejected without hiding later fitting
 siblings.
 
+The strategist reserve is a next-best evidence bench, not a draft rendering.
+Deep request banks with at least sixteen deterministically material reviewed
+atoms use a provider-schema floor of eight actions, target ten, and cap at twelve
+in the same call. Smaller banks may return fewer without padding. Gemini selects
+and orders the reserve semantically; deterministic validation continues to
+remove invalid ownership, duplicates, unconfirmed evidence, incoherent new
+professional entries, and structural overages before page fitting sees it.
+
 The deterministic fallback path uses the two planning stages below.
 
 The search uses two deterministic planning stages before exact pagination.

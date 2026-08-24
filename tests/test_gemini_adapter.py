@@ -11,6 +11,7 @@ from resume_tailor.domain.hybrid_resume import (
     WriterPipelineStage,
 )
 from resume_tailor.domain.llm_models import (
+    ApplicationStrategyOutput,
     ApprovedEvidenceGroup,
     BulletRewriteOutput,
     BulletRewriteRequest,
@@ -28,7 +29,10 @@ from resume_tailor.domain.llm_models import (
 )
 from resume_tailor.domain.models import RoleFamily
 from resume_tailor.infrastructure.config import Settings
-from resume_tailor.infrastructure.gemini_adapter import GeminiResumeLanguageModel
+from resume_tailor.infrastructure.gemini_adapter import (
+    GeminiResumeLanguageModel,
+    _with_strategy_reserve_floor,
+)
 from resume_tailor.infrastructure.gemini_canary import (
     MINIMAL_STRUCTURED_OUTPUT_CANARY_SCHEMA,
     MINIMAL_WRITER_CANARY_EVIDENCE_ID,
@@ -240,6 +244,27 @@ def test_minimal_canary_config_matches_documented_contract() -> None:
         "response_mime_type": "application/json",
         "response_json_schema": MINIMAL_STRUCTURED_OUTPUT_CANARY_SCHEMA,
     }
+
+
+def test_application_strategy_has_a_bounded_deep_reserve_output_budget() -> None:
+    adapter = object.__new__(GeminiResumeLanguageModel)
+    adapter._max_output_tokens = 2048
+    adapter._application_strategy_max_output_tokens = 4096
+    adapter._bullet_rewrite_max_output_tokens = 8192
+    adapter._profile_extraction_max_output_tokens = 8192
+
+    assert adapter._output_token_budget(LlmOperation.APPLICATION_STRATEGY) == 4096
+    assert adapter._output_token_budget(LlmOperation.ANALYZE_OPPORTUNITY) == 2048
+    assert adapter._output_token_budget(LlmOperation.REWRITE_BULLETS) == 8192
+
+    transform = _with_strategy_reserve_floor(
+        gemini_schema_transform(ApplicationStrategyOutput),
+        8,
+    )
+    reserve_schema = transform.schema["properties"]["expansion_reserve"]
+    assert reserve_schema["minItems"] == 8
+    assert reserve_schema["maxItems"] == 12
+    assert transform.provider_audit.unsupported_keyword_paths == ()
 
 
 def test_production_isolation_configs_separate_schema_and_extra_fields() -> None:

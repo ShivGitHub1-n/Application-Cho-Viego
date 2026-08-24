@@ -49,6 +49,12 @@ from resume_tailor.application.skill_composition import (
     SkillCompositionReconciliationError,
 )
 from resume_tailor.application.writer_shortlist import build_writer_shortlist
+from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE,
+    APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
+)
 from resume_tailor.domain.generated_artifact import GenerationStage
 from resume_tailor.domain.hybrid_resume import (
     BulletLengthClass,
@@ -2095,6 +2101,10 @@ class HybridLlmServices:
         retrieval: EvidenceRetrievalResult,
     ) -> ApplicationStrategyRequest:
         retrieved = {item.evidence_id: item for item in [*retrieval.admitted, *retrieval.rejected]}
+        materially_related_count = sum(
+            item.relationship is not EvidenceRelationship.REJECTED
+            for item in retrieval.admitted
+        )
         evidence_by_entry: defaultdict[str, list[StrategyEvidenceInput]] = defaultdict(list)
         for item in profile.evidence:
             if not item.confirmed:
@@ -2171,6 +2181,18 @@ class HybridLlmServices:
             constraints=ApplicationStrategyConstraintsInput(
                 maximum_selected_entries=7,
                 maximum_selected_evidence=24,
+                minimum_expansion_reserve_actions=(
+                    APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS
+                    if materially_related_count
+                    >= APPLICATION_STRATEGY_DEEP_BANK_MATERIAL_EVIDENCE
+                    else 0
+                ),
+                target_expansion_reserve_actions=(
+                    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS
+                ),
+                maximum_expansion_reserve_actions=(
+                    APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS
+                ),
                 maximum_total_lines=plan.constraints.max_total_lines,
                 maximum_experience_lines=plan.constraints.max_experience_lines,
                 maximum_project_lines=plan.constraints.max_project_lines,

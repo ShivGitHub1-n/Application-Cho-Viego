@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
     EvidencePriorityTier,
     SourceWordingAssessment,
 )
@@ -235,10 +238,34 @@ class StrategySkillInput(StrictModel):
 class ApplicationStrategyConstraintsInput(StrictModel):
     maximum_selected_entries: int = Field(gt=0)
     maximum_selected_evidence: int = Field(gt=0)
+    minimum_expansion_reserve_actions: int = Field(default=0, ge=0)
+    target_expansion_reserve_actions: int = Field(
+        default=APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
+        gt=0,
+    )
+    maximum_expansion_reserve_actions: int = Field(
+        default=APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
+        gt=0,
+    )
     maximum_total_lines: int = Field(gt=0)
     maximum_experience_lines: int = Field(gt=0)
     maximum_project_lines: int = Field(gt=0)
     maximum_skill_lines: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_expansion_reserve_bounds(self) -> ApplicationStrategyConstraintsInput:
+        if not (
+            self.minimum_expansion_reserve_actions
+            <= self.target_expansion_reserve_actions
+            <= self.maximum_expansion_reserve_actions
+        ):
+            raise ValueError("Expansion reserve bounds must satisfy minimum <= target <= maximum")
+        if (
+            self.minimum_expansion_reserve_actions
+            > APPLICATION_STRATEGY_RESERVE_MINIMUM_ACTIONS
+        ):
+            raise ValueError("Expansion reserve minimum exceeds the supported deep-bank floor")
+        return self
 
 
 class ApplicationStrategyRequest(StrictModel):
@@ -294,11 +321,14 @@ class ApplicationStrategyOutput(StrictModel):
     selected_entries: list[ProposedStrategyEntry] = Field(min_length=1)
     expansion_reserve: list[ProposedStrategyExpansionAction] = Field(
         default_factory=list,
-        max_length=8,
+        max_length=APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
         description=(
-            "Ranked independent underfill actions. When materially relevant unused reviewed "
-            "evidence exists, provide enough alternatives for page fitting to try later actions "
-            "after an earlier action overflows."
+            "A deep ranked bench, broader than the selective core and not automatically rendered. "
+            "Rank independent actions by marginal value to the current core. When the evidence "
+            "bank contains enough materially useful unused choices, aim for the supplied target "
+            "and keep returning actions up to the supplied maximum so page fitting can try deeper "
+            "same-entry evidence and complementary entries after earlier actions are redundant or "
+            "overflow. Return fewer only when fewer choices add real application value."
         ),
     )
     low_priority_entries: list[ProposedLowPriorityEntry] = Field(default_factory=list)

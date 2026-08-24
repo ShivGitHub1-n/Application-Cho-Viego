@@ -79,6 +79,15 @@ phrasing affect only visible wording, material-improvement checks, readability,
 and line cost; they cannot manufacture a new compound requirement such as a
 technical phrase assembled from unrelated source fragments.
 
+Reserve coverage is deliberately broader than the core without becoming final
+selection. When the deterministic request context contains at least sixteen
+materially related reviewed atoms, the single strategist response must expose at
+least eight independently ranked reserve actions, targets ten, and may return at
+most twelve. Smaller banks have no minimum. Gemini still chooses the IDs and
+ranks their marginal contribution; deterministic code only identifies that the
+bank is deep enough to require a useful frontier. Core plus reserve remains
+subject to the existing 24-evidence truthfulness and computation bound.
+
 Entry admission is package-aware. Each credible experience or project receives
 a deterministic best package at every reachable depth after validated writing
 variants are available. The search opens metadata and bullets together, so an

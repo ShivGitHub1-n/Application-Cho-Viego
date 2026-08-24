@@ -4,6 +4,8 @@ import json
 import os
 import re
 import time
+from copy import deepcopy
+from dataclasses import replace
 from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
@@ -57,6 +59,8 @@ from resume_tailor.infrastructure.gemini_request_diagnostics import (
     build_request_shape_diagnostic,
 )
 from resume_tailor.infrastructure.gemini_schema import (
+    GeminiSchemaTransform,
+    audit_gemini_schema,
     gemini_schema_transform,
     transform_gemini_schema,
 )
@@ -70,6 +74,27 @@ from resume_tailor.infrastructure.llm_cache import InMemoryLlmCache
 
 OutputType = TypeVar("OutputType", bound=BaseModel)
 ResultType = TypeVar("ResultType", bound=ModelResult)
+
+
+def _with_strategy_reserve_floor(
+    transform: GeminiSchemaTransform,
+    minimum_actions: int,
+) -> GeminiSchemaTransform:
+    if minimum_actions <= 0:
+        return transform
+    schema = deepcopy(transform.schema)
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError("Application strategy provider schema has no properties")
+    reserve_schema = properties.get("expansion_reserve")
+    if not isinstance(reserve_schema, dict):
+        raise ValueError("Application strategy provider schema has no expansion reserve")
+    reserve_schema["minItems"] = minimum_actions
+    return replace(
+        transform,
+        schema=schema,
+        provider_audit=audit_gemini_schema(schema),
+    )
 
 
 class _ProviderCachePayload(BaseModel):
@@ -113,6 +138,9 @@ class GeminiResumeLanguageModel:
         self._model = settings.gemini_model
         self._temperature = settings.llm_temperature
         self._max_output_tokens = settings.llm_max_output_tokens
+        self._application_strategy_max_output_tokens = (
+            settings.llm_application_strategy_max_output_tokens
+        )
         self._bullet_rewrite_max_output_tokens = settings.llm_bullet_rewrite_max_output_tokens
         self._profile_extraction_max_output_tokens = (
             settings.llm_profile_extraction_max_output_tokens
@@ -122,6 +150,15 @@ class GeminiResumeLanguageModel:
 
     def set_telemetry(self, telemetry: GenerationTelemetry) -> None:
         self._telemetry = telemetry
+
+    def _output_token_budget(self, operation: LlmOperation) -> int:
+        if operation is LlmOperation.PROFILE_EXTRACTION:
+            return self._profile_extraction_max_output_tokens
+        if operation is LlmOperation.REWRITE_BULLETS:
+            return self._bullet_rewrite_max_output_tokens
+        if operation is LlmOperation.APPLICATION_STRATEGY:
+            return self._application_strategy_max_output_tokens
+        return self._max_output_tokens
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
         return self._generate(
@@ -247,16 +284,16 @@ class GeminiResumeLanguageModel:
                         else None
                     ),
                 )
+                if operation is LlmOperation.APPLICATION_STRATEGY:
+                    strategy_request = cast(ApplicationStrategyRequest, request)
+                    schema_transform = _with_strategy_reserve_floor(
+                        schema_transform,
+                        strategy_request.constraints.minimum_expansion_reserve_actions,
+                    )
             provider_config = self._types.GenerateContentConfig(
                 system_instruction=system_prompt(),
                 temperature=self._temperature,
-                max_output_tokens=(
-                    self._profile_extraction_max_output_tokens
-                    if operation == LlmOperation.PROFILE_EXTRACTION
-                    else self._bullet_rewrite_max_output_tokens
-                    if operation == LlmOperation.REWRITE_BULLETS
-                    else self._max_output_tokens
-                ),
+                max_output_tokens=self._output_token_budget(operation),
                 response_mime_type="application/json",
                 response_json_schema=schema_transform.schema,
             )

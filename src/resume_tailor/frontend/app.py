@@ -619,6 +619,7 @@ def _tailor_service_configuration_fingerprint(settings: Settings) -> str:
         "credential_configured": bool(settings.gemini_api_key),
         "temperature": settings.llm_temperature,
         "max_output_tokens": settings.llm_max_output_tokens,
+        "strategy_output_tokens": settings.llm_application_strategy_max_output_tokens,
         "bullet_output_tokens": settings.llm_bullet_rewrite_max_output_tokens,
         "timeout_seconds": settings.llm_timeout_seconds,
         "retry_count": settings.llm_retry_count,

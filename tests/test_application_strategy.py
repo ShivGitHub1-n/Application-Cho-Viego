@@ -12,6 +12,9 @@ from resume_tailor.application.resume_composition import (
 )
 from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_CONTRACT_VERSION,
+    APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
     EvidencePriorityTier,
     SourceWordingAssessment,
     StrategyValidationIssueCode,
@@ -214,6 +217,31 @@ class LiveUnderfillReservePageFit(UnderfillExpansionPageFit):
         )
 
 
+class DeepReserveCoveragePageFit(UnderfillExpansionPageFit):
+    def __init__(self, core_bullets: int = 8) -> None:
+        super().__init__()
+        self.core_bullets = core_bullets
+
+    def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
+        bullet_count = self._bullet_count(resume)
+        utilization = min(0.94, 0.67 + (0.045 * max(0, bullet_count - self.core_bullets)))
+        self.observed.append((bullet_count, attempt_exact, utilization, 1))
+        return PageFitEvaluation(
+            status=(
+                PageUtilizationStatus.SEVERE_UNDERFILL
+                if utilization < 0.75
+                else PageUtilizationStatus.UNDERFILLED
+                if utilization < 0.84
+                else PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+            ),
+            page_count=1,
+            exact=attempt_exact,
+            provider="controlled deep-reserve exact paginator",
+            utilization_ratio=utilization,
+            fits_one_page=True,
+        )
+
+
 def _entry(entry_id: str, title: str, kind: EntityKind) -> ResumeItem:
     return ResumeItem(
         id=entry_id,
@@ -409,6 +437,35 @@ def _mixed_profile(*, add_large_library: bool = False) -> MasterProfile:
         experiences=experiences,
         projects=projects,
         evidence=evidence,
+    )
+
+
+def _deep_hardware_profile() -> MasterProfile:
+    profile = _mixed_profile()
+    return profile.model_copy(
+        update={
+            "evidence": [
+                *profile.evidence,
+                _evidence(
+                    "mech",
+                    "mech-power",
+                    "Validated protected power distribution during motor-load testing.",
+                    ["power distribution", "motor load"],
+                ),
+                _evidence(
+                    "mech",
+                    "mech-thermal",
+                    "Tested thermal protection and fault recovery on the actuator controller.",
+                    ["thermal protection", "actuator controller"],
+                ),
+                _evidence(
+                    "hand",
+                    "hand-sensing",
+                    "Integrated position sensors and embedded signal conditioning for the hand.",
+                    ["position sensors", "signal conditioning"],
+                ),
+            ]
+        }
     )
 
 
@@ -861,8 +918,8 @@ def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_ov
         LlmOperation.APPLICATION_STRATEGY,
         fake.requests["recommend_application_strategy"][0],
     )
-    assert "provide 4-8 independent reserve actions" in prompt
-    assert "Return fewer only when fewer unused evidence choices" in prompt
+    assert "approximately 10 independent reserve actions" in prompt
+    assert "returning only one or two is not a complete frontier" in prompt
     assert STRATEGY_UTILIZATION_PREFERRED_FLOOR == 0.88
     assert STRATEGY_UTILIZATION_PREFERRED_CEILING == 0.93
     assert STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR == 0.84
@@ -910,6 +967,127 @@ def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_ov
         and item.accepted
         for item in diagnostic.page_fill_iterations
     )
+
+
+def test_deep_hardware_strategy_exposes_bounded_reserve_and_fills_existing_page_frontier() -> None:
+    profile = _deep_hardware_profile()
+    core = [
+        _selection(
+            "mech",
+            ["mech-control", "mech-interfaces"],
+            EvidencePriorityTier.CRITICAL,
+        ),
+        _selection(
+            "rd",
+            ["rd-wiring", "rd-test", "rd-power", "rd-validation"],
+            EvidencePriorityTier.HIGH,
+        ),
+        _selection(
+            "hand",
+            ["hand-build", "hand-control"],
+            EvidencePriorityTier.HIGH,
+        ),
+    ]
+    reserve = [
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-safety"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason="Adds distinct physical safety validation.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-cad"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason="Adds distinct fixture-design evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-feedback"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason="Adds distinct feedback and current-limit validation.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-power"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason="Adds distinct protected power evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="hand",
+            evidence_ids=["hand-vision"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds a supported system-input dimension.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="hand",
+            evidence_ids=["hand-sensing"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds distinct sensing and signal-conditioning evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="arm",
+            evidence_ids=["arm-cad", "arm-test"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds a coherent actuator-design and bench-test project.",
+            minimum_coherent_depth=2,
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="arm",
+            evidence_ids=["arm-transmission"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds distinct mechanical-transmission evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-repeat"],
+            priority=EvidencePriorityTier.OPTIONAL,
+            marginal_value_reason="Potentially repeats existing motor-control evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-thermal"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds distinct thermal fault-recovery evidence.",
+        ),
+    ]
+    page_fit = DeepReserveCoveragePageFit()
+    fake = FakeResumeLanguageModel(
+        recommend_application_strategy=_strategy_result(
+            core,
+            thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+            expansion_reserve=reserve,
+            low_priority=["digital", "software", "resume-tool"],
+        )
+    )
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert plan.application_strategy is not None
+    assert plan.application_strategy.contract_version == APPLICATION_STRATEGY_CONTRACT_VERSION
+    assert len(plan.application_strategy.expansion_reserve) == 10
+    request = fake.requests["recommend_application_strategy"][0]
+    assert request.constraints.target_expansion_reserve_actions == (
+        APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS
+    )
+    assert request.constraints.minimum_expansion_reserve_actions == 8
+    assert request.constraints.maximum_expansion_reserve_actions == (
+        APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS
+    )
+    assert resume.composition_diagnostic is not None
+    diagnostic = resume.composition_diagnostic
+    assert 0.88 <= diagnostic.final_utilization_ratio <= 0.93
+    assert diagnostic.page_count == 1
+    assert diagnostic.verification_status.value == "exact"
+    assert "mech-repeat" not in diagnostic.selected_bullet_ids
+    assert "digital" not in resume.experience_bullets
+    assert "software" not in resume.experience_bullets
+    assert "resume-tool" not in resume.project_bullets
+    assert fake.calls["recommend_application_strategy"] == 1
+    assert fake.calls["rewrite_bullets"] == 0
+    assert max(item[2] for item in page_fit.observed) >= 0.88
 
 
 def test_new_professional_reserve_entry_requires_coherent_depth() -> None:
@@ -1019,6 +1197,10 @@ def test_underfilled_software_strategy_expands_only_with_software_reserve() -> N
     plan = service.create_plan(profile, _software_posting(), TemplateConstraints())
     resume = service.build_document(plan, profile, set())
 
+    request = fake.requests["recommend_application_strategy"][0]
+    assert request.constraints.minimum_expansion_reserve_actions == 0
+    assert request.constraints.target_expansion_reserve_actions == 10
+    assert request.constraints.maximum_expansion_reserve_actions == 12
     assert _selected_entry_ids(resume) == {"digital", "software", "resume-tool"}
     assert resume.composition_diagnostic is not None
     assert "software-observability" in resume.composition_diagnostic.selected_bullet_ids

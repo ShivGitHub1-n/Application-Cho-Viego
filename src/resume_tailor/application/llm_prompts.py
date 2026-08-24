@@ -8,6 +8,10 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.application_strategy import (
+    APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS,
+    APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS,
+)
 from resume_tailor.domain.cover_letter import CoverLetterParagraphPurpose
 from resume_tailor.domain.llm_models import LlmOperation
 
@@ -45,14 +49,22 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
             "themselves make cross-domain evidence strong. Select evidence because its demonstrated work "
             "supports the posting context. Provide an application thesis, ordered role priorities, "
             "selected entries with desired depth and ranked evidence, useful same-entry alternatives, "
-            "and a ranked expansion_reserve of distinct reviewed evidence worth adding only when the "
-            "rendered core portfolio is materially underfilled. Rendering happens after this call, so "
-            "when the bank contains enough materially relevant unused evidence, provide 4-8 independent "
-            "reserve actions spanning useful same-entry depth and complementary entries. Return fewer "
-            "only when fewer unused evidence choices add real application value; never use weak filler. "
-            "A reserve action may deepen a core entry or open one additional relevant entry, but a new "
-            "professional experience must supply at least two coherent evidence IDs. Do not repeat core "
-            "evidence in the reserve. Also provide "
+            "and a deep ranked expansion_reserve of distinct reviewed evidence worth adding only when "
+            "the rendered core portfolio is materially underfilled. The core is selective; reserve "
+            "membership is only permission for deterministic page fitting to try next-best evidence and "
+            "does not mean that evidence will be rendered. After choosing the core, audit the remaining "
+            "confirmed evidence and rank actions by marginal contribution to that exact core, including "
+            "useful same-entry depth, useful core-project depth, complementary entries, and distinct "
+            "technical dimensions. Rendering happens after this call. When at least that many useful "
+            "choices exist, return no fewer than minimum_expansion_reserve_actions, aim for approximately "
+            f"{APPLICATION_STRATEGY_RESERVE_TARGET_ACTIONS} independent reserve actions and never more "
+            f"than {APPLICATION_STRATEGY_RESERVE_MAXIMUM_ACTIONS}; returning only one or two is not a "
+            "complete frontier for a deep relevant bank. Return fewer only when fewer unused choices add "
+            "real application value; never use weak filler. Prefer one evidence ID per same-entry action "
+            "so the fitter can choose independently. Group evidence when a new entry needs coherent depth; "
+            "a new professional experience must supply at least two coherent evidence IDs. Keep core plus "
+            "reserve evidence within maximum_selected_evidence. Do not repeat core evidence in the reserve. "
+            "Also provide "
             "concise reasons for meaningful lower-priority entries. Treat authoritative_title as the "
             "only title/seniority authority. Do not select skills or invent requirements, metrics, tools, "
             "leadership, facts, entries, or evidence. The selected portfolio should normally be substantial "

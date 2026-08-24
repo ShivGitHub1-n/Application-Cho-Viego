@@ -16,6 +16,7 @@ def test_writer_defaults_to_one_primary_batch_and_one_malformed_repair() -> None
     assert settings.llm_retry_count == 1
     assert settings.llm_max_calls_per_generation == 2
     assert settings.llm_timeout_seconds == 30
+    assert settings.llm_application_strategy_max_output_tokens == 4096
     assert settings.llm_bullet_rewrite_max_output_tokens == 8192
 
 

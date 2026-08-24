@@ -100,7 +100,11 @@ priority, and meaningful low-priority omissions. Same-entry fallback evidence
 is retained automatically; the explicit reserve is the bounded way to authorize
 a new entry when it adds distinct portfolio value. When materially useful unused
 evidence exists, the same strategist call returns multiple independent reserve
-actions so exact pagination can reject one without exhausting the strategy.
+actions so exact pagination can reject one without exhausting the strategy. A
+deep material bank carries a typed floor of eight actions, a target of ten, and
+a hard maximum of twelve; shallow banks carry no minimum. The provider schema
+enforces that request-specific floor before the existing deterministic validator
+removes invalid actions item by item.
 The deterministic validator removes unknown, duplicated, cross-entry,
 unconfirmed, structurally impossible, title-conflicting, or unsupported
 requirement references item by item. A valid remainder survives; the system does
@@ -170,6 +174,9 @@ strategist request and one writer request. The pair shares one additional repair
 request, used only when a typed provider response is malformed. Timeouts, network
 failures, grounding rejections, and safety failures
 do not enter a retry loop. The Gemini SDK retry count is explicitly one attempt.
+The strategist has a dedicated 4,096-token output ceiling so the bounded deep
+reserve can coexist with the core plan without changing writer, extraction, or
+general provider budgets.
 Provider, parsing, validation, request, repair, and cache diagnostics are typed.
 Per-rewrite diagnostics retain only the authorized evidence IDs and reviewed
 source used by the smoke route, reconstructed claim, mapping outcome, typed
