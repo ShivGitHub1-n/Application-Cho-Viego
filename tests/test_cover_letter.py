@@ -395,6 +395,33 @@ def test_stale_or_unapproved_artifact_cannot_download() -> None:
         )
 
 
+def test_severely_underfilled_failed_candidate_cannot_be_approved_or_downloaded() -> None:
+    profile, posting, plan = cover_letter_case()
+    service = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.48]))
+
+    failed = service.generate_artifact(profile, posting, plan)
+
+    assert failed.page_fit.estimated_utilization == 0.48
+    assert not failed.ready_for_review
+    assert failed.review_state is CoverLetterReviewState.GENERATION_FAILED
+    with pytest.raises(CoverLetterValidationError, match="failed quality gates"):
+        service.approve_artifact(
+            failed,
+            expected_fingerprint=failed.artifact_fingerprint,
+        )
+
+    forged_approval = failed.model_copy(
+        update={"review_state": CoverLetterReviewState.APPROVED}
+    )
+    with pytest.raises(CoverLetterValidationError, match="production eligibility"):
+        service.prepare_download(
+            forged_approval,
+            expected_fingerprint=forged_approval.artifact_fingerprint,
+        )
+    with pytest.raises(CoverLetterValidationError, match="production eligibility"):
+        service.mark_downloaded(forged_approval)
+
+
 def test_changed_date_or_recipient_invalidates_current_artifact() -> None:
     profile, posting, plan = cover_letter_case()
     service = CoverLetterService(renderer=ControlledCoverLetterRenderer([0.94]))

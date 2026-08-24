@@ -525,6 +525,10 @@ class CoverLetterService:
         started = self._clock()
         if artifact.artifact_fingerprint != expected_fingerprint or not artifact.current:
             raise CoverLetterValidationError("A stale cover-letter artifact cannot be downloaded")
+        if not artifact.ready_for_review:
+            raise CoverLetterValidationError(
+                "A cover-letter artifact that failed production eligibility cannot be downloaded"
+            )
         if artifact.review_state not in {
             CoverLetterReviewState.APPROVED,
             CoverLetterReviewState.DOWNLOADED,
@@ -544,6 +548,10 @@ class CoverLetterService:
     def mark_downloaded(
         artifact: GeneratedCoverLetterArtifact,
     ) -> GeneratedCoverLetterArtifact:
+        if not artifact.ready_for_review:
+            raise CoverLetterValidationError(
+                "A cover-letter artifact that failed production eligibility cannot be downloaded"
+            )
         if artifact.review_state is not CoverLetterReviewState.APPROVED:
             raise CoverLetterValidationError(
                 "Only an approved cover letter can be marked downloaded"

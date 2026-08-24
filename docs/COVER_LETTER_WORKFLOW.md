@@ -88,16 +88,25 @@ view, develop two or three stories with different functions, and privately edit
 the complete draft once for grammar, repetition, specificity, posting-copy,
 corporate rhythm, and closing quality before returning the typed result. This
 self-review is part of the same bounded request, not an agent loop or a second
-semantic call. Cover-letter drafting uses a dedicated default temperature of
-0.35; all resume operations retain the configured general temperature.
+semantic call. The provider contract requires four or five paragraphs with an
+actual opening, two or three distinct story threads, and a closing. It also
+explicitly preserves numbers, ownership qualifiers, causal relationships, and
+outcomes: supported or contributed work cannot be promoted to owned or led
+work. Cover-letter drafting uses a dedicated default temperature of 0.35; all
+resume operations retain the configured general temperature.
 
 The deterministic writer produces bounded concise, standard, and developed
 variants. Concise and standard variants use two substantive story paragraphs;
 the developed variant can use three distinct evidence threads when the profile
-supports them. The source-bound fallback reverses thread priority so it is a
-genuinely different supported strategy. Supporting facts from the same
-experience or project remain in that thread rather than becoming repetitive
-paragraphs. The writer uses the canonical extracted company unless
+supports them. The source-bound fallback preserves the ranked narrative-thread
+order and may use up to three already-retrieved, nonredundant facts from a
+thread when fewer than three viable stories exist. Supporting facts from the
+same experience or project remain in that thread rather than becoming
+repetitive paragraphs. Narrative details come from typed reviewed
+technology/outcome fields. For legacy evidence without those fields, extracted
+phrases are filtered as grammatical noun phrases before interpolation, so
+prepositional or action fragments cannot become malformed component lists. The
+writer uses the canonical extracted company unless
 the user
 supplies a nonblank override, turns imperative posting fragments into noun
 phrases or complete clauses, and keeps validator terminology out of
@@ -199,9 +208,10 @@ Word formatting.
 Exact Word or LibreOffice pagination is authoritative. If it is unavailable,
 the deterministic occupancy estimate remains explicitly
 `pagination_unverified`; utilization and remaining-line estimates are exposed,
-the rendered bytes remain a review copy, and the artifact fails closed rather
-than becoming approvable or exportable. An estimated underfill or overflow
-classification cannot replace exact final pagination authority.
+the rendered bytes remain internal to the diagnostic artifact, and the artifact
+fails closed rather than becoming approvable, inspect-downloadable, or
+exportable. An estimated underfill or overflow classification cannot replace
+exact final pagination authority.
 The renderer does not inflate fonts, margins, or spacing to meet density.
 
 ## Artifact and review lifecycle
@@ -216,9 +226,11 @@ policy/contract/template versions, provider, and model.
 Generation never auto-approves. Streamlit displays the letter first and keeps
 evidence/source diagnostics collapsed. Approval is explicit. A failed rebuild
 cannot replace the last valid artifact. Changed material inputs make the prior
-artifact stale and disable approval/download. A current review artifact exposes
-its exact stored DOCX bytes for required Word inspection without changing
-review state. Approved download returns those same stored bytes. Neither action
+artifact stale and disable approval/download. Only a current artifact that
+passed content and page-fit eligibility may expose its stored review DOCX.
+Failed candidates remain diagnostic-only: they expose rejection and page-fit
+information but no approval control and no review or final DOCX download.
+Approved download returns the same stored bytes. Neither action
 performs provider, research, validation, composition, rendering, or pagination
 calls.
 

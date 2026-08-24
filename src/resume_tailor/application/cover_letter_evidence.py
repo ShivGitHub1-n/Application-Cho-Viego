@@ -87,6 +87,7 @@ class CoverLetterEvidencePortfolio:
             used_features.update(feature for item in thread for feature in item.meaningful_overlap)
 
         selected: list[RetrievedEvidence] = []
+        maximum_thread_depth = 3 if len(selected_threads) < 3 else 2
         for thread in selected_threads:
             representative = thread[0]
             selected.append(representative)
@@ -100,11 +101,21 @@ class CoverLetterEvidencePortfolio:
                     *self._candidate_key(item),
                 ),
             )
-            if supporting and supporting[0].relationship in {
-                EvidenceRelationship.DIRECT,
-                EvidenceRelationship.ADJACENT,
-            }:
-                selected.append(supporting[0])
+            chosen = [representative]
+            for candidate in supporting:
+                if len(chosen) >= maximum_thread_depth or len(selected) >= 7:
+                    break
+                if candidate.relationship in {
+                    EvidenceRelationship.DIRECT,
+                    EvidenceRelationship.ADJACENT,
+                } or (
+                    candidate.relationship is EvidenceRelationship.COMPLEMENTARY
+                    and representative.relationship
+                    in {EvidenceRelationship.DIRECT, EvidenceRelationship.ADJACENT}
+                    and self._adds_story_dimension(candidate, chosen)
+                ):
+                    chosen.append(candidate)
+                    selected.append(candidate)
 
         records: list[CoverLetterEvidenceRecord] = []
         for retrieved in selected:
@@ -204,6 +215,23 @@ class CoverLetterEvidencePortfolio:
     @classmethod
     def _thread_requirements(cls, thread: list[RetrievedEvidence]) -> set[str]:
         return {requirement for item in thread for requirement in cls._item_requirements(item)}
+
+    @classmethod
+    def _adds_story_dimension(
+        cls,
+        candidate: RetrievedEvidence,
+        chosen: list[RetrievedEvidence],
+    ) -> bool:
+        """Admit an already-retrieved supporting atom only when it adds concrete breadth."""
+
+        chosen_requirements = {
+            requirement for item in chosen for requirement in cls._item_requirements(item)
+        }
+        chosen_features = {feature for item in chosen for feature in item.meaningful_overlap}
+        return bool(
+            cls._item_requirements(candidate) - chosen_requirements
+            or set(candidate.meaningful_overlap) - chosen_features
+        )
 
     @staticmethod
     def _candidate_key(item: RetrievedEvidence) -> tuple[object, ...]:

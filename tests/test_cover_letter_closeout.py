@@ -12,6 +12,7 @@ from resume_tailor.application.workflow_state import (
     set_active_application_context,
 )
 from resume_tailor.domain.cover_letter import (
+    CoverLetterParagraphPurpose,
     CoverLetterProviderFailureStage,
     CoverLetterProviderStatus,
     CoverLetterQualityGateStatus,
@@ -209,6 +210,49 @@ def test_valid_provider_story_beats_density_only_deterministic_alternative() -> 
     assert selected_diagnostic.generation_source == "provider"
 
 
+def test_reasonable_provider_shaped_prose_is_not_falsely_rejected() -> None:
+    profile, posting, plan = rich_cover_letter_case()
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    grounded = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
+    provider_shaped = grounded.model_copy(
+        update={
+            "paragraphs": [
+                paragraph.model_copy(
+                    update={
+                        "source_bound_sentences": [],
+                        "company_research_ids": (
+                            paragraph.company_research_ids
+                            if paragraph.purpose
+                            in {
+                                CoverLetterParagraphPurpose.OPENING,
+                                CoverLetterParagraphPurpose.CLOSING,
+                            }
+                            else []
+                        ),
+                    }
+                )
+                for paragraph in grounded.paragraphs
+            ]
+        }
+    )
+
+    validated = CoverLetterValidator().validate_output(
+        provider_shaped,
+        evidence,
+        research,
+        posting,
+    )
+
+    assert not validated.rejected_claims
+    assert all(
+        gate.status is not CoverLetterQualityGateStatus.FAILED
+        for gate in validated.quality_gates
+    )
+
+
 def test_invalid_provider_paragraph_is_not_spliced_into_a_fallback_letter() -> None:
     profile, posting, plan = rich_cover_letter_case()
     base = provider_result(profile, posting, plan)
@@ -272,12 +316,33 @@ def test_fallback_normalizes_posting_subjects_and_never_uses_titles_as_skills() 
 
     output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
     text = " ".join(paragraph.text for paragraph in output.paragraphs).casefold()
+    body = output.paragraphs[1:-1]
 
     assert "work behind the intern will" not in text
     assert "approach that follows the intern will" not in text
     assert "direct experience with mechatronics engineer" not in text
     assert "the useful bridge is" not in text
     assert "digital engineering intern" not in text
+    assert "practical experience with the hardware" not in text
+    assert "and across" not in text
+    assert len({paragraph.narrative_thread_id for paragraph in body}) == len(body)
+    body_evidence = [
+        evidence_id
+        for paragraph in body
+        for evidence_id in paragraph.candidate_evidence_ids
+    ]
+    assert len(body_evidence) == len(set(body_evidence))
+
+
+def test_fallback_drops_grammatical_fragments_from_legacy_detail_extraction() -> None:
+    details = DeterministicCoverLetterComposer._safe_narrative_phrases(
+        "Worked with STM32 interfaces, communication architecture, and across the "
+        "prototype system."
+    )
+
+    assert "STM32 interfaces" in details
+    assert "communication architecture" in details
+    assert all(not detail.casefold().startswith("across ") for detail in details)
 
 
 def test_software_reverse_control_builds_a_software_narrative_plan() -> None:

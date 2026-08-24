@@ -262,7 +262,8 @@ def _render_status(
     columns[3].metric("Page use", f"{artifact.page_fit.estimated_utilization:.0%}")
     st.caption(
         f"State: {artifact.review_state.value.replace('_', ' ')} · "
-        f"Artifact v{artifact.artifact_version} · "
+        f"{'Artifact' if artifact.ready_for_review else 'Diagnostic candidate'} "
+        f"v{artifact.artifact_version} · "
         f"{'Current' if artifact_current else 'Stale'} · "
         f"{artifact.page_fit.estimated_remaining_lines} estimated lines remaining"
     )
@@ -355,6 +356,19 @@ def _render_approval(
     }
     if already_approved:
         st.success("This exact artifact is approved.")
+        return artifact
+    if not artifact.ready_for_review:
+        if artifact.page_fit.manual_word_inspection_required:
+            st.error(
+                "Exact pagination was unavailable. This diagnostic candidate cannot be "
+                "approved or downloaded; generate in an environment with Microsoft Word "
+                "or LibreOffice pagination configured."
+            )
+        else:
+            st.error(
+                "This diagnostic candidate did not pass production eligibility. Approval and "
+                "all DOCX downloads are unavailable; review the diagnostics and generate again."
+            )
         return artifact
     if artifact_current:
         st.download_button(

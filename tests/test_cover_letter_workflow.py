@@ -503,19 +503,12 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     artifact_bytes = artifact.docx_bytes
     render_calls = renderer.render_calls
     pagination_calls = pagination.calls
-    next(
-        button
+    assert not any(
+        button.label in {"Download review DOCX for inspection", "Download approved DOCX"}
         for button in app.get("download_button")
-        if button.label == "Download review DOCX for inspection"
-    ).click().run()
-    inspection_artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
-    assert inspection_artifact.review_state is CoverLetterReviewState.GENERATION_FAILED
-    assert inspection_artifact.artifact_fingerprint == artifact_fingerprint
-    assert inspection_artifact.docx_bytes == artifact_bytes
-    assert renderer.render_calls == render_calls
-    assert pagination.calls == pagination_calls
-    assert research_fetcher.calls == 0
-    assert not provider_constructions
+    )
+    assert not any(button.label == "Approve cover letter" for button in app.button)
+    assert not app.checkbox
 
     app.run()
     rerun_artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
@@ -524,8 +517,6 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     assert renderer.render_calls == render_calls
     assert pagination.calls == pagination_calls
 
-    approve = next(button for button in app.button if button.label == "Approve cover letter")
-    assert approve.disabled
     assert not any(
         button.label == "Download approved DOCX" for button in app.get("download_button")
     )

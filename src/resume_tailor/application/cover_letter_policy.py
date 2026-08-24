@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v12"
+COVER_LETTER_WRITING_POLICY_VERSION = "cover-letter-writing-v13"
 COVER_LETTER_PROVIDER_CONTRACT_VERSION = "cover-letter-provider-v4"
 COVER_LETTER_VALIDATION_POLICY_VERSION = "cover-letter-validation-v9"
 COVER_LETTER_TEMPLATE_IDENTITY = "cover-letter-correspondence-v6:standard-business-brief"
@@ -26,6 +26,12 @@ COVER_LETTER_WRITING_CONSTRAINTS = (
     "problem, choice, constraint, or consequence rather than list technologies. "
     "Aim for 300 to 425 words when the reviewed evidence supports that length; use less "
     "when evidence is sparse and never pad the page with generic enthusiasm or repeated facts.",
+    "Return four or five paragraphs in reading order. The first paragraph purpose must be "
+    "opening, the final paragraph purpose must be closing, and the middle paragraphs must use "
+    "distinct authorized narrative thread IDs. Do not relabel an opening or closing as body prose.",
+    "Preserve every number, ownership qualifier, causal relationship, and outcome exactly within "
+    "the meaning of its authorized evidence. Contributed or supported work must not become owned "
+    "or led work, and correlation or sequence must not become a claimed causal result.",
     "Open with a concrete technical or company connection, not an application "
     "announcement, a 'what stood out' construction, posting paraphrase, or generic enthusiasm.",
     "Close with one earned forward-looking thought; do not repeat the opening, summarize the "

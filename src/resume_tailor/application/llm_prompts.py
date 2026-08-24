@@ -136,6 +136,12 @@ def task_prompt(operation: LlmOperation, request: PromptRequest) -> str:
             "paragraph text, authorized candidate evidence IDs, authorized "
             "company research IDs, paragraph purpose, optional narrative thread ID, and length class. "
             "Do not return diagnostics, rationale, claim confidence, formatting, salutation, or sign-off. "
+            "Return exactly four or five paragraphs in reading order: paragraph one must use purpose "
+            "opening; the last paragraph must use purpose closing; and the two or three middle "
+            "paragraphs must use distinct narrative thread IDs and body purposes. Never change a "
+            "number, ownership qualifier, causal relationship, or outcome. In particular, supported or "
+            "contributed work cannot become owned, developed, or led work, and a sequence of events "
+            "cannot become a causal result unless the authorized evidence explicitly says so. "
             "Each paragraph purpose must be exactly one machine-readable identifier: "
             + ", ".join(purpose.value for purpose in CoverLetterParagraphPurpose)
             + ". Put role-specific or company-specific descriptions in paragraph text, never in purpose. "

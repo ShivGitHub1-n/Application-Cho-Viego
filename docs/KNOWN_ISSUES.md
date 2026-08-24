@@ -30,7 +30,10 @@ current limitations and deferred product work.
 The integrated workflow now gives the provider a concrete story plan and a
 single-request full-draft editing brief, and rejects the observed malformed,
 vague, repetitive, posting-paraphrase, and unnecessary seniority patterns. It
-still requires one real Streamlit letter and Word inspection before production
+also filters malformed legacy fallback detail fragments, deepens existing
+selected story threads when reviewed evidence is available, and keeps failed
+or severely underfilled candidates diagnostic-only with no approval/download.
+It still requires one real Streamlit letter and Word inspection before production
 acceptance. The preferred utilization band is 82–90%; 76–94% is acceptable
 when exact pagination succeeds, and writing quality outranks small density
 differences.

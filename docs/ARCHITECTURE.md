@@ -321,10 +321,15 @@ narrative plan with distinct story functions and concrete-detail prompts,
 title-safe writer inputs, paragraph and whole-letter validation, quality-aware
 finalist ordering, a preferred 82–90% page-utilization band, and an acceptable
 76–94% band. The single normal draft request includes an internal full-draft
-editing pass; no additional semantic-review call is introduced. Cover-letter
+editing pass and a four-or-five-paragraph typed structure with distinct story
+threads; no additional semantic-review call is introduced. Its factual brief
+explicitly preserves metrics, ownership, causality, and outcomes. Cover-letter
 drafting may use its own configured temperature while resume operations retain
 their established setting. Narrative quality remains ahead of small density
-differences.
+differences. The deterministic emergency writer remains evidence-bound, can
+deepen already selected narrative threads, and filters legacy extracted details
+before using them in prose lists. A content- or page-fit-failed result is a
+diagnostic candidate only and cannot expose approval or DOCX download actions.
 Exact final pagination remains mandatory. The provider returns a minimal
 paragraph/ID contract; provenance, diagnostics, research attribution, cache
 state, artifact identity, DOCX formatting, and page fitting are reconstructed
