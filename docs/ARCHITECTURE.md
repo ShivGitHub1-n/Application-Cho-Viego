@@ -333,7 +333,10 @@ application strategy supplies an entry-level semantic boundary, but Cover
 Letters select their own facts and narrative within it; generation still does
 not require a résumé artifact. The emergency writer uses sentence-scoped,
 minimally transformed reviewed facts and simple transitions rather than
-invented component-list bridges. A content- or page-fit-failed result is a
+invented component-list bridges. Its bounded candidate ladder adds story depth
+gradually, removes duplicate prose candidates, keeps the opening fact out of
+the body, and coordinates closely related same-entry facts without adding a
+new semantic claim. A content- or page-fit-failed result is a
 diagnostic candidate only and cannot expose approval or DOCX download actions.
 Exact final pagination remains mandatory. The provider returns a minimal
 paragraph/ID contract; provenance, diagnostics, research attribution, cache

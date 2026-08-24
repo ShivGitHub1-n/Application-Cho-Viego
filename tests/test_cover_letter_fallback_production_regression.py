@@ -277,6 +277,128 @@ def test_hardware_fallback_stays_inside_strategy_entries_and_uses_concrete_depth
     ]
 
 
+def test_fallback_uses_natural_source_bound_cadence_without_four_sentence_dump() -> None:
+    profile = _profile()
+    posting = _hardware_posting()
+    plan = _strategy_plan(profile, posting, ["controls", "integration", "actuator"])
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+
+    composer = DeterministicCoverLetterComposer()
+    variants = composer.variants(evidence, research, posting)
+    output = composer.source_bound_fallback(
+        evidence,
+        research,
+        posting,
+    )
+    body = output.paragraphs[1:-1]
+    lowered = " ".join(paragraph.text for paragraph in body).casefold()
+    variant_evidence_counts = [
+        len(
+            {
+                evidence_id
+                for paragraph in variant.paragraphs
+                for evidence_id in paragraph.candidate_evidence_ids
+            }
+        )
+        for variant in variants
+    ]
+
+    assert len(variants) == 4
+    assert variant_evidence_counts == sorted(set(variant_evidence_counts))
+    assert all(len(paragraph.source_bound_sentences) <= 3 for paragraph in body)
+    assert any(
+        len(paragraph.candidate_evidence_ids) == 3
+        and len(paragraph.source_bound_sentences) == 2
+        for paragraph in body
+    )
+    assert any(
+        len(paragraph.candidate_evidence_ids) == 4
+        and len(paragraph.source_bound_sentences) == 3
+        for paragraph in body
+    )
+    assert all(
+        phrase not in lowered
+        for phrase in (
+            "i also",
+            "the project also involved",
+            "another part of that work",
+            "that role also involved",
+        )
+    )
+
+
+def test_opening_does_not_immediately_reopen_the_same_entry() -> None:
+    profile = _profile()
+    posting = _hardware_posting()
+    plan = _strategy_plan(profile, posting, ["controls", "integration", "actuator"])
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    output = DeterministicCoverLetterComposer().source_bound_fallback(
+        evidence,
+        research,
+        posting,
+    )
+    entity_by_evidence = {item.id: item.entity_id for item in evidence}
+    opening_entities = {
+        entity_by_evidence[item] for item in output.paragraphs[0].candidate_evidence_ids
+    }
+    first_story_entities = {
+        entity_by_evidence[item] for item in output.paragraphs[1].candidate_evidence_ids
+    }
+    body_evidence_ids = {
+        item for paragraph in output.paragraphs[1:-1] for item in paragraph.candidate_evidence_ids
+    }
+
+    assert opening_entities.isdisjoint(first_story_entities)
+    assert set(output.paragraphs[0].candidate_evidence_ids).isdisjoint(body_evidence_ids)
+
+
+def test_old_resume_summary_cadence_is_a_typed_quality_failure() -> None:
+    profile = _profile()
+    posting = _hardware_posting()
+    plan = _strategy_plan(profile, posting, ["controls", "integration", "actuator"])
+    evidence, _ = CoverLetterEvidencePortfolio().select(profile, posting, plan)
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    output = DeterministicCoverLetterComposer().source_bound_fallback(
+        evidence,
+        research,
+        posting,
+    )
+    paragraphs = list(output.paragraphs)
+    body = paragraphs[1]
+    paragraphs[1] = body.model_copy(
+        update={
+            "text": (
+                "In my Controls Engineer work, I contributed embedded firmware. "
+                "I also implemented safety supervision. Another part of that work "
+                "was designing control schematics. That role also involved testing "
+                "actuator feedback."
+            ),
+            "source_bound_sentences": [],
+        }
+    )
+
+    validated = CoverLetterValidator().validate_output(
+        output.model_copy(update={"paragraphs": paragraphs}),
+        evidence,
+        research,
+        posting,
+    )
+
+    assert any(
+        gate.code in {"resume_summary_cadence", "overdense_resume_summary"}
+        and gate.status is CoverLetterQualityGateStatus.FAILED
+        for gate in validated.quality_gates
+    )
+
+
 def test_hardware_fallback_without_resume_generation_does_not_open_digital_for_variety() -> None:
     profile = _profile()
     posting = _hardware_posting()
@@ -292,7 +414,7 @@ def test_developed_fallback_reaches_page_fit_with_full_supplied_title() -> None:
     posting = _hardware_posting()
     plan = _strategy_plan(profile, posting, ["controls", "integration", "actuator"])
     service = CoverLetterService(
-        renderer=ControlledCoverLetterRenderer([0.62, 0.70, 0.86], exact=True)
+        renderer=ControlledCoverLetterRenderer([0.62, 0.70, 0.86, 0.90], exact=True)
     )
 
     artifact = service.generate_artifact(profile, posting, plan)
@@ -301,10 +423,19 @@ def test_developed_fallback_reaches_page_fit_with_full_supplied_title() -> None:
     assert artifact.letter.job_title == "Mechatronics Engineer Intern - Hardware"
     assert artifact.page_fit.exact_pagination
     assert artifact.page_fit.estimated_utilization == 0.86
+    assert max(
+        len(paragraph.candidate_evidence_ids)
+        for paragraph in artifact.letter.paragraphs[1:-1]
+    ) <= 3
     assert artifact.call_counts.provider_calls == 0
-    assert set(artifact.page_fit.evidence_added_during_page_fit) == {
-        item.id for item in artifact.evidence_records
-    } - set(artifact.page_fit.candidates[0].evidence_ids)
+    selected_ids = {
+        evidence_id
+        for paragraph in artifact.letter.paragraphs
+        for evidence_id in paragraph.candidate_evidence_ids
+    }
+    assert set(artifact.page_fit.evidence_added_during_page_fit) == selected_ids - set(
+        artifact.page_fit.candidates[0].evidence_ids
+    )
 
 
 @pytest.mark.parametrize(

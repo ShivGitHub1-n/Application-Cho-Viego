@@ -98,17 +98,24 @@ outcomes: supported or contributed work cannot be promoted to owned or led
 work. Cover-letter drafting uses a dedicated default temperature of 0.35; all
 resume operations retain the configured general temperature.
 
-The deterministic writer produces bounded concise, standard, and developed
-variants. Concise and standard variants use up to two substantive story
-paragraphs; the developed variant can use up to three distinct evidence
-threads when the profile supports them. No fixed story count can admit a weak
-or unrelated entry. The source-bound fallback preserves the ranked
+The deterministic writer produces a bounded depth ladder instead of jumping
+from sparse to maximally dense prose. The concise variant uses one fact in up
+to two story threads, the standard variant uses up to two facts in three
+threads, and developed variants use up to three and then four facts per thread
+only when that additional reviewed evidence exists. Exact duplicate variants
+are discarded before rendering. No fixed story count can admit a weak or
+unrelated entry. The source-bound fallback preserves the ranked
 narrative-thread order and may use up to four already-retrieved,
 nonduplicative facts from each admitted thread, with a twelve-fact global
 bound. Supporting facts from the same experience or project remain in that
-thread rather than becoming repetitive paragraphs. The fallback uses minimal
-grammatical transformations of concrete reviewed evidence and simple
-transitions. It does not synthesize lessons, constraints, component-list
+thread rather than becoming repetitive paragraphs. The opening's evidence is
+not repeated in its body thread, and that thread is not placed immediately
+after the opening. A story uses at most three source-authority sentences;
+closely related same-entry facts may share a grammatical sentence through a
+plain conjunction, but retain both evidence IDs and no inferred causality.
+Index-driven scaffolds such as `I also` and `another part of that work` are not
+used. The fallback uses minimal grammatical transformations of concrete
+reviewed evidence and does not synthesize lessons, constraints, component-list
 bridges, or relationships between facts. When leadership is not part of the
 posting, a thread with sufficient technical alternatives omits
 supervisory-framed evidence from fallback story selection; the underlying

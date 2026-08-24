@@ -204,9 +204,8 @@ def test_deterministic_variants_synthesize_threads_without_provider_or_research_
     assert [output.paragraphs[0].length_class for output in outputs] == [
         CoverLetterLengthClass.CONCISE,
         CoverLetterLengthClass.STANDARD,
-        CoverLetterLengthClass.DEVELOPED,
     ]
-    assert [len(output.paragraphs) for output in outputs] == [4, 4, 5]
+    assert [len(output.paragraphs) for output in outputs] == [4, 5]
     evidence_strategies = [
         tuple(
             dict.fromkeys(

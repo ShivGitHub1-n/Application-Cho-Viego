@@ -206,7 +206,7 @@ def test_invalid_synthetic_candidate_exposes_all_live_rejection_codes() -> None:
     research = BoundedCompanyResearchService().research(
         CoverLetterService.default_research_request(posting)
     )
-    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[1]
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
     invalid = _replace_paragraph_text(
         output,
         0,

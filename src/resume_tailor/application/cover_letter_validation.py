@@ -119,10 +119,10 @@ _UNRESOLVED_PLACEHOLDER_PATTERNS = (
     r"<(?:company|company name|role|job title)>",
 )
 _UNSUBJECTED_ACTION_PATTERN = re.compile(
-    r"^(?:assembled|authored|automated|built|collaborated|created|deployed|designed|"
-    r"developed|documented|engineered|evaluated|implemented|integrated|led|modeled|"
-    r"modelled|owned|prototyped|selected|specified|supported|tested|troubleshot|used|"
-    r"verified)\b",
+    r"^(?:assembled|authored|automated|built|collaborated|configured|contributed|created|"
+    r"deployed|designed|developed|diagnosed|documented|engineered|evaluated|implemented|"
+    r"integrated|led|modeled|modelled|owned|prototyped|selected|specified|supported|"
+    r"tested|troubleshot|used|validated|verified)\b",
     re.IGNORECASE,
 )
 _NATURALNESS_PATTERNS = (
@@ -860,7 +860,7 @@ class CoverLetterValidator:
         progression_codes = self._paragraph_progression_codes(paragraphs)
         specificity_codes = self._technical_specificity_codes(paragraphs, evidence)
         opening_codes = self._opening_quality_codes(paragraphs, evidence, posting)
-        closing_codes = self._closing_quality_codes(paragraphs)
+        closing_codes = self._closing_quality_codes(paragraphs, posting)
         seniority_codes = self._seniority_emphasis_codes(paragraphs, evidence, posting)
         mechanical_posting = self._has_mechanical_posting_reference(paragraphs)
         resume_paraphrase = self._is_resume_paraphrase(paragraphs, evidence) or (
@@ -1435,8 +1435,9 @@ class CoverLetterValidator:
             candidate_detail = (evidence_terms & paragraph_terms) - fact_terms - generic
             connection_language = bool(
                 re.search(
-                    r"\b(?:from the .+ side|part of that problem|boundary|constraint|"
-                    r"upstream|downstream|align|connect|relevant|suit|direction|translat|why|"
+                    r"\b(?:because|from the .+ side|part of that problem|boundary|constraint|"
+                    r"upstream|downstream|align|connect|relevant|suit|direction|"
+                    r"translat|why|"
                     r"physical)\b",
                     paragraph.text,
                     re.IGNORECASE,
@@ -1490,7 +1491,8 @@ class CoverLetterValidator:
             candidate_detail = (evidence_terms & paragraph_terms) - company_terms
             explains_connection = bool(
                 re.search(
-                    r"\b(?:connect(?:s|ed|ing)?|connection|constraints?|interfaces?|integration|relat|"
+                    r"\b(?:because|connect(?:s|ed|ing)?|connection|constraints?|interfaces?|"
+                    r"integration|relat|"
                     r"from the .+ side|part of that problem|boundary|physical|where|why|"
                     r"centers?|depends?|requires?|means?|makes?)\b",
                     paragraph.text,
@@ -1620,21 +1622,25 @@ class CoverLetterValidator:
     def _closing_quality_codes(
         cls,
         paragraphs: list[CoverLetterParagraph],
+        posting: JobPosting,
     ) -> list[str]:
         if not paragraphs or paragraphs[-1].purpose is not CoverLetterParagraphPurpose.CLOSING:
             return ["closing_missing"]
         closing = paragraphs[-1]
         word_count = len(closing.text.split())
         codes: list[str] = []
-        if word_count < 14:
+        if word_count < 10:
             codes.append("closing_too_abrupt")
         if word_count > 85:
             codes.append("closing_restates_letter")
         if any(phrase in closing.text.casefold() for phrase in _CLOSING_REJECTIONS):
             codes.append("formulaic_closing")
         if paragraphs:
-            opening_terms = cls._content_terms(paragraphs[0].text)
-            closing_terms = cls._content_terms(closing.text)
+            canonical_terms = cls._content_terms(
+                f"{posting.company_name or ''} {posting.title}"
+            )
+            opening_terms = cls._content_terms(paragraphs[0].text) - canonical_terms
+            closing_terms = cls._content_terms(closing.text) - canonical_terms
             overlap = len(opening_terms & closing_terms) / max(1, len(closing_terms))
             if overlap >= 0.55:
                 codes.append("closing_repeats_opening")
@@ -1861,6 +1867,37 @@ class CoverLetterValidator:
             if paragraph.purpose
             not in {CoverLetterParagraphPurpose.OPENING, CoverLetterParagraphPurpose.CLOSING}
         ]
+        enumeration_frames = re.findall(
+            r"\b(?:i also|the project also involved|that project also required|"
+            r"another part of that work|that role also involved)\b",
+            lowered,
+        )
+        if len(enumeration_frames) >= 2:
+            codes.append("resume_summary_cadence")
+        entity_id_by_evidence = {item.id: item.entity_id for item in evidence}
+        entity_ids_by_paragraph = [
+            {
+                entity_id_by_evidence[evidence_id]
+                for evidence_id in paragraph.candidate_evidence_ids
+                if entity_id_by_evidence.get(evidence_id)
+            }
+            for paragraph in body
+        ]
+        if any(
+            left & right
+            for left, right in zip(
+                entity_ids_by_paragraph,
+                entity_ids_by_paragraph[1:],
+                strict=False,
+            )
+        ):
+            codes.append("adjacent_story_reopening")
+        if any(
+            len(paragraph.candidate_evidence_ids) >= 4
+            and len(cls._sentences(paragraph.text)) >= 4
+            for paragraph in body
+        ):
+            codes.append("overdense_resume_summary")
         if any(
             sum(
                 bool(
@@ -2121,10 +2158,11 @@ class DeterministicCoverLetterComposer:
         concise_evidence = [record for thread in threads[:2] for record in thread[:1]]
         standard_threads = [*threads[1:3], *threads[:1]]
         standard_evidence = [
-            record for thread in standard_threads[:3] for record in thread[:1]
+            record for thread in standard_threads[:3] for record in thread[:2]
         ]
-        developed_evidence = [record for thread in threads[:3] for record in thread[:4]]
-        return [
+        developed_evidence = [record for thread in threads[:3] for record in thread[:3]]
+        full_evidence = [record for thread in threads[:3] for record in thread[:4]]
+        outputs = [
             self._compose(
                 concise_evidence,
                 research,
@@ -2144,6 +2182,26 @@ class DeterministicCoverLetterComposer:
                 CoverLetterLengthClass.DEVELOPED,
             ),
         ]
+        if [record.id for record in full_evidence] != [
+            record.id for record in developed_evidence
+        ]:
+            outputs.append(
+                self._compose(
+                    full_evidence,
+                    research,
+                    posting,
+                    CoverLetterLengthClass.DEVELOPED,
+                )
+            )
+        unique_outputs: list[CoverLetterDraftOutput] = []
+        seen_text: set[tuple[str, ...]] = set()
+        for output in outputs:
+            signature = tuple(paragraph.text for paragraph in output.paragraphs)
+            if signature in seen_text:
+                continue
+            seen_text.add(signature)
+            unique_outputs.append(output)
+        return unique_outputs
 
     def source_bound_fallback(
         self,
@@ -2257,13 +2315,30 @@ class DeterministicCoverLetterComposer:
             self._authority_concepts(research, posting),
             posting,
         )
-        per_thread = 4 if length_class is CoverLetterLengthClass.DEVELOPED else 1
-        story_threads = threads[: (3 if length_class is CoverLetterLengthClass.DEVELOPED else 2)]
+        if length_class is CoverLetterLengthClass.CONCISE:
+            per_thread = 1
+            story_thread_count = 2
+        elif length_class is CoverLetterLengthClass.STANDARD:
+            per_thread = 2
+            story_thread_count = 3
+        else:
+            per_thread = max(len(thread) for thread in threads)
+            story_thread_count = 3
+        story_threads = threads[:story_thread_count]
+        if len(story_threads) > 1:
+            # The opening already introduces one entry. Develop other stories
+            # first so the next paragraph does not immediately reopen it.
+            opening_threads = [
+                thread for thread in story_threads if thread[0].id == opening_record.id
+            ]
+            other_threads = [
+                thread for thread in story_threads if thread[0].id != opening_record.id
+            ]
+            story_threads = [*other_threads, *opening_threads]
         story_records = []
         for thread in story_threads:
             if (
                 thread[0].id == opening_record.id
-                and length_class is CoverLetterLengthClass.DEVELOPED
                 and len(thread) > 1
             ):
                 # The opening already uses the representative fact. Develop the
@@ -2359,13 +2434,26 @@ class DeterministicCoverLetterComposer:
     ) -> CoverLetterDraftParagraph:
         """Build a fallback story only from minimally transformed source facts."""
 
-        sentences = [
-            CoverLetterSentenceAuthority(
-                text=cls._full_evidence_sentence(record, index=index),
-                candidate_evidence_ids=[record.id],
+        sentence_groups = [[record] for record in records]
+        if len(records) >= 3:
+            sentence_groups = [[records[0]], [records[1], records[2]]]
+            if len(records) == 4:
+                sentence_groups.append([records[3]])
+        sentences: list[CoverLetterSentenceAuthority] = []
+        for index, group in enumerate(sentence_groups):
+            if len(group) == 1:
+                text = cls._full_evidence_sentence(group[0], index=index)
+            else:
+                left = cls._full_evidence_sentence(group[0], index=1).rstrip(".")
+                right = cls._full_evidence_sentence(group[1], index=1).rstrip(".")
+                right = re.sub(r"^I\s+", "", right, flags=re.IGNORECASE)
+                text = f"{left} and {right}."
+            sentences.append(
+                CoverLetterSentenceAuthority(
+                    text=text,
+                    candidate_evidence_ids=[record.id for record in group],
+                )
             )
-            for index, record in enumerate(records)
-        ]
         return CoverLetterDraftParagraph(
             purpose=purpose,
             text=" ".join(sentence.text for sentence in sentences),
@@ -2385,11 +2473,10 @@ class DeterministicCoverLetterComposer:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
         del posting_concepts
-        return " ".join(
-            [
-                self._full_evidence_sentence(evidence[0], index=0),
-                f"That is why the {posting.title} role{destination} interests me.",
-            ]
+        source_fact = self._full_evidence_sentence(evidence[0], index=0).rstrip(".")
+        source_fact = source_fact[:1].lower() + source_fact[1:]
+        return (
+            f"The {posting.title} role{destination} interests me because {source_fact}."
         )
 
     def _narrative_body(
@@ -2419,10 +2506,11 @@ class DeterministicCoverLetterComposer:
         writer_text = re.sub(r"^(?:I|we)\s+", "", writer_text, flags=re.IGNORECASE)
         if not re.match(
             r"^(?:assembled|authored|automated|built|collaborated|configured|contributed|"
-            r"created|debugged|deployed|designed|developed|documented|engineered|evaluated|"
+            r"created|debugged|deployed|designed|developed|diagnosed|documented|engineered|"
+            r"evaluated|"
             r"fabricated|implemented|integrated|measured|modeled|modelled|programmed|"
-            r"prototyped|ran|selected|specified|supported|tested|troubleshot|used|verified|"
-            r"wired|worked)\b",
+            r"prototyped|ran|selected|specified|supported|tested|troubleshot|used|validated|"
+            r"verified|wired|worked)\b",
             writer_text,
             re.IGNORECASE,
         ):
@@ -2436,21 +2524,13 @@ class DeterministicCoverLetterComposer:
         if record.kind is CoverLetterEvidenceKind.PROJECT:
             label = title if title.casefold().endswith("project") else f"{title} project"
             if index == 0:
-                return f"On the {label}, I {action}."
-            if index == 1:
-                return f"I also {action}."
-            if index == 2:
-                return f"The project also involved {cls._gerund_sequence(writer_text)}."
-            return f"That project also required {cls._gerund_sequence(writer_text)}."
+                return f"For the {label}, I {action}."
+            return f"I {action}."
         if index == 0:
             if record.entry_title:
-                return f"As a {title}, I {action}."
+                return f"In my {title} work, I {action}."
             return f"In that engineering work, I {action}."
-        if index == 1:
-            return f"I also {action}."
-        if index == 2:
-            return f"Another part of that work was {cls._gerund_sequence(writer_text)}."
-        return f"That role also involved {cls._gerund_sequence(writer_text)}."
+        return f"I {action}."
 
     @staticmethod
     def _narrowly_adjacent_to_role(
@@ -2476,12 +2556,10 @@ class DeterministicCoverLetterComposer:
     ) -> str:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
-        return " ".join(
-            [
-                f"I would be glad to bring the same care for implementation and test to "
-                f"the {posting.title} role{destination}, while learning the next system on "
-                "its own terms."
-            ]
+        del evidence
+        return (
+            f"I would be glad to bring this experience to the {posting.title} "
+            f"role{destination}."
         )
 
     @classmethod
@@ -2532,7 +2610,7 @@ class DeterministicCoverLetterComposer:
             return f"On the {project_label}, I {action}."
         if index == 0:
             return f"In my {title} work, I {action}."
-        return f"I also {action}."
+        return f"I {action}."
 
     @staticmethod
     def _finite_action(text: str) -> str | None:
@@ -2540,9 +2618,11 @@ class DeterministicCoverLetterComposer:
         cleaned = re.sub(r"^(?:I|we)\s+", "", cleaned, flags=re.IGNORECASE)
         verbs = (
             "assembled|authored|automated|built|collaborated|configured|contributed|created|"
-            "debugged|deployed|designed|developed|documented|engineered|evaluated|fabricated|"
+            "debugged|deployed|designed|developed|diagnosed|documented|engineered|evaluated|"
+            "fabricated|"
             "implemented|integrated|led|measured|modeled|modelled|owned|programmed|prototyped|"
-            "ran|selected|specified|supported|tested|troubleshot|used|verified|wired|worked"
+            "ran|selected|specified|supported|tested|troubleshot|used|validated|verified|"
+            "wired|worked"
         )
         if not re.match(rf"^(?:{verbs})\b", cleaned, re.IGNORECASE):
             return None
@@ -2743,10 +2823,11 @@ class DeterministicCoverLetterComposer:
 
         action_prefix = re.compile(
             r"^(?:assembled|authored|automated|built|collaborated|configured|contributed|"
-            r"created|debugged|deployed|designed|developed|documented|engineered|evaluated|"
+            r"created|debugged|deployed|designed|developed|diagnosed|documented|engineered|"
+            r"evaluated|"
             r"fabricated|implemented|integrated|measured|modeled|modelled|programmed|"
-            r"prototyped|ran|selected|specified|supported|tested|troubleshot|used|verified|"
-            r"wired)\s+(?:the\s+|an?\s+)?",
+            r"prototyped|ran|selected|specified|supported|tested|troubleshot|used|validated|"
+            r"verified|wired)\s+(?:the\s+|an?\s+)?",
             re.IGNORECASE,
         )
         unsafe_start = re.compile(
@@ -3042,6 +3123,7 @@ class DeterministicCoverLetterComposer:
             "designed": "designing",
             "develop": "developing",
             "developed": "developing",
+            "diagnosed": "diagnosing",
             "documented": "documenting",
             "engineered": "engineering",
             "evaluated": "evaluating",
@@ -3073,6 +3155,7 @@ class DeterministicCoverLetterComposer:
             "troubleshoot": "troubleshooting",
             "troubleshot": "troubleshooting",
             "used": "using",
+            "validated": "validating",
             "verified": "verifying",
             "wired": "wiring",
             "work": "working",
@@ -3112,10 +3195,11 @@ class DeterministicCoverLetterComposer:
         parts: list[str] = []
         coordinated_action = re.compile(
             r"\band\s+(?=(?:assembled|authored|automated|built|collaborated|configured|"
-            r"contributed|created|debugged|deployed|designed|developed|documented|engineered|"
+            r"contributed|created|debugged|deployed|designed|developed|diagnosed|documented|"
+            r"engineered|"
             r"evaluated|fabricated|implemented|integrated|led|measured|modeled|modelled|"
             r"programmed|prototyped|ran|selected|specified|supported|tested|troubleshot|used|"
-            r"verified|wired)\b)",
+            r"validated|verified|wired)\b)",
             re.IGNORECASE,
         )
         for part in initial_parts:
@@ -3314,8 +3398,9 @@ class DeterministicCoverLetterComposer:
         cleaned = re.sub(r"^(?:and|also)\s+", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(
             r"^(?:assembled|authored|automated|built|created|deployed|designed|developed|"
-            r"documented|engineered|evaluated|implemented|integrated|led|modeled|modelled|"
-            r"prototyped|selected|specified|supported|tested|troubleshot|verified)\s+",
+            r"diagnosed|documented|engineered|evaluated|implemented|integrated|led|modeled|"
+            r"modelled|prototyped|selected|specified|supported|tested|troubleshot|validated|"
+            r"verified)\s+",
             "",
             cleaned,
             flags=re.IGNORECASE,

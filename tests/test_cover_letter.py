@@ -109,7 +109,7 @@ def test_all_candidate_rejection_reports_validator_separation_and_stays_fatal() 
         service.generate_artifact(profile, posting, plan, recipient=recipient(posting))
 
     diagnostics = captured.value.diagnostics
-    assert len(diagnostics) == 4
+    assert len(diagnostics) >= 2
     assert all(
         diagnostic.claim_validation is CoverLetterQualityGateStatus.FAILED
         for diagnostic in diagnostics

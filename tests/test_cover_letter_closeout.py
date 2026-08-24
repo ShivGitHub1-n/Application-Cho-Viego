@@ -148,8 +148,15 @@ def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_stri
         CoverLetterService.default_research_request(posting)
     )
     safe = DeterministicCoverLetterComposer().variants(evidence, research, posting)[-1]
+    sensitive_paragraph_index = next(
+        index
+        for index, paragraph in enumerate(safe.paragraphs)
+        if conflicting.id in paragraph.candidate_evidence_ids
+    )
     unsafe_paragraphs = list(safe.paragraphs)
-    unsafe_paragraphs[1] = unsafe_paragraphs[1].model_copy(
+    unsafe_paragraphs[sensitive_paragraph_index] = unsafe_paragraphs[
+        sensitive_paragraph_index
+    ].model_copy(
         update={
             "text": "As Lead Firmware Engineer, I built STM32 firmware and tested SPI.",
             "source_bound_sentences": [],
@@ -164,7 +171,9 @@ def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_stri
     assert "unsupported_title_change" in integrity.detail
 
     supervisory_paragraphs = list(safe.paragraphs)
-    supervisory_paragraphs[1] = supervisory_paragraphs[1].model_copy(
+    supervisory_paragraphs[sensitive_paragraph_index] = supervisory_paragraphs[
+        sensitive_paragraph_index
+    ].model_copy(
         update={
             "text": (
                 "I led the hardware safety workstream reviewing subordinate designs, "
