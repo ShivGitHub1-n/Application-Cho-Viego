@@ -100,6 +100,16 @@ def test_gemini_error_mapping_is_provider_specific() -> None:
     assert error.diagnostic.exception_type == "RuntimeError"
 
 
+def test_cover_letter_uses_dedicated_creative_temperature_only_for_that_operation() -> None:
+    adapter = object.__new__(GeminiResumeLanguageModel)
+    adapter._temperature = 0.1
+    adapter._cover_letter_temperature = 0.35
+
+    assert adapter._temperature_for_operation(LlmOperation.COVER_LETTER_DRAFT) == 0.35
+    assert adapter._temperature_for_operation(LlmOperation.REWRITE_BULLETS) == 0.1
+    assert adapter._temperature_for_operation(LlmOperation.APPLICATION_STRATEGY) == 0.1
+
+
 def test_provider_schemas_use_only_audited_gemini_keywords() -> None:
     for model_type in (
         OpportunityAnalysisOutput,

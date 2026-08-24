@@ -121,10 +121,8 @@ def test_invalid_paragraph_does_not_destroy_valid_siblings() -> None:
 
     assert result.rejected_claims
     assert {paragraph.purpose for paragraph in result.paragraphs} == {
-        CoverLetterParagraphPurpose.OPENING,
-        CoverLetterParagraphPurpose.ROLE_FIT,
-        CoverLetterParagraphPurpose.CLOSING,
-    }
+        paragraph.purpose for paragraph in output.paragraphs[2:]
+    } | {CoverLetterParagraphPurpose.OPENING}
 
 
 def test_deterministic_letter_passes_interchangeability_and_generic_language_gates() -> None:
@@ -346,6 +344,72 @@ def test_formulaic_opening_and_closing_are_rejected() -> None:
     assert any("formulaic_closing" in claim.codes for claim in closing_result.rejected_claims)
 
 
+@pytest.mark.parametrize(
+    ("text", "expected_code"),
+    [
+        (
+            "I worked across embedded hardware tasks, mechanical, and electrical.",
+            "malformed_parallel_list",
+        ),
+        (
+            "SolidWorks mounts and enclosures comes from my integration work.",
+            "compound_subject_verb_disagreement",
+        ),
+        (
+            "What interested me was the work behind the intern position.",
+            "awkward_posting_frame",
+        ),
+    ],
+)
+def test_live_shaped_awkward_grammar_is_rejected(
+    text: str,
+    expected_code: str,
+) -> None:
+    posting, evidence, research, output = _grounded_case()
+    changed = _replace_paragraph_text(output, 1, text)
+
+    result = CoverLetterValidator().validate_output(changed, evidence, research, posting)
+
+    assert expected_code in {
+        code for claim in result.rejected_claims for code in claim.codes
+    }
+
+
+def test_repeated_abstract_thesis_is_detected_across_paragraphs() -> None:
+    posting, evidence, research, output = _grounded_case()
+    validated = CoverLetterValidator().validate_output(output, evidence, research, posting)
+    repeated = [
+        paragraph.model_copy(
+            update={
+                "text": (
+                    f"{paragraph.text} Implementation decisions stayed tied to observable "
+                    "test behavior in the system."
+                )
+            }
+        )
+        for paragraph in validated.paragraphs
+    ]
+
+    assert "repeated_narrative_thesis" in (
+        CoverLetterValidator._paragraph_progression_codes(repeated)
+    )
+
+
+def test_repeated_vague_hardware_referents_fail_specificity_review() -> None:
+    posting, evidence, research, output = _grounded_case()
+    validated = CoverLetterValidator().validate_output(output, evidence, research, posting)
+    vague = list(validated.paragraphs)
+    for index in range(1, len(vague) - 1):
+        vague[index] = vague[index].model_copy(
+            update={"text": "The hardware made the system useful. That work mattered."}
+        )
+
+    codes = CoverLetterValidator._technical_specificity_codes(vague, evidence)
+
+    assert "vague_technical_story" in codes
+    assert "repeated_vague_technical_abstraction" in codes
+
+
 def test_company_and_candidate_provenance_are_preserved_per_paragraph() -> None:
     posting, evidence, research, output = _grounded_case()
 
@@ -438,7 +502,7 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
         )
     )
     assert 300 <= len(text.split()) <= 425
-    assert len(result.paragraphs) == 4
+    assert len(result.paragraphs) == 5
     assert max(len(paragraph.text.split()) for paragraph in result.paragraphs) <= 135
     assert diagnostic.narrative_thread_count == 3
     distinct_threads = []
@@ -452,7 +516,7 @@ def test_rich_deterministic_letter_is_natural_distinct_and_grounded() -> None:
     assert len({item for paragraph in body for item in paragraph.candidate_evidence_ids}) == sum(
         len(paragraph.candidate_evidence_ids) for paragraph in body
     )
-    assert len([paragraph for paragraph in body if paragraph.candidate_evidence_ids]) == 2
+    assert len([paragraph for paragraph in body if paragraph.candidate_evidence_ids]) == 3
     assert "STM32" in text
     assert "sensor" in lowered
     assert "actuator" in lowered

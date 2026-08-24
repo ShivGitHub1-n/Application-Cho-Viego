@@ -112,6 +112,7 @@ class GeminiResumeLanguageModel:
         )
         self._model = settings.gemini_model
         self._temperature = settings.llm_temperature
+        self._cover_letter_temperature = settings.llm_cover_letter_temperature
         self._max_output_tokens = settings.llm_max_output_tokens
         self._application_strategy_max_output_tokens = (
             settings.llm_application_strategy_max_output_tokens
@@ -134,6 +135,11 @@ class GeminiResumeLanguageModel:
         if operation is LlmOperation.APPLICATION_STRATEGY:
             return self._application_strategy_max_output_tokens
         return self._max_output_tokens
+
+    def _temperature_for_operation(self, operation: LlmOperation) -> float:
+        if operation is LlmOperation.COVER_LETTER_DRAFT:
+            return self._cover_letter_temperature
+        return self._temperature
 
     def analyze_opportunity(self, request: OpportunityAnalysisRequest) -> OpportunityAnalysisResult:
         return self._generate(
@@ -261,7 +267,7 @@ class GeminiResumeLanguageModel:
                 )
             provider_config = self._types.GenerateContentConfig(
                 system_instruction=system_prompt(),
-                temperature=self._temperature,
+                temperature=self._temperature_for_operation(operation),
                 max_output_tokens=self._output_token_budget(operation),
                 response_mime_type="application/json",
                 response_json_schema=schema_transform.schema,

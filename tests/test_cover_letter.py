@@ -168,7 +168,7 @@ def test_source_bound_fallback_is_used_only_after_richer_candidates_fail() -> No
     assert source_bound.source_bound_sentence_count == source_bound.sentence_count
     assert source_bound.unbound_sentence_count == 0
     assert source_bound.rendering_attempted
-    assert len(artifact.letter.paragraphs) == 4
+    assert len(artifact.letter.paragraphs) == 5
     assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
     assert all(
         sentence.posting_fact_ids
@@ -191,6 +191,10 @@ def test_cover_letter_prompt_requires_coherent_grounded_narrative() -> None:
     assert "authorized candidate evidence IDs" in prompt
     assert "company research IDs" in prompt
     assert "Do not return diagnostics" in prompt
+    assert "first sentence worth reading" in prompt.casefold()
+    assert "each paragraph reveal something new" in prompt.casefold()
+    assert "grammatically awkward" in prompt.casefold()
+    assert "corporate ai rhythm" in prompt.casefold()
 
 
 def test_paragraph_purpose_normalizes_legacy_names_but_rejects_unknown() -> None:

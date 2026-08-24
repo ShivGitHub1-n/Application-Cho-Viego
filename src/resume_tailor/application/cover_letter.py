@@ -1020,14 +1020,22 @@ class CoverLetterService:
                 {
                     "generic_language",
                     "narrative_integrity",
+                    "opening_quality",
                     "paragraph_structure",
                     "posting_reference",
                     "closing_structure",
+                    "seniority_emphasis",
                 }
             ),
             company_validation=aggregate({"company_grounding", "interchangeability"}),
             narrative_validation=aggregate(
-                {"narrative_structure", "resume_complement", "resume_consistency"}
+                {
+                    "narrative_structure",
+                    "paragraph_progression",
+                    "technical_specificity",
+                    "resume_complement",
+                    "resume_consistency",
+                }
             ),
             claim_validation=aggregate({"candidate_grounding"}),
             rejection_codes=list(
@@ -1132,10 +1140,14 @@ class CoverLetterService:
             "generic_language",
             "narrative_integrity",
             "narrative_structure",
+            "opening_quality",
+            "paragraph_progression",
+            "technical_specificity",
             "resume_complement",
             "paragraph_structure",
             "posting_reference",
             "closing_structure",
+            "seniority_emphasis",
             "resume_consistency",
         }
         return not any(

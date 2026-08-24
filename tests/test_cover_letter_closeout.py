@@ -130,9 +130,9 @@ def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_stri
 
     assert selected.source_text.startswith("As Lead Firmware Engineer")
     assert "Lead Firmware Engineer" not in (selected.writer_text or "")
-    assert "led the hardware safety workstream reviewing subordinate designs" in (
-        selected.writer_text or ""
-    )
+    assert "reviewing subordinate designs" not in (selected.writer_text or "")
+    assert "built STM32 firmware" in (selected.writer_text or "")
+    assert "tested SPI sensor communication" in (selected.writer_text or "")
     assert selected.excluded_title_claims == ["Lead Firmware Engineer"]
 
     service = CoverLetterService(renderer=ControlledCoverLetterRenderer(exact=True))
@@ -161,6 +161,31 @@ def test_conflicting_source_title_is_hidden_from_writer_but_validator_stays_stri
     )
     assert integrity.status is CoverLetterQualityGateStatus.FAILED
     assert "unsupported_title_change" in integrity.detail
+
+    supervisory_paragraphs = list(safe.paragraphs)
+    supervisory_paragraphs[1] = supervisory_paragraphs[1].model_copy(
+        update={
+            "text": (
+                "I led the hardware safety workstream reviewing subordinate designs, "
+                "built STM32 firmware, and tested SPI sensor communication at 30 FPS."
+            ),
+            "source_bound_sentences": [],
+        }
+    )
+    supervisory = safe.model_copy(update={"paragraphs": supervisory_paragraphs})
+    supervisory_validation = CoverLetterValidator().validate_output(
+        supervisory,
+        evidence,
+        research,
+        posting,
+    )
+    seniority = next(
+        gate
+        for gate in supervisory_validation.quality_gates
+        if gate.gate == "seniority_emphasis"
+    )
+    assert seniority.status is CoverLetterQualityGateStatus.FAILED
+    assert seniority.code == "unnecessary_seniority_foregrounding"
 
 
 def test_valid_provider_story_beats_density_only_deterministic_alternative() -> None:
@@ -313,6 +338,20 @@ def test_software_reverse_control_builds_a_software_narrative_plan() -> None:
     assert {"retrieval-evaluation", "deployment-observability"} <= selected_ids
     assert "hardware-test" not in selected_ids
     assert request.narrative_plan.stories[0].entry_id == "software-entry"
+
+
+def test_narrative_plan_assigns_distinct_story_functions_and_concrete_details() -> None:
+    profile, posting, plan = rich_cover_letter_case()
+
+    request = CoverLetterService().create_request(profile, posting, plan)
+
+    functions = [story.narrative_function for story in request.narrative_plan.stories]
+    assert len(functions) >= 2
+    assert len(set(functions)) == len(functions)
+    assert all(story.concrete_details for story in request.narrative_plan.stories)
+    assert "do not repeat" in request.narrative_plan.thesis.casefold()
+    assert "observation" in request.narrative_plan.opening_direction.casefold()
+    assert "do not restate" in request.narrative_plan.closing_direction.casefold()
 
 
 def test_switching_application_context_invalidates_stale_cover_letter_artifact() -> None:

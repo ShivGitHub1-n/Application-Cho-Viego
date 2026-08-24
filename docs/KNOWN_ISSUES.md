@@ -8,6 +8,17 @@ current limitations and deferred product work.
 
 - Gemini does not yet consistently produce stronger bullets than strong
   reviewed source bullets. Cross-role resume-writer calibration is deferred.
+- The accepted hardware/mechatronics portfolio backbone can still omit an
+  individually strong firmware evidence atom when another same-entry story
+  wins. The portfolio is demo-acceptable; this is deferred to the later
+  editor/calibration pass rather than reopening selection architecture.
+- Live technical-skill composition can still retain generic tools while
+  omitting supported role-specific skills such as SolidWorks. Resume skill
+  composition remains deferred.
+- A resume bullet sourced from title-conflicted evidence can still preserve
+  unnecessary supervisory framing even when its technical remainder is
+  preferable. Cover-letter writer inputs now suppress that framing for the
+  conflicted record; the resume case remains deferred.
 - Exact Microsoft Word pagination is unavailable in the current environment.
   Deterministic page utilization is an estimate; manual Word review remains
   authoritative.
@@ -16,12 +27,13 @@ current limitations and deferred product work.
 
 ## Cover-letter completion
 
-The integrated workflow is not yet production-ready. It must consistently produce
-a professionally filled one-page document, targeting 92–95% utilization and
-close to 95% when substantive content supports it. It must preserve evidence
-grounding, use one coherent salutation and closing, keep review annotations out
-of export, ground education in canonical education data, deduplicate contact
-links, and never add unsupported or repetitive filler.
+The integrated workflow now gives the provider a concrete story plan and a
+single-request full-draft editing brief, and rejects the observed malformed,
+vague, repetitive, posting-paraphrase, and unnecessary seniority patterns. It
+still requires one real Streamlit letter and Word inspection before production
+acceptance. The preferred utilization band is 82–90%; 76–94% is acceptable
+when exact pagination succeeds, and writing quality outranks small density
+differences.
 
 Manual Word inspection remains authoritative until exact pagination is available.
 

@@ -452,7 +452,7 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     employer_text_lower = employer_text.casefold()
     assert posting.company_name in employer_text
     assert "the employer" not in employer_text_lower
-    assert len(artifact.letter.paragraphs) == 4
+    assert len(artifact.letter.paragraphs) in {4, 5}
     assert 230 <= len(employer_text.split()) <= 425
     assert all(paragraph.sentence_authorities for paragraph in artifact.letter.paragraphs)
     assert max(len(paragraph.text.split()) for paragraph in artifact.letter.paragraphs) <= 135

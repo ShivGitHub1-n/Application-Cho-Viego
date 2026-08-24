@@ -164,6 +164,12 @@ class CoverLetterNarrativeStory(BaseModel):
     evidence_ids: list[str] = Field(min_length=1, max_length=3)
     focus: str = Field(min_length=1, max_length=240)
     role_connection: str = Field(min_length=1, max_length=360)
+    concrete_details: list[str] = Field(default_factory=list, max_length=6)
+    narrative_function: str = Field(
+        default="Develop one distinct, evidence-grounded dimension of the candidate.",
+        min_length=1,
+        max_length=300,
+    )
 
 
 class CoverLetterNarrativePlan(BaseModel):
@@ -176,6 +182,22 @@ class CoverLetterNarrativePlan(BaseModel):
     authoritative_entry_titles: dict[str, str] = Field(default_factory=dict)
     prohibited_title_claims: list[str] = Field(default_factory=list)
     tone: str = Field(min_length=1, max_length=240)
+    opening_direction: str = Field(
+        default=(
+            "Open with a concrete observation supported by the role and evidence; do not "
+            "announce the application or paraphrase the posting."
+        ),
+        min_length=1,
+        max_length=360,
+    )
+    closing_direction: str = Field(
+        default=(
+            "End with a short forward-looking thought that follows from the story; do not "
+            "summarize the preceding paragraphs."
+        ),
+        min_length=1,
+        max_length=360,
+    )
 
 
 class CoverLetterClaimDiagnostic(BaseModel):

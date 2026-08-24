@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     gemini_model: str | None = None
     llm_api_key_env_var: str = "GEMINI_API_KEY"
     llm_temperature: float = 0.1
+    llm_cover_letter_temperature: float = Field(default=0.35, ge=0, le=1)
     llm_max_output_tokens: int = 2048
     llm_application_strategy_max_output_tokens: int = Field(default=4096, gt=0)
     llm_bullet_rewrite_max_output_tokens: int = 8192

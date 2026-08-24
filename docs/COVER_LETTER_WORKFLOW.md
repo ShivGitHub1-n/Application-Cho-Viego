@@ -72,22 +72,32 @@ authority.
 
 Before prose generation, a typed narrative plan orders the role themes and
 evidence stories, states one through-line, records why each story matters,
-binds authoritative entry titles, and lists conflicting source-title phrases
-that the writer must not repeat. Writer-facing evidence removes only those
-conflicting self-title phrases; the original reviewed source remains available
-to deterministic validation.
+assigns each story a distinct narrative function, and supplies a compact set of
+concrete reviewed details. Separate opening and closing directions keep the
+through-line from becoming a sentence repeated in every paragraph. The plan
+also binds authoritative entry titles and lists conflicting source-title
+phrases that the writer must not repeat. When a source contains such a title
+conflict, its writer-facing form also removes attached supervisory framing such
+as subordinate-review language; the original reviewed source remains available
+to deterministic validation and is never mutated.
 
 One provider request returns only paragraph purpose/text, candidate evidence
 IDs, company research IDs, an optional narrative-thread ID, and a length class.
+That request asks the writer to choose an evidence-grounded technical point of
+view, develop two or three stories with different functions, and privately edit
+the complete draft once for grammar, repetition, specificity, posting-copy,
+corporate rhythm, and closing quality before returning the typed result. This
+self-review is part of the same bounded request, not an agent loop or a second
+semantic call. Cover-letter drafting uses a dedicated default temperature of
+0.35; all resume operations retain the configured general temperature.
+
 The deterministic writer produces bounded concise, standard, and developed
-variants. Each variant uses a direct company-and-role opening, two synthesized
-engineering paragraphs, and a fit-and-closing paragraph. The concise candidate
-leads with the strongest representatives, the standard candidate rotates the
-supported thread emphasis, and the developed candidate adds deeper support
-within up to three threads. The source-bound fallback reverses thread priority
-so it is a genuinely different supported strategy. Supporting facts from the
-same experience or project remain in that thread rather than becoming
-repetitive paragraphs. The writer uses the canonical extracted company unless
+variants. Concise and standard variants use two substantive story paragraphs;
+the developed variant can use three distinct evidence threads when the profile
+supports them. The source-bound fallback reverses thread priority so it is a
+genuinely different supported strategy. Supporting facts from the same
+experience or project remain in that thread rather than becoming repetitive
+paragraphs. The writer uses the canonical extracted company unless
 the user
 supplies a nonblank override, turns imperative posting fragments into noun
 phrases or complete clauses, and keeps validator terminology out of
@@ -131,13 +141,20 @@ the canonical profile title is never silently corrected. Employer-facing prose
 that exposes internal evidence or validation terminology is rejected.
 
 The final quality gates report candidate grounding, company grounding,
-interchangeability, generic language, narrative structure, resume complement,
-paragraph structure, posting-reference quality, closing structure, resume
-consistency, review-required claims, research status, and page fit. Structural
-failures use typed reasons including `resume_paraphrase`,
+interchangeability, generic language, narrative structure, opening quality,
+paragraph progression, technical specificity, resume complement, paragraph
+structure, posting-reference quality, closing structure, seniority emphasis,
+resume consistency, review-required claims, research status, and page fit.
+Local naturalness checks reject known malformed parallel lists, basic compound
+subject/verb disagreement, and malformed posting frames. Whole-letter checks
+also reject a repeated abstract thesis, repeated technical examples, vague
+technical stories, repeated vague referents, formulaic openings, and closings
+that merely restate the letter. Structural failures use typed reasons including
+`resume_paraphrase`,
 `repetitive_paragraph_structure`, `mechanical_posting_reference`,
 `interchangeable_company_connection`, `enumerative_closing`, and
-`insufficient_narrative_development`. A failed gate is visible; generic,
+`insufficient_narrative_development`, `repeated_narrative_thesis`,
+`vague_technical_story`, and `unnecessary_seniority_foregrounding`. A failed gate is visible; generic,
 unsupported, repetitive, underdeveloped, or interchangeable letters are not
 silently accepted.
 

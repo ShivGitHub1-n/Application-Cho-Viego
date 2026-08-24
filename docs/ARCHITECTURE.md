@@ -317,9 +317,13 @@ resume engine. The application reuses reviewed-profile retrieval, provider
 configuration, local grounding primitives, timing models, and approval
 patterns, but selects narrative evidence independently of the generated
 résumé. Cover-letter-only services own bounded company research, a typed
-narrative plan, title-safe writer inputs, paragraph and whole-letter validation,
-quality-aware finalist ordering, a preferred 82–90% page-utilization band, and
-an acceptable 76–94% band. Narrative quality remains ahead of small density
+narrative plan with distinct story functions and concrete-detail prompts,
+title-safe writer inputs, paragraph and whole-letter validation, quality-aware
+finalist ordering, a preferred 82–90% page-utilization band, and an acceptable
+76–94% band. The single normal draft request includes an internal full-draft
+editing pass; no additional semantic-review call is introduced. Cover-letter
+drafting may use its own configured temperature while resume operations retain
+their established setting. Narrative quality remains ahead of small density
 differences.
 Exact final pagination remains mandatory. The provider returns a minimal
 paragraph/ID contract; provenance, diagnostics, research attribution, cache

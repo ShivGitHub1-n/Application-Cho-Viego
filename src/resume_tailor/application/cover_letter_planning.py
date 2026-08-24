@@ -29,7 +29,7 @@ class CoverLetterNarrativePlanner:
         for index, records in enumerate(grouped.values()):
             if index >= 3:
                 break
-            focus_terms = list(
+            concrete_details = list(
                 dict.fromkeys(
                     term
                     for record in records
@@ -37,9 +37,11 @@ class CoverLetterNarrativePlanner:
                     if term.strip()
                 )
             )
-            focus = ", ".join(focus_terms[:4]) or self._short_text(
-                records[0].writer_text or records[0].source_text,
-                150,
+            source_focus = records[0].writer_text or records[0].source_text
+            focus = self._short_text(
+                "Develop the engineering problem, choice, or constraint demonstrated by: "
+                f"{source_focus}",
+                240,
             )
             matched = list(
                 dict.fromkeys(
@@ -58,14 +60,16 @@ class CoverLetterNarrativePlanner:
                     evidence_ids=[record.id for record in records[:3]],
                     focus=focus,
                     role_connection=role_connection,
+                    concrete_details=concrete_details[:6],
+                    narrative_function=self._narrative_function(index),
                 )
             )
 
-        primary_focus = stories[0].focus
         thesis = self._short_text(
-            f"Build the letter around how demonstrated work with {primary_focus} connects "
-            f"to the role's need for {role_themes[0]}; use the remaining stories only to "
-            "deepen that same through-line.",
+            "Choose one specific engineering point of view from the intersection of the "
+            f"role's work on {role_themes[0]} and the reviewed stories. Let concrete choices "
+            "and constraints reveal that point of view. Do not repeat it as every paragraph's "
+            "lesson.",
             490,
         )
         hook = self._company_role_hook(posting, research, role_themes)
@@ -89,10 +93,37 @@ class CoverLetterNarrativePlanner:
             authoritative_entry_titles=titles,
             prohibited_title_claims=prohibited,
             tone=(
-                "Specific, technically literate, conversational, and self-possessed; "
-                "prefer clear observations over corporate enthusiasm."
+                "Specific, technically literate, conversational, and self-possessed. Vary "
+                "sentence length, prefer normal English, and allow restrained personality "
+                "to come from what the candidate notices about the work."
+            ),
+            opening_direction=(
+                "Begin with an original technical observation or tension that the first "
+                "story can prove. Do not begin with application intent, what stood out, or a "
+                "list of posting responsibilities."
+            ),
+            closing_direction=(
+                "Land one concise forward-looking thought earned by the preceding stories. "
+                "Do not restate the thesis, inventory skills, or use a stock discussion request."
             ),
         )
+
+    @staticmethod
+    def _narrative_function(index: int) -> str:
+        return (
+            (
+                "Establish the candidate's main technical point of view through one concrete "
+                "system, problem, or engineering decision."
+            ),
+            (
+                "Add a different dimension of the candidate through a distinct implementation, "
+                "integration, diagnostic, or design constraint; do not repeat the first lesson."
+            ),
+            (
+                "Use only if it changes the reader's picture of the candidate. Add a genuinely "
+                "different context or scale instead of a third version of the same takeaway."
+            ),
+        )[min(index, 2)]
 
     @staticmethod
     def _role_themes(
@@ -131,8 +162,9 @@ class CoverLetterNarrativePlanner:
             return cls._short_text(verified, 420)
         company = posting.company_name or "the employer"
         return (
-            f"Use the actual {company} posting as the personalization authority: the "
-            f"specific work that stands out is {role_themes[0]}. Do not add company praise."
+            f"Use the actual {company} posting as the only employer authority. Ground the "
+            f"connection in the work on {role_themes[0]}, but do not quote or paraphrase this "
+            "brief and do not add company praise."
         )
 
     @staticmethod

@@ -79,6 +79,7 @@ _OPENING_REJECTIONS = (
     "i am applying for",
     "i am thrilled to apply",
     "please accept my application",
+    "what stood out to me about",
 )
 _CLOSING_REJECTIONS = (
     "i look forward to the opportunity",
@@ -121,9 +122,68 @@ _UNSUBJECTED_ACTION_PATTERN = re.compile(
     r"^(?:assembled|authored|automated|built|collaborated|created|deployed|designed|"
     r"developed|documented|engineered|evaluated|implemented|integrated|led|modeled|"
     r"modelled|owned|prototyped|selected|specified|supported|tested|troubleshot|used|"
-    r"verified|working|integrating|testing)\b",
+    r"verified)\b",
     re.IGNORECASE,
 )
+_NATURALNESS_PATTERNS = (
+    (
+        "malformed_parallel_list",
+        r"\b(?:tasks?|paths?|work|responsibilities)\s*,\s*"
+        r"(?:mechanical|electrical|embedded|software|hardware)\s*,\s*and\s+"
+        r"(?:mechanical|electrical|embedded|software|hardware)\b",
+    ),
+    (
+        "compound_subject_verb_disagreement",
+        r"\b[a-z][a-z0-9+#/-]*s\s+and\s+[a-z][a-z0-9+#/-]*s\s+"
+        r"(?:comes|provides|shows|demonstrates|offers|gives)\b",
+    ),
+    (
+        "awkward_posting_frame",
+        r"\b(?:the|this) work behind\s+(?:the\s+)?(?:intern|candidate|role|position)\b",
+    ),
+)
+_VAGUE_TECHNICAL_REFERENTS = re.compile(
+    r"\b(?:the|this|that)\s+(?:hardware|system|work|technology|project|experience)\b",
+    re.IGNORECASE,
+)
+_ABSTRACT_NARRATIVE_ROOTS = {
+    "approach",
+    "behavior",
+    "decision",
+    "implement",
+    "method",
+    "process",
+    "system",
+    "test",
+}
+_GENERAL_TECHNICAL_TERMS = {
+    "approach",
+    "behavior",
+    "candidate",
+    "central",
+    "company",
+    "decision",
+    "design",
+    "engineer",
+    "engineering",
+    "experience",
+    "hardware",
+    "included",
+    "implement",
+    "method",
+    "another",
+    "part",
+    "process",
+    "project",
+    "result",
+    "role",
+    "scope",
+    "system",
+    "technical",
+    "test",
+    "work",
+    "documented",
+}
 _CONTENT_STOPWORDS = {
     "about",
     "after",
@@ -527,13 +587,14 @@ class CoverLetterValidator:
                 *metadata_values,
             ]
             if not sentence_codes:
-                try:
-                    validate_grounded_text(authority.text, source_texts, structured)
-                except GroundingValidationError as error:
-                    sentence_codes.extend(
-                        grounding_failure_code(failure).value
-                        for failure in error.failures
-                    )
+                if not self._is_application_intent(authority.text):
+                    try:
+                        validate_grounded_text(authority.text, source_texts, structured)
+                    except GroundingValidationError as error:
+                        sentence_codes.extend(
+                            grounding_failure_code(failure).value
+                            for failure in error.failures
+                        )
                 sentence_codes.extend(
                     self._unsupported_scope_codes(authority.text, source_texts)
                 )
@@ -546,6 +607,13 @@ class CoverLetterValidator:
                 posting,
                 [*posting_facts, *verified_facts],
             )
+            if self._relationship_claim_supported(
+                authority.text,
+                candidate_records,
+                [*posting_facts, *verified_facts],
+                posting,
+            ):
+                company_sentence = False
             explicit_company_or_role_reference = bool(
                 (
                     posting.company_name
@@ -570,6 +638,19 @@ class CoverLetterValidator:
                     record.entry_title
                     and record.entry_title.casefold() in authority.text.casefold()
                     for record in candidate_records
+                )
+                or (
+                    not explicit_company_or_role_reference
+                    and len(
+                        self._content_terms(authority.text)
+                        & self._content_terms(
+                            " ".join(
+                                record.writer_text or record.source_text
+                                for record in candidate_records
+                            )
+                        )
+                    )
+                    >= 2
                 )
             )
             if (
@@ -668,6 +749,8 @@ class CoverLetterValidator:
         return bool(
             re.fullmatch(
                 r"I am applying for the .+ role at .+\.|"
+                r"I am looking for .+\.|"
+                r"I would be glad to .+\.|"
                 r"What stood out to me about the .+ role(?: at .+)? is the work behind .+\.|"
                 r"I would welcome (?:the opportunity for )?a? ?conversation .+\.|"
                 r"I would welcome the opportunity to discuss .+\.|"
@@ -690,7 +773,8 @@ class CoverLetterValidator:
         if not candidate_records or not company_facts:
             return False
         if not re.search(
-            r"\b(?:align|connect|relevant|context|foundation|maps?|contribut|appl|suit)\w*\b",
+            r"\b(?:align|connect|relevant|context|foundation|maps?|contribut|appl|suit|"
+            r"interest|draw|overlap|meet|intersect|appeal|where|makes?)\w*\b",
             sentence,
             re.IGNORECASE,
         ):
@@ -756,6 +840,11 @@ class CoverLetterValidator:
             )
             >= 2
         )
+        progression_codes = self._paragraph_progression_codes(paragraphs)
+        specificity_codes = self._technical_specificity_codes(paragraphs, evidence)
+        opening_codes = self._opening_quality_codes(paragraphs, evidence, posting)
+        closing_codes = self._closing_quality_codes(paragraphs)
+        seniority_codes = self._seniority_emphasis_codes(paragraphs, evidence, posting)
         mechanical_posting = self._has_mechanical_posting_reference(paragraphs)
         resume_paraphrase = self._is_resume_paraphrase(paragraphs, evidence) or (
             self._text_paraphrases_multiple_sources(rejected_text, evidence)
@@ -773,6 +862,8 @@ class CoverLetterValidator:
             self._has_sufficient_narrative_development(paragraphs, evidence)
             and not repetitive_structure
             and not resume_paraphrase
+            and not progression_codes
+            and not specificity_codes
         )
         authority_mode = self._company_authority_mode(research)
         specific_company = self._specific_company_connection(
@@ -817,6 +908,9 @@ class CoverLetterValidator:
                 "unresolved_placeholder",
                 "ungrammatical_posting_fragment",
                 "sentence_fragment",
+                "malformed_parallel_list",
+                "compound_subject_verb_disagreement",
+                "awkward_posting_frame",
             }
             for code in rejected_codes
         )
@@ -906,6 +1000,41 @@ class CoverLetterValidator:
                 ),
             ),
             self._gate(
+                "opening_quality",
+                not opening_codes,
+                "observation_led_opening" if not opening_codes else opening_codes[0],
+                (
+                    "The opening uses a concrete candidate-to-role observation without "
+                    "announcing or paraphrasing the application."
+                    if not opening_codes
+                    else "Opening quality failed: " + ", ".join(opening_codes) + "."
+                ),
+            ),
+            self._gate(
+                "paragraph_progression",
+                not progression_codes,
+                "distinct_story_progression" if not progression_codes else progression_codes[0],
+                (
+                    "Each substantive paragraph adds a distinct narrative dimension."
+                    if not progression_codes
+                    else "Paragraph progression failed: " + ", ".join(progression_codes) + "."
+                ),
+            ),
+            self._gate(
+                "technical_specificity",
+                not specificity_codes,
+                (
+                    "concrete_story_details_present"
+                    if not specificity_codes
+                    else specificity_codes[0]
+                ),
+                (
+                    "Substantive stories use concrete reviewed technical details."
+                    if not specificity_codes
+                    else "Technical specificity failed: " + ", ".join(specificity_codes) + "."
+                ),
+            ),
+            self._gate(
                 "resume_complement",
                 not resume_paraphrase,
                 "resume_bullets_not_copied" if not resume_paraphrase else "resume_paraphrase",
@@ -946,12 +1075,33 @@ class CoverLetterValidator:
             ),
             self._gate(
                 "closing_structure",
-                not enumerative_closing,
-                "closing_is_direct" if not enumerative_closing else "enumerative_closing",
+                not enumerative_closing and not closing_codes,
+                (
+                    "closing_is_direct"
+                    if not enumerative_closing and not closing_codes
+                    else "enumerative_closing"
+                    if enumerative_closing
+                    else closing_codes[0]
+                ),
                 (
                     "The closing states contribution and direction without relisting the letter."
-                    if not enumerative_closing
-                    else "The closing repeats an inventory of the evidence threads."
+                    if not enumerative_closing and not closing_codes
+                    else "The closing repeats or mechanically summarizes the letter."
+                ),
+            ),
+            self._gate(
+                "seniority_emphasis",
+                not seniority_codes,
+                (
+                    "seniority_framing_is_material_and_supported"
+                    if not seniority_codes
+                    else seniority_codes[0]
+                ),
+                (
+                    "The prose avoids unnecessary supervisory framing around title-conflicted "
+                    "source evidence."
+                    if not seniority_codes
+                    else "Seniority framing failed: " + ", ".join(seniority_codes) + "."
                 ),
             ),
             self._gate(
@@ -1084,13 +1234,7 @@ class CoverLetterValidator:
             phrase in lowered for phrase in _CLOSING_REJECTIONS
         ):
             codes.append("formulaic_closing")
-        if purpose is CoverLetterParagraphPurpose.CLOSING and (
-            len(text.split()) < 12
-            or not re.search(
-                r"\b(?:apply|consider|contribut|discuss|interest|welcome)\w*\b",
-                lowered,
-            )
-        ):
+        if purpose is CoverLetterParagraphPurpose.CLOSING and len(text.split()) < 12:
             codes.append("incomplete_closing")
         if lowered.startswith("dear "):
             codes.append("salutation_in_provider_paragraph")
@@ -1111,6 +1255,11 @@ class CoverLetterValidator:
             lowered,
         ):
             codes.append("ungrammatical_posting_fragment")
+        codes.extend(
+            code
+            for code, pattern in _NATURALNESS_PATTERNS
+            if re.search(pattern, lowered, re.IGNORECASE)
+        )
         if text.count("—") + text.count("--") > 2:
             codes.append("excessive_em_dashes")
         sentences = cls._sentences(text)
@@ -1321,8 +1470,9 @@ class CoverLetterValidator:
             candidate_detail = (evidence_terms & paragraph_terms) - generic
             explains_connection = bool(
                 re.search(
-                    r"\b(?:connect(?:s|ed|ing)?|connection|constraints?|interface|integration|relat|"
-                    r"from the .+ side|part of that problem|boundary|physical)\b",
+                    r"\b(?:connect(?:s|ed|ing)?|connection|constraints?|interfaces?|integration|relat|"
+                    r"from the .+ side|part of that problem|boundary|physical|where|"
+                    r"centers?|depends?|requires?|means?|makes?)\b",
                     paragraph.text,
                     re.IGNORECASE,
                 )
@@ -1335,6 +1485,223 @@ class CoverLetterValidator:
             ):
                 return True
         return False
+
+    @classmethod
+    def _opening_quality_codes(
+        cls,
+        paragraphs: list[CoverLetterParagraph],
+        evidence: list[CoverLetterEvidenceRecord],
+        posting: JobPosting,
+    ) -> list[str]:
+        if not paragraphs or paragraphs[0].purpose is not CoverLetterParagraphPurpose.OPENING:
+            return ["opening_missing"]
+        opening = paragraphs[0]
+        lowered = opening.text.casefold()
+        codes: list[str] = []
+        if lowered.startswith(_OPENING_REJECTIONS) or re.match(
+            r"^(?:with my background|this opportunity|the .+ role (?:combines|brings))\b",
+            lowered,
+        ):
+            codes.append("formulaic_or_posting_summary_opening")
+        evidence_by_id = {item.id: item for item in evidence}
+        used = [
+            evidence_by_id[item]
+            for item in opening.candidate_evidence_ids
+            if item in evidence_by_id
+        ]
+        candidate_terms = cls._concrete_authority_terms(used)
+        opening_terms = cls._content_terms(opening.text)
+        if used and len(opening_terms & candidate_terms) < 2:
+            codes.append("opening_lacks_concrete_candidate_observation")
+        posting_terms = cls._content_terms(posting.description)
+        if (
+            len(opening_terms) >= 8
+            and len(opening_terms & posting_terms) / len(opening_terms) >= 0.72
+            and len(opening_terms & candidate_terms) < 3
+        ):
+            codes.append("posting_paraphrase_opening")
+        return list(dict.fromkeys(codes))
+
+    @classmethod
+    def _paragraph_progression_codes(
+        cls,
+        paragraphs: list[CoverLetterParagraph],
+    ) -> list[str]:
+        body = [
+            paragraph
+            for paragraph in paragraphs
+            if paragraph.purpose
+            not in {CoverLetterParagraphPurpose.OPENING, CoverLetterParagraphPurpose.CLOSING}
+        ]
+        if len(body) < 2:
+            return ["insufficient_story_progression"]
+        codes: list[str] = []
+        thread_ids = [paragraph.narrative_thread_id for paragraph in body]
+        nonblank_threads = [item for item in thread_ids if item]
+        if len(nonblank_threads) != len(set(nonblank_threads)):
+            codes.append("reused_narrative_thread")
+
+        paragraph_roots = [cls._narrative_roots(paragraph.text) for paragraph in paragraphs]
+        repeated_roots = {
+            root
+            for root in _ABSTRACT_NARRATIVE_ROOTS
+            if sum(root in roots for roots in paragraph_roots) >= 3
+        }
+        if len(repeated_roots) >= 3:
+            codes.append("repeated_narrative_thesis")
+
+        body_bigrams = [cls._distinctive_bigrams(paragraph.text) for paragraph in body]
+        if any(
+            len(body_bigrams[left] & body_bigrams[right]) >= 2
+            for left in range(len(body_bigrams))
+            for right in range(left + 1, len(body_bigrams))
+        ):
+            codes.append("repeated_technical_example")
+        return list(dict.fromkeys(codes))
+
+    @classmethod
+    def _technical_specificity_codes(
+        cls,
+        paragraphs: list[CoverLetterParagraph],
+        evidence: list[CoverLetterEvidenceRecord],
+    ) -> list[str]:
+        evidence_by_id = {item.id: item for item in evidence}
+        body = [
+            paragraph
+            for paragraph in paragraphs
+            if paragraph.purpose
+            not in {CoverLetterParagraphPurpose.OPENING, CoverLetterParagraphPurpose.CLOSING}
+        ]
+        codes: list[str] = []
+        vague_sentences = 0
+        for paragraph in body:
+            used = [
+                evidence_by_id[item]
+                for item in paragraph.candidate_evidence_ids
+                if item in evidence_by_id
+            ]
+            if not used:
+                continue
+            concrete = cls._concrete_authority_terms(used)
+            paragraph_terms = cls._content_terms(paragraph.text)
+            if len(paragraph_terms & concrete) < 2:
+                codes.append("vague_technical_story")
+            for sentence in cls._sentences(paragraph.text):
+                if _VAGUE_TECHNICAL_REFERENTS.search(sentence) and not (
+                    cls._content_terms(sentence) & concrete
+                ):
+                    vague_sentences += 1
+        if vague_sentences >= 2:
+            codes.append("repeated_vague_technical_abstraction")
+        return list(dict.fromkeys(codes))
+
+    @classmethod
+    def _closing_quality_codes(
+        cls,
+        paragraphs: list[CoverLetterParagraph],
+    ) -> list[str]:
+        if not paragraphs or paragraphs[-1].purpose is not CoverLetterParagraphPurpose.CLOSING:
+            return ["closing_missing"]
+        closing = paragraphs[-1]
+        word_count = len(closing.text.split())
+        codes: list[str] = []
+        if word_count < 14:
+            codes.append("closing_too_abrupt")
+        if word_count > 85:
+            codes.append("closing_restates_letter")
+        if any(phrase in closing.text.casefold() for phrase in _CLOSING_REJECTIONS):
+            codes.append("formulaic_closing")
+        if paragraphs:
+            opening_terms = cls._content_terms(paragraphs[0].text)
+            closing_terms = cls._content_terms(closing.text)
+            overlap = len(opening_terms & closing_terms) / max(1, len(closing_terms))
+            if overlap >= 0.55:
+                codes.append("closing_repeats_opening")
+        return list(dict.fromkeys(codes))
+
+    @classmethod
+    def _seniority_emphasis_codes(
+        cls,
+        paragraphs: list[CoverLetterParagraph],
+        evidence: list[CoverLetterEvidenceRecord],
+        posting: JobPosting,
+    ) -> list[str]:
+        if re.search(
+            r"\b(?:leadership|lead a team|manage|manager|supervis|mentor|direct reports?)\b",
+            f"{posting.title} {posting.description}",
+            re.IGNORECASE,
+        ):
+            return []
+        sensitive_ids = {item.id for item in evidence if item.excluded_title_claims}
+        if not sensitive_ids:
+            return []
+        for paragraph in paragraphs:
+            if not (set(paragraph.candidate_evidence_ids) & sensitive_ids):
+                continue
+            if re.search(
+                r"\b(?:led|managed|oversaw|supervised)\b|"
+                r"\breview(?:ed|ing)\s+(?:subordinate|junior|team)\b",
+                paragraph.text,
+                re.IGNORECASE,
+            ):
+                return ["unnecessary_seniority_foregrounding"]
+        return []
+
+    @classmethod
+    def _concrete_authority_terms(
+        cls,
+        records: list[CoverLetterEvidenceRecord],
+    ) -> set[str]:
+        terms = cls._content_terms(
+            " ".join(
+                value
+                for record in records
+                for value in [
+                    record.writer_text or record.source_text,
+                    *record.technologies,
+                    *record.outcomes,
+                ]
+                if value
+            )
+        )
+        return {
+            token
+            for token in terms
+            if cls._narrative_root(token) not in _GENERAL_TECHNICAL_TERMS
+        }
+
+    @classmethod
+    def _distinctive_bigrams(cls, text: str) -> set[tuple[str, str]]:
+        tokens = [
+            cls._narrative_root(token)
+            for token in re.findall(r"[a-z][a-z0-9+#-]{2,}", text.casefold())
+            if token not in _CONTENT_STOPWORDS
+        ]
+        tokens = [token for token in tokens if token not in _GENERAL_TECHNICAL_TERMS]
+        return set(zip(tokens, tokens[1:], strict=False))
+
+    @classmethod
+    def _narrative_roots(cls, text: str) -> set[str]:
+        return {
+            cls._narrative_root(token)
+            for token in re.findall(r"[a-z][a-z0-9+#-]{2,}", text.casefold())
+        }
+
+    @staticmethod
+    def _narrative_root(token: str) -> str:
+        mappings = {
+            "behav": "behavior",
+            "decid": "decision",
+            "decision": "decision",
+            "implement": "implement",
+            "observ": "behavior",
+            "system": "system",
+            "test": "test",
+        }
+        for prefix, root in mappings.items():
+            if token.startswith(prefix):
+                return root
+        return token
 
     @classmethod
     def _has_repetitive_paragraph_structure(
@@ -1607,27 +1974,18 @@ class CoverLetterValidator:
         minimum_words = {
             CoverLetterLengthClass.CONCISE: 95,
             CoverLetterLengthClass.STANDARD: 125,
-            CoverLetterLengthClass.DEVELOPED: 150,
+            CoverLetterLengthClass.DEVELOPED: 140,
         }[length_class]
         if len(used_ids) == 1:
             minimum_words = min(70, minimum_words)
         elif len(used_ids) == 2:
             minimum_words = {
-                CoverLetterLengthClass.CONCISE: 60,
-                CoverLetterLengthClass.STANDARD: 75,
-                CoverLetterLengthClass.DEVELOPED: 90,
+                CoverLetterLengthClass.CONCISE: 35,
+                CoverLetterLengthClass.STANDARD: 40,
+                CoverLetterLengthClass.DEVELOPED: 40,
             }[length_class]
         body_words = sum(len(paragraph.text.split()) for paragraph in body)
-        development_signals = len(
-            re.findall(
-                r"\b(?:adjacent|boundary|constraints?|different domain|narrower|required|"
-                r"together|upstream|while|where|physical|timing|override|implementation|"
-                r"scope|results?|technical|interfaces?|integration)\b",
-                " ".join(paragraph.text for paragraph in body),
-                re.IGNORECASE,
-            )
-        )
-        return body_words >= minimum_words and development_signals >= 2
+        return body_words >= minimum_words
 
     @classmethod
     def _generic_codes(cls, text: str) -> list[str]:
@@ -1848,18 +2206,15 @@ class DeterministicCoverLetterComposer:
             posting,
         )
         per_thread = 2 if length_class is CoverLetterLengthClass.DEVELOPED else 1
-        if len(threads) >= 2:
-            primary_records = threads[0][:per_thread]
-            if (
-                length_class is CoverLetterLengthClass.DEVELOPED
-                and len(threads) >= 3
-            ):
-                secondary_records = [threads[1][0], threads[2][0]]
-            else:
-                secondary_records = threads[1][:per_thread]
-        else:
-            primary_records = threads[0][:per_thread]
-            secondary_records = threads[0][:1]
+        story_threads = threads[: (3 if length_class is CoverLetterLengthClass.DEVELOPED else 2)]
+        if len(story_threads) == 1:
+            story_threads = [story_threads[0], story_threads[0][:1]]
+        story_records = [thread[:per_thread] for thread in story_threads]
+        story_purposes = (
+            CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION,
+            CoverLetterParagraphPurpose.CONTRIBUTION,
+            CoverLetterParagraphPurpose.ROLE_FIT,
+        )
         paragraphs = [
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.OPENING,
@@ -1877,42 +2232,31 @@ class DeterministicCoverLetterComposer:
                 narrative_thread_id="thread-opening",
                 length_class=length_class,
             ),
-            self._source_bound_paragraph(
-                purpose=CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION,
-                text=self._narrative_body(
-                    primary_records,
-                    posting_concepts,
-                    length_class=length_class,
-                    adjacent=False,
-                    secondary=False,
-                ),
-                evidence_ids=[item.id for item in primary_records],
-                posting_fact_ids=posting_fact_ids,
-                metadata=[],
-                narrative_thread_id="thread-primary-evidence",
-                length_class=length_class,
-            ),
-            self._source_bound_paragraph(
-                purpose=CoverLetterParagraphPurpose.ROLE_FIT,
-                text=self._narrative_body(
-                    secondary_records,
-                    posting_concepts,
-                    length_class=length_class,
-                    adjacent=any(
-                        record.selection_reason.casefold().startswith(
-                            ("adjacent", "complementary")
-                        )
-                        or self._narrowly_adjacent_to_role(record, posting_concepts)
-                        for record in secondary_records
+            *[
+                self._source_bound_paragraph(
+                    purpose=story_purposes[index],
+                    text=self._narrative_body(
+                        records,
+                        posting_concepts,
+                        length_class=length_class,
+                        adjacent=any(
+                            record.selection_reason.casefold().startswith(
+                                ("adjacent", "complementary")
+                            )
+                            or self._narrowly_adjacent_to_role(record, posting_concepts)
+                            for record in records
+                        ),
+                        secondary=index > 0,
+                        story_index=index,
                     ),
-                    secondary=True,
-                ),
-                evidence_ids=[item.id for item in secondary_records],
-                posting_fact_ids=posting_fact_ids,
-                metadata=[],
-                narrative_thread_id="thread-role-connection",
-                length_class=length_class,
-            ),
+                    evidence_ids=[item.id for item in records],
+                    posting_fact_ids=posting_fact_ids,
+                    metadata=[],
+                    narrative_thread_id=f"thread-story-{index + 1}",
+                    length_class=length_class,
+                )
+                for index, records in enumerate(story_records)
+            ],
             self._source_bound_paragraph(
                 purpose=CoverLetterParagraphPurpose.CLOSING,
                 text=self._narrative_closing(
@@ -1940,26 +2284,14 @@ class DeterministicCoverLetterComposer:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
         role_focus = self._joined(posting_concepts[:3])
-        candidate_focus = self._joined(
-            [self._thread_focus(item) for item in evidence[:2]]
-        )
-        return " ".join(
-            [
-                f"What stood out to me about the {posting.title} role{destination} "
-                f"is how it brings together {role_focus}.",
-                (
-                    f"My experience with {candidate_focus} has taught me to connect "
-                    "implementation to test behavior."
-                ),
-                (
-                    "My work has involved making those boundaries explicit enough to "
-                    "test and practical enough to debug."
-                ),
-                (
-                    "That practical boundary, where a design has to work as a complete "
-                    "system, is what makes the role interesting to me."
-                ),
-            ]
+        opening_action = self._finite_action(
+            evidence[0].writer_text or evidence[0].source_text
+        ) or self._action_clause(evidence[0].writer_text or evidence[0].source_text)
+        opening_action = self._gerund_action(opening_action)
+        return (
+            f"{opening_action[:1].upper() + opening_action[1:]} is the kind of engineering "
+            f"problem that makes the {posting.title} role{destination} interesting to me: "
+            f"the work centers on {role_focus}."
         )
 
     def _narrative_body(
@@ -1970,73 +2302,133 @@ class DeterministicCoverLetterComposer:
         length_class: CoverLetterLengthClass,
         adjacent: bool,
         secondary: bool,
+        story_index: int = 0,
     ) -> str:
         sentences = [
-            self._complete_evidence_sentence(record, index=index)
+            self._full_evidence_sentence(record, index=index)
             for index, record in enumerate(records)
         ]
-        focuses = [self._thread_focus(record) for record in records]
-        sentences.append(
-            "What mattered was tracing behavior across the interface and back to a "
-            "testable cause."
-            if secondary
-            else "The work kept architecture decisions connected to observable test "
-            "behavior in the assembled system."
+        technologies = list(
+            dict.fromkeys(
+                self._clean_focus(value)
+                for record in records
+                for value in (record.technologies or self._technical_phrases(record.writer_text))
+                if self._clean_focus(value)
+            )
         )
-        if adjacent:
-            focus_text = (
-                f"{focuses[0]} and {focuses[1]} involve different systems"
-                if len(focuses) >= 2
-                else f"{focuses[0]} comes from a different system"
+        outcomes = list(
+            dict.fromkeys(
+                self._clean_focus(value)
+                for record in records
+                for value in record.outcomes
+                if self._clean_focus(value)
             )
-            sentences.append(
-                f"Although {focus_text}, the useful habit is the same: keep implementation "
-                "decisions tied to observable system behavior."
-            )
-        else:
-            sentences.append(
-                "That made the interface itself part of the test strategy rather than a "
-                "detail to reconcile later."
-            )
-        if length_class is CoverLetterLengthClass.DEVELOPED:
-            if secondary:
-                sentences.extend(
-                    [
-                        (
-                            "At that boundary, a useful diagnosis had to connect interface "
-                            "behavior to measured test results."
-                        ),
-                        (
-                            "It is a method I can carry into a new system while respecting "
-                            "the differences between systems."
-                        ),
-                        (
-                            "My method was to keep the question narrow: what changed, what "
-                            "could be measured, which interface could explain the difference, "
-                            "and what evidence would settle it."
-                        ),
-                    ]
+        )
+        if len(technologies) >= 2 and outcomes:
+            if story_index >= 2:
+                sentences.append(
+                    f"The emphasis shifted to {self._joined(outcomes[:2])}, with "
+                    f"{self._joined(technologies[:3])} providing the working details."
+                )
+            elif secondary:
+                sentences.append(
+                    f"Here, {self._joined(technologies[:3])} served a different practical "
+                    f"purpose: {self._joined(outcomes[:2])}."
                 )
             else:
-                sentences.extend(
-                    [
-                        (
-                            "Following those choices through implementation made the system "
-                            "trade-offs visible early."
-                        ),
-                        (
-                            "This work required moving from observed behavior back to the "
-                            "design or implementation decision that could explain it, then "
-                            "checking whether the next test behaved as expected."
-                        ),
-                        (
-                            "That method kept debugging tied to the system in front of me."
-                        ),
-                    ]
+                sentences.append(
+                    f"The practical constraint was keeping {self._joined(technologies[:3])} "
+                    f"tied to {self._joined(outcomes[:2])}."
                 )
-        elif length_class is CoverLetterLengthClass.CONCISE:
+        elif len(technologies) >= 2:
+            if story_index >= 2:
+                sentences.append(
+                    f"This example brought {self._joined(technologies[:3])} into a shared design "
+                    "context."
+                )
+            elif secondary:
+                sentences.append(
+                    f"A separate constraint joined {self._joined(technologies[:3])} in the "
+                    "same implementation."
+                )
+            else:
+                sentences.append(
+                    f"The work put {self._joined(technologies[:3])} inside the same technical "
+                    "problem."
+                )
+        if length_class is CoverLetterLengthClass.DEVELOPED and len(technologies) >= 3:
+            result = self._joined(outcomes[:1]) if outcomes else "the assembled result"
+            if story_index >= 2:
+                depth_sentence = (
+                    f"In that setting, {self._joined(technologies[:2])} belonged to the same "
+                    f"technical chain as {result}."
+                )
+            elif secondary:
+                depth_sentence = (
+                    f"That meant decisions around {self._joined(technologies[:2])} could "
+                    f"not be separated from {result}."
+                )
+            else:
+                depth_sentence = (
+                    f"Following {self._joined(technologies[:2])} through to {result} kept "
+                    "the engineering question concrete."
+                )
+            sentences.append(depth_sentence)
+            if outcomes:
+                if story_index >= 2:
+                    outcome_sentence = (
+                        f"The result was concrete: {result} depended on "
+                        f"{self._joined(technologies[1:3])} working as part of the same design."
+                    )
+                elif secondary:
+                    outcome_sentence = (
+                        f"That added a separate dimension to the story: "
+                        f"{self._joined(technologies[1:3])} had to support {result}, not sit "
+                        "beside it as isolated details."
+                    )
+                else:
+                    outcome_sentence = (
+                        f"In practice, {self._joined(technologies[:2])} made {result} "
+                        "visible in the assembled work, keeping the diagnosis tied to "
+                        "the result actually produced."
+                    )
+                sentences.append(outcome_sentence)
+        del adjacent, posting_concepts
+        if length_class is CoverLetterLengthClass.CONCISE:
             sentences = sentences[:3]
         return " ".join(sentences)
+
+    @classmethod
+    def _full_evidence_sentence(
+        cls,
+        record: CoverLetterEvidenceRecord,
+        *,
+        index: int,
+    ) -> str:
+        writer_text = " ".join((record.writer_text or record.source_text).split()).strip(" .")
+        writer_text = re.sub(r"^(?:I|we)\s+", "", writer_text, flags=re.IGNORECASE)
+        if not re.match(
+            r"^(?:assembled|authored|automated|built|collaborated|created|deployed|designed|"
+            r"developed|documented|engineered|evaluated|implemented|integrated|modeled|"
+            r"modelled|prototyped|selected|specified|supported|tested|troubleshot|used|"
+            r"verified)\b",
+            writer_text,
+            re.IGNORECASE,
+        ):
+            return cls._complete_evidence_sentence(record, index=index)
+        action = cls._gerund_sequence(writer_text)
+        action = action[:1].casefold() + action[1:]
+        title = record.entry_title or (
+            "technical project"
+            if record.kind is CoverLetterEvidenceKind.PROJECT
+            else "engineering work"
+        )
+        if record.kind is CoverLetterEvidenceKind.PROJECT:
+            label = title if title.casefold().endswith("project") else f"{title} project"
+            return f"The {label} involved {action}."
+        if index == 0:
+            return f"A central part of my {title} work was {action}."
+        return f"Another part of that work was {action}."
 
     @staticmethod
     def _narrowly_adjacent_to_role(
@@ -2062,24 +2454,19 @@ class DeterministicCoverLetterComposer:
     ) -> str:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
-        candidate_focus = self._joined(
-            [self._thread_focus(item) for item in evidence[:2]]
-        )
         return " ".join(
             [
                 (
-                    "That method turns a broad system problem into a sequence of "
-                    "testable decisions."
+                    "I am looking for a next step where technical judgment stays close to "
+                    "the physical or observable result."
                 ),
                 (
-                    f"That is why this {posting.title} role{destination} feels like a natural "
-                    "next problem for me."
+                    f"The {posting.title} role{destination} offers that kind of work."
                 ),
                 (
-                    f"I can contribute experience with {candidate_focus} and a habit of "
-                    "carrying design choices through implementation and testing."
+                    "I would be glad to bring the care I have learned at those interfaces, "
+                    "along with the curiosity to understand the next system on its own terms."
                 ),
-                "I would welcome a conversation about the work and the decisions behind it.",
             ]
         )
 
@@ -2569,24 +2956,46 @@ class DeterministicCoverLetterComposer:
         verbs = {
             "act": "serving",
             "architect": "architecting",
+            "assembled": "assembling",
             "build": "building",
+            "built": "building",
             "collaborate": "collaborating",
+            "collaborated": "collaborating",
             "create": "creating",
+            "created": "creating",
             "define": "defining",
             "design": "designing",
+            "designed": "designing",
             "develop": "developing",
+            "developed": "developing",
+            "documented": "documenting",
+            "engineered": "engineering",
+            "evaluated": "evaluating",
             "implement": "implementing",
+            "implemented": "implementing",
             "integrate": "integrating",
+            "integrated": "integrating",
             "investigate": "investigating",
             "iterate": "iterating",
             "lead": "leading",
+            "led": "leading",
             "maintain": "maintaining",
+            "modeled": "modeling",
+            "modelled": "modelling",
             "perform": "performing",
+            "prototyped": "prototyping",
             "select": "selecting",
+            "selected": "selecting",
+            "specified": "specifying",
             "support": "supporting",
+            "supported": "supporting",
             "test": "testing",
+            "tested": "testing",
             "translate": "translating",
             "troubleshoot": "troubleshooting",
+            "troubleshot": "troubleshooting",
+            "used": "using",
+            "verified": "verifying",
             "work": "working",
         }
         output = value

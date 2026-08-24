@@ -1,6 +1,6 @@
 # Application Viego project status
 
-Last verified: 2026-07-30
+Last verified: 2026-08-24
 
 ## Current state
 
@@ -15,9 +15,12 @@ composition, Template V1 rendering, bounded page fitting, immutable generated
 artifacts, and stored-byte downloads.
 The cover-letter implementation includes bounded company research,
 reviewed-evidence narrative selection, typed provider output, local claim and
-quality gates, deterministic fallback, one-page DOCX fitting, immutable artifact
-storage, and explicit Streamlit approval/download. Its prose remains under
-product review.
+whole-letter quality gates, deterministic fallback, one-page DOCX fitting,
+immutable artifact storage, and explicit Streamlit approval/download. The
+writer now receives distinct story functions and concrete details, performs a
+same-request full-draft edit, and is checked for the observed grammar,
+repetition, abstraction, posting-paraphrase, and seniority failure modes. One
+real Streamlit/Word acceptance run remains required.
 
 ## Accepted functionality
 
@@ -52,7 +55,7 @@ Template V1 hash remains documented in [TEMPLATE_V1.md](TEMPLATE_V1.md).
 - Repository-wide Ruff and mypy debt remains outside this product closeout.
 - Editor/template customization and broader frontend redesign are deferred.
 - Chrome extension capture is not implemented.
-- Cover-letter prose is not yet production-ready.
+- Cover-letter prose changes require one final real Streamlit/Word acceptance run.
 - Discovery-to-tailoring typed handoff is incomplete.
 - Technical-skills serialization remains defective.
 - CI is absent.

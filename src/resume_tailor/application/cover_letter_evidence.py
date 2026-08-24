@@ -290,6 +290,24 @@ class CoverLetterEvidencePortfolio:
             return ""
 
         safe = _ASSERTED_TITLE.sub(replace, source_text)
+        if excluded:
+            clauses = [
+                clause.strip(" ,;:-")
+                for clause in re.split(r"[,;]", safe)
+                if clause.strip(" ,;:-")
+            ]
+            technical_clauses = [
+                clause
+                for clause in clauses
+                if not re.search(
+                    r"\b(?:led|managed|oversaw|supervised)\b|"
+                    r"\breview(?:ed|ing)\s+(?:subordinate|junior|team)\b",
+                    clause,
+                    re.IGNORECASE,
+                )
+            ]
+            if technical_clauses:
+                safe = ", ".join(technical_clauses)
         safe = re.sub(r"\s+", " ", safe).strip(" ,;:-")
         if not safe:
             safe = authoritative_title
