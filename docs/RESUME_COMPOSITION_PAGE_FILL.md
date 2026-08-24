@@ -147,17 +147,20 @@ one-bullet project remains valid when its unique value pays for its metadata.
 The strategist-priority path builds a bounded rollback ladder from the validated
 core strategy. It removes optional evidence first, then medium, then high, then
 critical, preserving coherent multi-bullet professional entry blocks. If the
-best rendered core estimate is below 82%, it evaluates ranked reserve actions
+best rendered core estimate is below 88%, it evaluates ranked reserve actions
 within the same existing 128-state budget. Same-entry unused alternatives are
 retained automatically. A new entry must be explicitly present in the strategist's
 same-call reserve and satisfy its coherent-depth requirement. Each cumulative
 addition must fit the rendered planning geometry and improve the existing
 portfolio-quality objective; equal-priority actions are ordered by marginal
 quality per bullet-line cost plus the established two-line new-entry activation
-cost. Expansion stops in the 82%-92% preferred band, above the 95% acceptable
+cost. Every positive-value sibling considered at a step remains eligible for the
+exact finalist batch; the cumulative lane still follows only its best estimated
+action. Expansion stops in the 88%-93% preferred band, above the 95% acceptable
 ceiling, on overflow, or when no positive-value reserve remains. The 12 exact
-finalists use the same batched Word/LibreOffice provider, and an estimated
-one-page expansion that measures as two pages is rejected.
+finalists use the same batched Word/LibreOffice provider. An estimated one-page
+winner that measures as two pages is rejected without hiding later fitting
+siblings.
 
 The deterministic fallback path uses the two planning stages below.
 
@@ -237,8 +240,8 @@ The legacy deterministic fallback retains its established 72%-97% calibration,
 90%-93% preference, and below-85% investigation behavior. That behavior is not
 retuned by this closeout.
 
-For a validated Gemini strategy, the production page-use policy is 82%-92%
-preferred and 76%-95% acceptable. Below 76% is `underfilled`; below 69% is
+For a validated Gemini strategy, the production page-use policy is 88%-93%
+preferred and 84%-95% acceptable. Below 84% is `underfilled`; below 75% is
 `severe_underfill`. These bands were chosen to reject the observed roughly
 two-thirds-page artifact while allowing semantic quality to beat small density
 differences. Density never admits weak, redundant, unsupported, or unrelated
@@ -308,11 +311,19 @@ Composition outcomes are:
 - `insufficient_evidence`;
 - `unverified`.
 
-In Gemini strategy mode, an exact result below 69% is `severe_underfill`, and a
-result from 69% up to 76% is `underfilled`. In deterministic fallback mode, the
+In Gemini strategy mode, an exact result below 75% is `severe_underfill`, and a
+result from 75% up to 84% is `underfilled`. In deterministic fallback mode, the
 legacy below-85% outcome contract remains unchanged. A visibly underfilled
 strategy result with unused admissible reserve evidence cannot be
 `acceptable_one_page`.
+
+An underfilled exact result remains exportable only as a last-resort truthful
+artifact. Before returning it, the composer considers every validated reserve
+action within its bounds and retains every positive-value estimated sibling for
+exact pagination. Iteration diagnostics distinguish coherent-depth, bullet/entry
+bound, planning overflow, utilization ceiling, nonpositive marginal value, exact
+overflow, and fitting exact-finalist outcomes. Resume Studio shows a clear warning
+below the acceptable floor and a stronger warning below the severe floor.
 
 When the exact-finalist evaluation cap is reached below preferred density, the
 typed underfill diagnostic reports that search bound rather than claiming that

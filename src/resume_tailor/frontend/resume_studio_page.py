@@ -29,6 +29,10 @@ from resume_tailor.application.workflow_state import (
 from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConstraints
+from resume_tailor.domain.resume_composition import (
+    STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
+)
 from resume_tailor.frontend.document_canvas import generated_resume_groups, render_document_canvas
 from resume_tailor.frontend.shared_components import render_page_header
 from resume_tailor.infrastructure.rendering import (
@@ -67,6 +71,23 @@ class ResumeStudioDependencies:
     tailor_service: Any
     resume_renderer: Any
     invalidate_tailoring: Callable[[], None]
+
+
+def _strategy_page_use_warning(composition: Any) -> str | None:
+    utilization = float(composition.final_utilization_ratio)
+    if utilization < TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR:
+        return (
+            "This verified one-page résumé remains severely underfilled after bounded "
+            "strategy-compatible expansion. The artifact is valid as a last resort, but review "
+            "the strategy and evidence before export."
+        )
+    if utilization < STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR:
+        return (
+            "This verified one-page résumé remains below the acceptable page-use range after "
+            "bounded strategy-compatible expansion. Review the strategy and evidence before "
+            "export."
+        )
+    return None
 
 
 def _uses_generated_artifact_workflow(dependencies: ResumeStudioDependencies) -> bool:
@@ -628,6 +649,10 @@ def _render_export(
             f"Validation: Passed · Pagination: {pagination_status} · "
             f"Page use: {page_use} ({density_status})"
         )
+        if strategy_status == "Gemini" and (
+            page_use_warning := _strategy_page_use_warning(composition)
+        ):
+            streamlit_module.warning(page_use_warning)
         if streamlit_module.button(
             "Verify and prepare export", key="resume-verify-export", type="primary"
         ):

@@ -295,6 +295,11 @@ class ApplicationStrategyOutput(StrictModel):
     expansion_reserve: list[ProposedStrategyExpansionAction] = Field(
         default_factory=list,
         max_length=8,
+        description=(
+            "Ranked independent underfill actions. When materially relevant unused reviewed "
+            "evidence exists, provide enough alternatives for page fitting to try later actions "
+            "after an earlier action overflows."
+        ),
     )
     low_priority_entries: list[ProposedLowPriorityEntry] = Field(default_factory=list)
     global_evidence_priority: list[str] = Field(min_length=1)

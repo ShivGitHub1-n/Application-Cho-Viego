@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 import pytest
 
+from resume_tailor.application.llm_prompts import task_prompt
 from resume_tailor.application.llm_services import HybridLlmServices
 from resume_tailor.application.resume_composition import (
     DeterministicResumeComposer,
@@ -39,7 +40,13 @@ from resume_tailor.domain.models import (
     ResumeItem,
     TemplateConstraints,
 )
-from resume_tailor.domain.resume_composition import PageFitEvaluation
+from resume_tailor.domain.resume_composition import (
+    STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
+    STRATEGY_UTILIZATION_PREFERRED_CEILING,
+    STRATEGY_UTILIZATION_PREFERRED_FLOOR,
+    TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
+    PageFitEvaluation,
+)
 from resume_tailor.infrastructure.optimization import (
     DeterministicResumeOptimizer,
     EvidenceBoundResumeWriter,
@@ -102,7 +109,7 @@ class UnderfillExpansionPageFit:
 
     def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
         bullet_count = self._bullet_count(resume)
-        utilization = min(0.96, 0.23 + (0.04 * bullet_count))
+        utilization = min(0.96, 0.23 + (0.044 * bullet_count))
         overflow = bool(
             attempt_exact
             and self.exact_overflow_above is not None
@@ -114,9 +121,9 @@ class UnderfillExpansionPageFit:
                 PageUtilizationStatus.OVERFLOW
                 if overflow
                 else PageUtilizationStatus.SEVERE_UNDERFILL
-                if utilization < 0.69
+                if utilization < 0.75
                 else PageUtilizationStatus.UNDERFILLED
-                if utilization < 0.76
+                if utilization < 0.84
                 else PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
             ),
             page_count=2 if overflow else 1,
@@ -137,7 +144,7 @@ class OneStepAlternativePageFit(UnderfillExpansionPageFit):
 
     def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
         bullet_count = self._bullet_count(resume)
-        utilization = 0.67 if bullet_count <= self.core_bullets else 0.84
+        utilization = 0.69 if bullet_count <= self.core_bullets else 0.86
         self.observed.append((bullet_count, attempt_exact, utilization, 1))
         return PageFitEvaluation(
             status=(
@@ -150,6 +157,60 @@ class OneStepAlternativePageFit(UnderfillExpansionPageFit):
             provider="controlled rendered-DOCX geometry and exact paginator",
             utilization_ratio=utilization,
             fits_one_page=True,
+        )
+
+
+class LiveUnderfillReservePageFit(UnderfillExpansionPageFit):
+    def __init__(self) -> None:
+        super().__init__()
+        self.evaluations: list[tuple[frozenset[str], bool, float, int]] = []
+
+    @staticmethod
+    def _evidence_ids(resume: object) -> frozenset[str]:
+        return frozenset(
+            evidence_id
+            for section in (resume.experience_bullets, resume.project_bullets)
+            for bullets in section.values()
+            for bullet in bullets
+            for evidence_id in bullet.evidence_ids
+        )
+
+    def evaluate(self, resume: object, *, attempt_exact: bool = True) -> PageFitEvaluation:
+        evidence_ids = self._evidence_ids(resume)
+        preferred_but_overflowing = "mech-feedback" in evidence_ids
+        later_new_entry_fits = {
+            "arm-cad",
+            "arm-test",
+            "arm-transmission",
+        }.issubset(evidence_ids)
+        later_same_entry_fits = "mech-cad" in evidence_ids
+        utilization = (
+            0.90
+            if preferred_but_overflowing
+            else 0.89
+            if later_new_entry_fits
+            else 0.85
+            if later_same_entry_fits
+            else 0.69
+        )
+        overflow = attempt_exact and preferred_but_overflowing
+        page_count = 2 if overflow else 1
+        self.evaluations.append((evidence_ids, attempt_exact, utilization, page_count))
+        return PageFitEvaluation(
+            status=(
+                PageUtilizationStatus.OVERFLOW
+                if overflow
+                else PageUtilizationStatus.SEVERE_UNDERFILL
+                if utilization < 0.75
+                else PageUtilizationStatus.UNDERFILLED
+                if utilization < 0.84
+                else PageUtilizationStatus.ACCEPTABLE_ONE_PAGE
+            ),
+            page_count=page_count,
+            exact=attempt_exact,
+            provider="controlled live-shaped exact paginator",
+            utilization_ratio=utilization,
+            fits_one_page=not overflow,
         )
 
 
@@ -680,12 +741,12 @@ def test_severe_underfill_consumes_existing_same_entry_alternative() -> None:
     ]
     assert plan.application_strategy.reserve_evidence_ids == ["mech-feedback"]
     assert any(
-        count == 11 and utilization == 0.67
+        count == 11 and utilization == 0.69
         for count, _, utilization, _ in page_fit.observed
     )
     assert resume.composition_diagnostic is not None
     assert "mech-feedback" in resume.composition_diagnostic.selected_bullet_ids
-    assert resume.composition_diagnostic.final_utilization_ratio == 0.84
+    assert resume.composition_diagnostic.final_utilization_ratio == 0.86
     assert resume.composition_diagnostic.page_count == 1
     assert resume.composition_diagnostic.verification_status.value == "exact"
     assert "digital" not in resume.experience_bullets
@@ -724,7 +785,7 @@ def test_ranked_reserve_prefers_distinct_portfolio_value_and_can_open_project() 
     assert plan.application_strategy.expansion_reserve[-1].requires_entry_heading is True
     assert plan.application_strategy.expansion_reserve[-1].minimum_coherent_depth == 2
     assert resume.composition_diagnostic is not None
-    assert resume.composition_diagnostic.final_utilization_ratio == 0.83
+    assert resume.composition_diagnostic.final_utilization_ratio == pytest.approx(0.89)
     assert resume.composition_diagnostic.bullet_counts == {
         "mech": 5,
         "rd": 4,
@@ -738,6 +799,117 @@ def test_ranked_reserve_prefers_distinct_portfolio_value_and_can_open_project() 
     assert "digital" not in resume.experience_bullets
     assert "software" not in resume.experience_bullets
     assert "resume-tool" not in resume.project_bullets
+
+
+def test_live_69_percent_core_tries_exact_fitting_sibling_after_first_reserve_overflows() -> None:
+    profile = _mixed_profile()
+    core = [
+        _selection(
+            "mech",
+            ["mech-control", "mech-interfaces"],
+            EvidencePriorityTier.CRITICAL,
+        ),
+        _selection(
+            "rd",
+            ["rd-wiring", "rd-test", "rd-power", "rd-validation"],
+            EvidencePriorityTier.HIGH,
+        ),
+        _selection(
+            "hand",
+            ["hand-build", "hand-control"],
+            EvidencePriorityTier.MEDIUM,
+        ),
+    ]
+    reserve = [
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-feedback"],
+            priority=EvidencePriorityTier.HIGH,
+            marginal_value_reason="Adds distinct actuator feedback validation.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="mech",
+            evidence_ids=["mech-cad"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds distinct fixture design evidence.",
+        ),
+        ProposedStrategyExpansionAction(
+            entry_id="arm",
+            evidence_ids=["arm-cad", "arm-test", "arm-transmission"],
+            priority=EvidencePriorityTier.MEDIUM,
+            marginal_value_reason="Adds a coherent actuator and mechanical-design project.",
+            minimum_coherent_depth=2,
+        ),
+    ]
+    page_fit = LiveUnderfillReservePageFit()
+    fake = FakeResumeLanguageModel(
+        recommend_application_strategy=_strategy_result(
+            core,
+            thesis="Center the reviewed multidisciplinary physical-system portfolio.",
+            expansion_reserve=reserve,
+            low_priority=["digital", "software", "resume-tool"],
+        )
+    )
+    service = _service(fake, page_fit=page_fit)
+
+    plan = service.create_plan(profile, _hardware_posting(), TemplateConstraints())
+    resume = service.build_document(plan, profile, set())
+
+    assert resume.composition_diagnostic is not None
+    diagnostic = resume.composition_diagnostic
+    prompt = task_prompt(
+        LlmOperation.APPLICATION_STRATEGY,
+        fake.requests["recommend_application_strategy"][0],
+    )
+    assert "provide 4-8 independent reserve actions" in prompt
+    assert "Return fewer only when fewer unused evidence choices" in prompt
+    assert STRATEGY_UTILIZATION_PREFERRED_FLOOR == 0.88
+    assert STRATEGY_UTILIZATION_PREFERRED_CEILING == 0.93
+    assert STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR == 0.84
+    assert TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR == 0.75
+    assert diagnostic.final_utilization_ratio == 0.89
+    assert diagnostic.page_count == 1
+    assert diagnostic.verification_status.value == "exact"
+    assert "mech-feedback" not in diagnostic.selected_bullet_ids
+    assert {"arm-cad", "arm-test", "arm-transmission"} <= set(
+        diagnostic.selected_bullet_ids
+    )
+    assert "digital" not in resume.experience_bullets
+    assert "software" not in resume.experience_bullets
+    assert "resume-tool" not in resume.project_bullets
+    assert any(
+        exact and page_count == 2 and "mech-feedback" in evidence_ids
+        for evidence_ids, exact, _utilization, page_count in page_fit.evaluations
+    )
+    assert any(
+        exact
+        and page_count == 1
+        and "mech-cad" in evidence_ids
+        for evidence_ids, exact, _utilization, page_count in page_fit.evaluations
+    )
+    assert any(
+        exact
+        and page_count == 1
+        and {"arm-cad", "arm-test", "arm-transmission"}.issubset(evidence_ids)
+        for evidence_ids, exact, _utilization, page_count in page_fit.evaluations
+    )
+    assert fake.calls["recommend_application_strategy"] == 1
+    assert fake.calls["rewrite_bullets"] == 0
+    assert diagnostic.estimated_page_evaluations < diagnostic.maximum_estimated_page_evaluations
+    assert diagnostic.exact_page_evaluations < diagnostic.maximum_exact_finalist_evaluations
+    assert any(
+        item.candidate_id.startswith("strategy-exact:")
+        and ":reserve-1" in item.candidate_id
+        and item.overflow
+        and "overflowed" in item.reason
+        for item in diagnostic.page_fill_iterations
+    )
+    assert any(
+        item.candidate_id.startswith("strategy-exact:")
+        and ":reserve-3" in item.candidate_id
+        and item.accepted
+        for item in diagnostic.page_fill_iterations
+    )
 
 
 def test_new_professional_reserve_entry_requires_coherent_depth() -> None:
@@ -806,6 +978,17 @@ def test_exact_two_page_expansion_is_rejected_for_verified_core() -> None:
     assert "mech-feedback" not in resume.composition_diagnostic.selected_bullet_ids
     assert resume.composition_diagnostic.page_count == 1
     assert resume.composition_diagnostic.verification_status.value == "exact"
+    assert resume.composition_diagnostic.additional_evidence_unavailable is True
+    assert "every validated reserve action was consumed or rejected" in (
+        resume.composition_diagnostic.reason
+    )
+    assert any(
+        item.candidate_id.startswith("strategy-exact:")
+        and ":reserve-1" in item.candidate_id
+        and item.overflow
+        and "overflowed" in item.reason
+        for item in resume.composition_diagnostic.page_fill_iterations
+    )
 
 
 def test_underfilled_software_strategy_expands_only_with_software_reserve() -> None:
@@ -839,7 +1022,7 @@ def test_underfilled_software_strategy_expands_only_with_software_reserve() -> N
     assert _selected_entry_ids(resume) == {"digital", "software", "resume-tool"}
     assert resume.composition_diagnostic is not None
     assert "software-observability" in resume.composition_diagnostic.selected_bullet_ids
-    assert resume.composition_diagnostic.final_utilization_ratio == 0.84
+    assert resume.composition_diagnostic.final_utilization_ratio == 0.86
 
 
 def test_writer_receives_only_strategy_evidence_and_total_calls_are_bounded() -> None:

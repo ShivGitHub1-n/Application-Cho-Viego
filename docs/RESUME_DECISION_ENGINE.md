@@ -63,9 +63,11 @@ and its bytes available for retry.
 
 In Gemini strategy mode, the validated `ApplicationStrategyPlan` is final
 semantic portfolio authority before page fit. The core selection is the writer
-boundary. A small same-call expansion reserve is the only additional evidence
+boundary. A bounded same-call expansion reserve is the only additional evidence
 page fitting may admit after actual rendered geometry shows meaningful underfill;
-it cannot reopen low-priority or unrelated profile evidence. The writer cannot
+when useful unused evidence exists it provides multiple independent choices so
+one exact overflow does not end expansion. It cannot reopen low-priority or
+unrelated profile evidence. The writer cannot
 add entries, evidence, requirement support, or selection authority. In
 deterministic fallback mode, the existing
 entry-balanced shortlist and full package frontier remain available. Employer

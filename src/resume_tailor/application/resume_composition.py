@@ -1548,7 +1548,12 @@ class DeterministicResumeComposer:
                     utilization_ratio=page.utilization_ratio,
                     exact_page_verification=page.exact,
                     reason=(
-                        "Strategy-compatible reserve evidence fit the rendered planning geometry."
+                        "Exact finalist fit one verified page."
+                        if label.startswith("strategy-exact") and page.fits_one_page
+                        else "Exact finalist overflowed and was rejected."
+                        if label.startswith("strategy-exact")
+                        else "Strategy-compatible reserve evidence fit the rendered planning "
+                        "geometry and remained eligible for exact pagination."
                         if label.startswith("strategy-expand") and page.fits_one_page
                         else "Strategy-compatible reserve evidence overflowed and was rejected."
                         if label.startswith("strategy-expand")
@@ -1635,6 +1640,27 @@ class DeterministicResumeComposer:
         remaining_reserve = list(enumerate(strategy.expansion_reserve))
         expansion_attempts = 0
         expansion_base = sorted(evaluated, key=strategy_key)[0]
+        evaluated_state_keys = {item.state.key for item in evaluated}
+        considered_action_indices: set[int] = set()
+        estimated_viable_action_indices: set[int] = set()
+        exact_tested_action_indices: set[int] = set()
+
+        def record_expansion_rejection(
+            action_index: int,
+            reason: str,
+        ) -> None:
+            iterations.append(
+                PageFillIterationDiagnostic(
+                    iteration=len(iterations) + 1,
+                    candidate_id=f"strategy-expand:{action_index + 1}:rejected",
+                    accepted=False,
+                    overflow=False,
+                    utilization_ratio=expansion_base.evaluation.utilization_ratio,
+                    exact_page_verification=False,
+                    reason=reason,
+                )
+            )
+
         while (
             expansion_base.evaluation.utilization_ratio
             < STRATEGY_UTILIZATION_PREFERRED_FLOOR
@@ -1647,6 +1673,7 @@ class DeterministicResumeComposer:
             for action_index, action in remaining_reserve:
                 if estimated_evaluations >= self._bounds.maximum_estimated_page_evaluations:
                     break
+                considered_action_indices.add(action_index)
                 action_candidate_ids = {
                     candidate_id_by_source[evidence_id]
                     for evidence_id in action.evidence_ids
@@ -1659,21 +1686,38 @@ class DeterministicResumeComposer:
                     if evidence_id in action.evidence_ids
                 }
                 if len(represented_action_ids) < action.minimum_coherent_depth:
+                    record_expansion_rejection(
+                        action_index,
+                        "Reserve action could not reconstruct its validated minimum coherent "
+                        "evidence depth from renderable candidates.",
+                    )
                     continue
                 expanded_bullets = expansion_base.state.bullet_ids | action_candidate_ids
                 if len(expanded_bullets) > self._bounds.maximum_selected_bullets:
+                    record_expansion_rejection(
+                        action_index,
+                        "Reserve action exceeded the selected-bullet computation bound.",
+                    )
                     continue
                 expanded_entry_ids = {
                     bullet_by_id[candidate_id].entry_id
                     for candidate_id in expanded_bullets
                 }
                 if len(expanded_entry_ids) > self._bounds.maximum_selected_entries:
+                    record_expansion_rejection(
+                        action_index,
+                        "Reserve action exceeded the selected-entry computation bound.",
+                    )
                     continue
                 expanded_state = _State(
                     bullet_ids=frozenset(expanded_bullets),
                     skill_category_ids=expansion_base.state.skill_category_ids,
                 )
                 if expanded_state.key == expansion_base.state.key:
+                    record_expansion_rejection(
+                        action_index,
+                        "Reserve action was already represented in the current portfolio.",
+                    )
                     continue
                 expanded = evaluate(
                     expanded_state,
@@ -1681,15 +1725,56 @@ class DeterministicResumeComposer:
                     label=f"strategy-expand:{action_index + 1}",
                 )
                 expansion_attempts += 1
+                if not expanded.evaluation.fits_one_page:
+                    iterations[-1] = iterations[-1].model_copy(
+                        update={
+                            "accepted": False,
+                            "overflow": True,
+                            "reason": (
+                                "Reserve action overflowed the rendered planning geometry; "
+                                "later actions remain eligible."
+                            ),
+                        }
+                    )
+                    continue
                 if (
-                    not expanded.evaluation.fits_one_page
-                    or expanded.evaluation.utilization_ratio
+                    expanded.evaluation.utilization_ratio
                     > STRATEGY_UTILIZATION_ACCEPTABLE_CEILING
                 ):
+                    iterations[-1] = iterations[-1].model_copy(
+                        update={
+                            "accepted": False,
+                            "reason": (
+                                "Reserve action exceeded the 95% acceptable utilization ceiling; "
+                                "later actions remain eligible."
+                            ),
+                        }
+                    )
                     continue
                 marginal_value = expanded.quality - expansion_base.quality
                 if marginal_value <= 0:
+                    iterations[-1] = iterations[-1].model_copy(
+                        update={
+                            "accepted": False,
+                            "reason": (
+                                "Reserve action added no positive deterministic marginal portfolio "
+                                "value; later actions remain eligible."
+                            ),
+                        }
+                    )
                     continue
+                estimated_viable_action_indices.add(action_index)
+                iterations[-1] = iterations[-1].model_copy(
+                    update={
+                        "reason": (
+                            "Reserve action fit the rendered planning geometry with positive "
+                            "marginal value and was retained as an exact-pagination sibling."
+                        )
+                    }
+                )
+                if expanded.state.key not in evaluated_state_keys:
+                    evaluated.append(expanded)
+                    evaluated_state_keys.add(expanded.state.key)
                 added_candidate_ids = expanded_bullets - expansion_base.state.bullet_ids
                 existing_entries = {
                     bullet_by_id[candidate_id].entry_id
@@ -1716,7 +1801,6 @@ class DeterministicResumeComposer:
             chosen = min(expansion_options, key=lambda item: item[:3])
             chosen_index = chosen[2]
             expansion_base = chosen[3]
-            evaluated.append(expansion_base)
             remaining_reserve = [
                 item for item in remaining_reserve if item[0] != chosen_index
             ]
@@ -1756,10 +1840,22 @@ class DeterministicResumeComposer:
                 zip(finalists, batch_evaluations, strict=True),
                 start=1,
             ):
+                finalist_sources = represented_evidence(finalist.state)
+                finalist_action_indices = [
+                    action_index
+                    for action_index, action in enumerate(strategy.expansion_reserve)
+                    if set(action.evidence_ids).issubset(finalist_sources)
+                ]
+                exact_tested_action_indices.update(finalist_action_indices)
+                reserve_suffix = (
+                    ":reserve-" + ",".join(str(item + 1) for item in finalist_action_indices)
+                    if finalist_action_indices
+                    else ""
+                )
                 exact_item = evaluate(
                     finalist.state,
                     exact=True,
-                    label=f"strategy-exact:{index}",
+                    label=f"strategy-exact:{index}{reserve_suffix}",
                     page_override=cast(PageFitEvaluation | None, batch_evaluation),
                 )
                 exact_checked.append(exact_item)
@@ -1786,6 +1882,17 @@ class DeterministicResumeComposer:
             for candidate_id in final.state.bullet_ids
             for evidence_id in bullet_by_id[candidate_id].source_evidence_ids
         }
+        unconsidered_action_indices = set(range(len(strategy.expansion_reserve))) - (
+            considered_action_indices
+        )
+        estimated_not_exact_action_indices = (
+            estimated_viable_action_indices - exact_tested_action_indices
+            if attempt_exact_final
+            else estimated_viable_action_indices
+        )
+        unresolved_action_indices = (
+            unconsidered_action_indices | estimated_not_exact_action_indices
+        )
         bullet_counts = Counter(
             bullet_by_id[candidate_id].entry_id for candidate_id in final.state.bullet_ids
         )
@@ -1878,8 +1985,8 @@ class DeterministicResumeComposer:
                 []
                 if utilization >= STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
                 else [
-                    CompositionUnderfillReason.QUALITY_LIMITED
-                    if strategy.expansion_reserve
+                    CompositionUnderfillReason.SEARCH_BOUNDS_LIMITED
+                    if unresolved_action_indices
                     else CompositionUnderfillReason.EVIDENCE_LIMITED
                 ]
             ),
@@ -1894,9 +2001,17 @@ class DeterministicResumeComposer:
             ),
             verification_provider=final.evaluation.provider,
             verification_failure=verification_failure,
-            additional_evidence_unavailable=not bool(remaining_reserve),
+            additional_evidence_unavailable=not bool(unresolved_action_indices),
             reason=(
-                "Validated Gemini strategy defined the core portfolio and bounded expansion "
+                "The exact one-page result remains underfilled after every validated reserve "
+                "action was consumed or rejected; per-iteration diagnostics record each "
+                "stopping reason."
+                if utilization < STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                and not unresolved_action_indices
+                else "The exact one-page result remains underfilled because the bounded exact "
+                "finalist search did not verify every viable reserve action."
+                if utilization < STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR
+                else "Validated Gemini strategy defined the core portfolio and bounded expansion "
                 "reserve; deterministic page fitting added only positive-marginal reserve "
                 "evidence and rolled back lower-priority content only when required."
             ),

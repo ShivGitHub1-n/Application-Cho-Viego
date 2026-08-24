@@ -95,10 +95,12 @@ receives the normalized full posting, every eligible confirmed evidence atom,
 authoritative entry metadata, deterministic evidence/requirement relationships,
 reviewed skill context, and structural bounds. It returns an application thesis,
 ordered role priorities, selected entries, desired depth, selected and fallback
-evidence IDs, a small ranked underfill-expansion reserve, global evidence
+evidence IDs, a bounded ranked underfill-expansion reserve, global evidence
 priority, and meaningful low-priority omissions. Same-entry fallback evidence
 is retained automatically; the explicit reserve is the bounded way to authorize
-a new entry when it adds distinct portfolio value.
+a new entry when it adds distinct portfolio value. When materially useful unused
+evidence exists, the same strategist call returns multiple independent reserve
+actions so exact pagination can reject one without exhausting the strategy.
 The deterministic validator removes unknown, duplicated, cross-entry,
 unconfirmed, structurally impossible, title-conflicting, or unsupported
 requirement references item by item. A valid remainder survives; the system does
@@ -145,12 +147,14 @@ The hybrid authority split is explicit:
   authority. Explicit approval makes a review-required variant eligible; it
   does not force that wording to replace a stronger source candidate;
 - in Gemini strategy mode, deterministic page fitting first renders the core
-  strategy. Below the 82% preferred floor, it may add only validated ranked
-  reserve actions with positive marginal portfolio value, stopping at 82%-92%,
+  strategy. Below the 88% preferred floor, it may add only validated ranked
+  reserve actions with positive marginal portfolio value, stopping at 88%-93%,
   the 95% acceptable ceiling, overflow, or reserve exhaustion. It still removes
   optional, then medium, then high or critical core evidence when one-page fit
-  requires rollback; within equal priority, readability, redundancy, line cost,
-  and quality remain deterministic;
+  requires rollback. Every positive-value sibling remains eligible for the
+  bounded exact-pagination batch, so an estimated winner that becomes two pages
+  cannot hide a later fitting action. Within equal priority, readability,
+  redundancy, line cost, and quality remain deterministic;
 - in fallback mode, the existing optimizer remains authoritative for final entry
   selection and its full deterministic package frontier;
 - deterministic code remains authoritative for structure, duplication,

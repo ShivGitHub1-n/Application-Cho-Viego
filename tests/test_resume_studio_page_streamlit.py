@@ -2,8 +2,24 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from resume_tailor.frontend.resume_studio_page import _strategy_page_use_warning
+
 HARNESS = Path(__file__).parent / "streamlit_apps" / "resume_studio_test_app.py"
 APP = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+
+
+class _PageUse:
+    def __init__(self, ratio: float) -> None:
+        self.final_utilization_ratio = ratio
+
+
+def test_gemini_page_use_warning_distinguishes_last_resort_underfill() -> None:
+    severe = _strategy_page_use_warning(_PageUse(0.69))
+    underfilled = _strategy_page_use_warning(_PageUse(0.83))
+
+    assert severe is not None and "severely underfilled" in severe
+    assert underfilled is not None and "below the acceptable" in underfilled
+    assert _strategy_page_use_warning(_PageUse(0.84)) is None
 
 
 def _prepare_job_context(app: AppTest) -> AppTest:
