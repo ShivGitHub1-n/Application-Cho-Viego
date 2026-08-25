@@ -35,7 +35,9 @@ target and preservation boundaries are recorded in
    supplying the `resume_tailor` package at runtime.
 4. Copy `.env.example` to `.env`, set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable the production Gemini writer, or keep deterministic fallback enabled. The default resume route disables semantic opportunity/composition calls, uses one batched writer request with at most one malformed-output repair, and never calls Gemini during page fit or download. Validated Gemini role classification is separately opt-in with `LLM_ENABLE_ROLE_CLASSIFICATION=true`; it is disabled by default.
 5. Run the API: `python -m uvicorn resume_tailor.api.main:app --reload --app-dir src`
-6. Run the UI in another terminal: `python -m streamlit run src/resume_tailor/frontend/app.py`
+6. Run the UI in another terminal: `python -m streamlit run src/resume_tailor/frontend/app.py`.
+   This filename-based launch binds imports to this checkout's `src` tree and fails
+   visibly if an already-running process retained a different checkout.
 
 The API health check is available at `http://localhost:8000/health`. Use `POST /optimization-plans` with a reviewed profile and a job posting to obtain a strategy and decision report.
 

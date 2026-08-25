@@ -248,6 +248,15 @@ and call counts. Identity includes profile, posting, plan, final resume,
 research request/result, selected evidence, recipient, date, motivation,
 policy/contract/template versions, provider, and model.
 
+The Streamlit composition root also binds filename-based launches to the
+`src` directory beside that app file. This prevents an editable installation
+from a different checkout from silently supplying the runtime package. The
+session service fingerprint includes the cover-letter writing, validation, and
+provider-contract versions plus that source root, so a policy or checkout
+change reconstructs the service instead of reusing a stale in-memory composer.
+The advanced session diagnostics expose only the resolved source root and
+writing-policy version; no credentials or private evidence are included.
+
 Generation never auto-approves. Streamlit displays the letter first and keeps
 evidence/source diagnostics collapsed. Approval is explicit. A failed rebuild
 cannot replace the last valid artifact. Changed material inputs make the prior

@@ -1,18 +1,52 @@
 """Streamlit composition root for the converged Precision Workbench."""
 
+# The source-checkout bootstrap below intentionally precedes third-party and
+# application imports so a filename-based Streamlit launch cannot resolve another
+# editable checkout first.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import json
 import os
 import sqlite3
+import sys
 from collections.abc import MutableMapping
 from hashlib import sha256
+from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
+
+# Streamlit executes a page by filename.  Unlike pytest (which adds ``src`` through
+# pyproject.toml), that launch mode can otherwise resolve an editable installation
+# from a different checkout before it resolves this script's own package.  Make the
+# checkout containing the requested app the first import authority.
+_CHECKOUT_SRC_ROOT = Path(__file__).resolve().parents[2]
+_checkout_src_text = str(_CHECKOUT_SRC_ROOT)
+if not sys.path or sys.path[0] != _checkout_src_text:
+    if _checkout_src_text in sys.path:
+        sys.path.remove(_checkout_src_text)
+    sys.path.insert(0, _checkout_src_text)
+_already_loaded_package = sys.modules.get("resume_tailor")
+if _already_loaded_package is not None:
+    _already_loaded_file = Path(
+        str(getattr(_already_loaded_package, "__file__", ""))
+    ).resolve()
+    if _CHECKOUT_SRC_ROOT not in _already_loaded_file.parents:
+        raise RuntimeError(
+            "Streamlit retained resume_tailor from a different checkout. Stop this server "
+            f"and restart the app from {_CHECKOUT_SRC_ROOT.parent}."
+        )
 
 import streamlit as st
 from pydantic import ValidationError
 
+import resume_tailor as _runtime_package
+from resume_tailor.application.cover_letter_policy import (
+    COVER_LETTER_PROVIDER_CONTRACT_VERSION,
+    COVER_LETTER_VALIDATION_POLICY_VERSION,
+    COVER_LETTER_WRITING_POLICY_VERSION,
+)
 from resume_tailor.application.generated_artifact import prepare_artifact_download
 from resume_tailor.application.job_discovery.experience import JobsExperienceService
 from resume_tailor.application.job_intake import (
@@ -121,6 +155,13 @@ from resume_tailor.infrastructure.resume_extraction import (
     ResumeExtractionError,
     extract_resume_text,
 )
+
+_RUNTIME_PACKAGE_FILE = Path(_runtime_package.__file__ or "").resolve()
+if _CHECKOUT_SRC_ROOT not in _RUNTIME_PACKAGE_FILE.parents:
+    raise RuntimeError(
+        "Streamlit loaded resume_tailor from a different checkout. Stop the server and "
+        f"restart this app from {_CHECKOUT_SRC_ROOT.parent}."
+    )
 
 st.set_page_config(
     page_title="Application Viego",
@@ -629,6 +670,10 @@ def _tailor_service_configuration_fingerprint(settings: Settings) -> str:
         "composition": settings.llm_enable_composition,
         "bullet_rewrite": settings.llm_enable_bullet_rewrite,
         "cover_letter": settings.llm_enable_cover_letter,
+        "cover_letter_writing_policy": COVER_LETTER_WRITING_POLICY_VERSION,
+        "cover_letter_validation_policy": COVER_LETTER_VALIDATION_POLICY_VERSION,
+        "cover_letter_provider_contract": COVER_LETTER_PROVIDER_CONTRACT_VERSION,
+        "runtime_source_root": str(_CHECKOUT_SRC_ROOT),
     }
     return sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -2367,11 +2412,17 @@ def _render_settings_page(
                 "has_resume": st.session_state.get("resume") is not None,
                 "has_cover_letter": st.session_state.get("cover_letter") is not None,
                 "has_job_discovery_run": (st.session_state.get("job_discovery_run") is not None),
+                "runtime_source_root": st.session_state.get("_runtime_source_root"),
+                "cover_letter_writing_policy": st.session_state.get(
+                    "_cover_letter_writing_policy"
+                ),
             }
         )
 
 
 initialize_frontend_state(_state())
+st.session_state["_runtime_source_root"] = str(_CHECKOUT_SRC_ROOT)
+st.session_state["_cover_letter_writing_policy"] = COVER_LETTER_WRITING_POLICY_VERSION
 settings = Settings()
 tailor_service_fingerprint = _tailor_service_configuration_fingerprint(settings)
 if (

@@ -7,6 +7,9 @@ from pytest import MonkeyPatch
 from streamlit.testing.v1 import AppTest
 
 import resume_tailor.infrastructure.dependencies as dependencies
+from resume_tailor.application.cover_letter_policy import (
+    COVER_LETTER_WRITING_POLICY_VERSION,
+)
 from resume_tailor.application.generated_artifact import content_fingerprint
 from resume_tailor.application.workflow_state import COVER_LETTER_ARTIFACT_KEY
 from resume_tailor.domain.company_research import (
@@ -22,7 +25,13 @@ from resume_tailor.domain.cover_letter import (
     CoverLetterReviewState,
     CoverLetterValidationStatus,
 )
-from resume_tailor.domain.models import MasterProfile
+from resume_tailor.domain.models import (
+    EntityKind,
+    EvidenceItem,
+    JobPosting,
+    MasterProfile,
+    ResumeItem,
+)
 from resume_tailor.infrastructure.config import Settings
 from resume_tailor.infrastructure.cover_letter_rendering import (
     CoverLetterRenderer as ProductionCoverLetterRenderer,
@@ -46,6 +55,101 @@ POSTING_FIXTURE = (
 
 def _navigate(app: AppTest, route: str) -> AppTest:
     return app.button(key=f"pw-route-sidebar-{route}").click().run()
+
+
+def _software_posting_only_case() -> tuple[MasterProfile, JobPosting]:
+    profile = MasterProfile(
+        id="software-cover-profile",
+        user_id="synthetic-user",
+        display_name="Casey Candidate",
+        contact={"email": "casey@example.com", "location": "Toronto, ON"},
+        experiences=[
+            ResumeItem(
+                id="platform-entry",
+                title="Software Engineering Intern",
+                kind=EntityKind.EXPERIENCE,
+            ),
+            ResumeItem(
+                id="evaluation-entry",
+                title="ML Platform Developer",
+                kind=EntityKind.EXPERIENCE,
+            ),
+        ],
+        projects=[
+            ResumeItem(
+                id="motor-project",
+                title="Motor Controller Project",
+                kind=EntityKind.PROJECT,
+            )
+        ],
+        evidence=[
+            EvidenceItem(
+                id="typed-api",
+                entity_id="platform-entry",
+                source_text=(
+                    "Built typed Python APIs and PostgreSQL data models for a production "
+                    "workflow service."
+                ),
+                technologies=["Python", "PostgreSQL", "typed APIs"],
+            ),
+            EvidenceItem(
+                id="integration-tests",
+                entity_id="platform-entry",
+                source_text=(
+                    "Implemented automated integration tests for service retries, error "
+                    "handling, and database transactions."
+                ),
+                technologies=["integration tests", "database transactions"],
+            ),
+            EvidenceItem(
+                id="service-debugging",
+                entity_id="platform-entry",
+                source_text=(
+                    "Debugged request failures with structured logs and latency traces across "
+                    "containerized services."
+                ),
+                technologies=["structured logs", "latency traces", "containers"],
+            ),
+            EvidenceItem(
+                id="retrieval-evaluation",
+                entity_id="evaluation-entry",
+                source_text=(
+                    "Developed retrieval evaluation tooling that compared model responses "
+                    "against versioned quality checks."
+                ),
+                technologies=["retrieval", "model evaluation", "quality checks"],
+            ),
+            EvidenceItem(
+                id="evaluation-observability",
+                entity_id="evaluation-entry",
+                source_text=(
+                    "Added failure diagnostics and run-level observability to an ML evaluation "
+                    "pipeline."
+                ),
+                technologies=["observability", "ML evaluation"],
+            ),
+            EvidenceItem(
+                id="motor-hardware",
+                entity_id="motor-project",
+                source_text=(
+                    "Assembled a motor driver circuit and tested actuator current on a bench."
+                ),
+                technologies=["motor driver", "actuator current"],
+            ),
+        ],
+    )
+    posting = JobPosting(
+        id="software-posting-only",
+        title="Software Engineering Intern",
+        company_name="Example Language Systems",
+        description=(
+            "Build and maintain production software services in Python. Develop typed APIs "
+            "and data models, write automated integration tests, debug distributed systems, "
+            "and improve observability for ML platform workflows."
+        ),
+        source_url="https://example.test/jobs/software-engineering-intern",
+    )
+    return profile, posting
 
 
 class _UnavailablePaginationProvider:
@@ -216,6 +320,101 @@ def test_streamlit_cover_letter_can_start_from_job_context_without_resume(
     assert artifact.page_fit.status is CoverLetterPageFitStatus.SEVERE_UNDERFILL
     assert not app.exception
     assert app.error
+
+
+def test_production_streamlit_posting_only_software_opening_carries_exact_authority(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Cover the production page -> facade -> service -> composer path."""
+
+    _configure_offline_app(monkeypatch, tmp_path, exact_cover_pagination=True)
+    profile, posting = _software_posting_only_case()
+    dependencies.create_profile_repository(Settings()).save(profile)
+
+    app = AppTest.from_file(str(ROOT / "src" / "resume_tailor" / "frontend" / "app.py"))
+    app.session_state["profile_id"] = profile.id
+    app.run()
+    _navigate(app, "cover_letters")
+    app.text_input(key="cover_direct_company").input(posting.company_name).run()
+    app.text_input(key="cover_direct_role").input(posting.title).run()
+    app.text_area(key="cover_direct_posting").input(posting.description).run()
+    next(
+        button
+        for button in app.button
+        if button.label == "Use this job for Cover Letters"
+    ).click().run()
+    next(button for button in app.button if button.label == "Generate cover letter").click().run(
+        timeout=60
+    )
+
+    assert not app.exception
+    artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
+    assert artifact.fingerprint_inputs.writing_policy_version == (
+        COVER_LETTER_WRITING_POLICY_VERSION
+    )
+    assert artifact.company_research.status is CompanyResearchStatus.POSTING_ONLY
+    assert artifact.call_counts.provider_calls == 0
+
+    opening = artifact.letter.paragraphs[0]
+    assert opening.sentence_authorities
+    connection = opening.sentence_authorities[0]
+    assert connection.candidate_evidence_ids
+    assert connection.posting_fact_ids
+    evidence_ids = {item.id for item in artifact.evidence_records}
+    posting_facts = {
+        fact.id: fact
+        for fact in artifact.company_research.facts
+        if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+    }
+    assert set(connection.candidate_evidence_ids) <= evidence_ids
+    assert set(connection.posting_fact_ids) <= posting_facts.keys()
+    attached_fact_text = " ".join(
+        posting_facts[fact_id].fact for fact_id in connection.posting_fact_ids
+    ).casefold()
+    opening_text = connection.text.casefold()
+    responsibility_terms = {
+        term
+        for term in (
+            "python",
+            "typed apis",
+            "data models",
+            "integration tests",
+            "distributed systems",
+            "observability",
+            "ml platform",
+        )
+        if term in attached_fact_text
+    }
+    assert responsibility_terms
+    assert any(term in opening_text for term in responsibility_terms)
+
+    prose_validations = [
+        diagnostic
+        for diagnostic in artifact.candidate_validations
+        if all(
+            status is not CoverLetterQualityGateStatus.FAILED
+            for status in (
+                diagnostic.structural_validation,
+                diagnostic.company_validation,
+                diagnostic.narrative_validation,
+                diagnostic.claim_validation,
+            )
+        )
+    ]
+    assert prose_validations
+    forbidden_codes = {
+        "candidate_claims_supported",
+        "company_connection_verified",
+        "interchangeable_company_connection",
+        "why_company_me_role_coherent",
+        "opening_missing",
+        "company_fact_not_verified",
+    }
+    assert all(
+        not (forbidden_codes & set(diagnostic.rejection_codes))
+        for diagnostic in prose_validations
+    )
 
 
 def test_production_streamlit_accepts_grounded_synthetic_senior_role(

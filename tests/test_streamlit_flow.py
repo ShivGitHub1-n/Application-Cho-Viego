@@ -6,6 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 import resume_tailor.infrastructure.dependencies as dependencies
+from resume_tailor.application import cover_letter_policy
 from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.generated_artifact import (
     ResumeGenerationConfiguration,
@@ -141,6 +142,14 @@ def test_streamlit_rebuilds_cached_service_when_provider_configuration_changes(
     monkeypatch.setenv("LLM_ENABLE_COVER_LETTER", "false")
     app.run()
     assert constructions == 2
+
+    monkeypatch.setattr(
+        cover_letter_policy,
+        "COVER_LETTER_WRITING_POLICY_VERSION",
+        "cover-letter-writing-runtime-fingerprint-test",
+    )
+    app.run()
+    assert constructions == 3
 
 
 def test_initial_workflow_has_no_active_posting_and_cover_letter_is_guarded() -> None:
