@@ -19,6 +19,8 @@ page fitting, Template V1, or download behavior.
   zero provider calls.
 - Immutable generated-artifact storage and stored-byte DOCX download with zero
   generation calls.
+- Application-scoped structured resume editing with canonical suggestion parents,
+  exact DOCX/PDF preview, revision-bound approval, and zero provider calls.
 - Synthetic tracked reference DOCX for clean-checkout rendering tests.
 
 ## Current roadmap
@@ -36,10 +38,11 @@ page fitting, Template V1, or download behavior.
 
 - Gemini does not yet consistently produce stronger bullets than strong
   reviewed source bullets; cross-role calibration is deferred.
-- Exact Microsoft Word pagination is unavailable in the current environment.
-  Deterministic page utilization remains an estimate requiring Word review.
+- Exact Microsoft Word pagination and DOCX-to-PDF preview conversion are verified
+  locally; deployments without an exact paginator must continue to fail closed.
 - Repository-wide Ruff and mypy debt remains outside this closeout.
-- Structured editor and template customization are deferred.
+- Runtime template customization remains deferred; structured application-resume
+  editing is implemented against Template V1.
 - Broader frontend redesign is not complete.
 - The Chrome extension is not implemented.
 - Job Discovery remains constrained to its approved-source MVP and is not a

@@ -43,6 +43,10 @@ from resume_tailor.application.resume_features import (
 from resume_tailor.application.resume_semantic_entailment import (
     evidence_entailed_target_terminology,
 )
+from resume_tailor.application.resume_suggestions import (
+    ResumeSuggestionParentError,
+    canonical_entry_for_evidence,
+)
 from resume_tailor.application.resume_writing_policy import (
     DEFAULT_RESUME_WRITING_POLICY,
     ResumeWritingPolicy,
@@ -1799,8 +1803,6 @@ class HybridLlmServices:
         experience_ids = {item.id for item in experiences}
         project_ids = {item.id for item in projects}
         entity_titles = dict(resume.entity_titles)
-        profile_entries = {item.id: item for item in [*profile.experiences, *profile.projects]}
-        evidence_owner = {item.id: item.entity_id for item in profile.evidence if item.confirmed}
         represented_entry_ids = set(experience_bullets) | set(project_bullets)
 
         # An explicitly approved suggestion may belong to a strategist-authorized
@@ -1812,17 +1814,25 @@ class HybridLlmServices:
         for item in usable:
             if item.variant_id not in approved_claim_ids or item.entry_id in represented_entry_ids:
                 continue
-            entry = profile_entries.get(item.entry_id)
-            if entry is None or not item.source_evidence_ids:
-                continue
-            if any(
-                evidence_owner.get(evidence_id) != item.entry_id
-                for evidence_id in item.source_evidence_ids
-            ):
+            try:
+                canonical_entry_for_evidence(
+                    profile,
+                    item.entry_id,
+                    item.source_evidence_ids,
+                )
+            except ResumeSuggestionParentError:
                 continue
             approved_omitted[item.entry_id].append(item)
         for entry_id, entry_variants in approved_omitted.items():
-            entry = profile_entries[entry_id]
+            entry = canonical_entry_for_evidence(
+                profile,
+                entry_id,
+                [
+                    evidence_id
+                    for item in entry_variants
+                    for evidence_id in item.source_evidence_ids
+                ],
+            ).entry
             bullets: list[StructuredBullet] = []
             covered: set[str] = set()
             for item in sorted(entry_variants, key=_variant_sort_key):

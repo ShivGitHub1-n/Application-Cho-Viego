@@ -50,6 +50,13 @@ JSON or SQLite / Gemini adapter / approved web clients / python-docx
   populates or clones its semantic OOXML prototypes. The accompanying JSON
   layout profile is diagnostic only and is not a formatting source for the
   default renderer.
+- The live résumé editor starts from an immutable generated artifact and creates a separate,
+  application-scoped `ResumeEditorRevision`. Editor operations preserve evidence IDs and
+  canonical parents, validate manual wording and reviewed skills deterministically, and never
+  call semantic planning or writing providers. Applying staged edits renders Template V1 once,
+  converts that DOCX to the visible PDF preview, and verifies the exact PDF page tree without
+  automatic content reduction. Export requires approval of the exact current revision
+  fingerprint and returns its stored DOCX bytes. See [RESUME_EDITOR.md](RESUME_EDITOR.md).
 - Composed metadata remains a direct reference to authoritative reviewed entry
   fields. A domain fidelity check rejects accumulated ranges, repeated
   output-bearing metadata, and duplicate selected entry IDs before final

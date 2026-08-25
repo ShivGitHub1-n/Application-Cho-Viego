@@ -71,6 +71,7 @@ from resume_tailor.application.profile_editor import (
     remove_entry,
     remove_skill_category,
 )
+from resume_tailor.application.resume_editor import ResumeEditorService
 from resume_tailor.application.skill_categories import propose_reviewed_skill_categories
 from resume_tailor.application.workflow_state import (
     COVER_LETTER_DERIVED_KEYS,
@@ -150,6 +151,9 @@ from resume_tailor.infrastructure.profile_repository import (
 from resume_tailor.infrastructure.rendering import (
     ManagedResumeRenderer,
     PageOverflowError,
+)
+from resume_tailor.infrastructure.resume_editor_rendering import (
+    TemplateV1ResumeEditorRenderer,
 )
 from resume_tailor.infrastructure.resume_extraction import (
     ResumeExtractionError,
@@ -2537,6 +2541,7 @@ elif active_route is AppRoute.RESUME_STUDIO:
             tailor_service=service,
             resume_renderer=ManagedResumeRenderer(),
             invalidate_tailoring=_clear_tailoring_state,
+            editor_service=ResumeEditorService(TemplateV1ResumeEditorRenderer()),
         ),
     )
 else:

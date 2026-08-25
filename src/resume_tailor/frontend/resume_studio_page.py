@@ -17,6 +17,10 @@ from resume_tailor.application.generated_artifact import (
 )
 from resume_tailor.application.job_intake import InvalidJobDescriptionError, build_job_posting
 from resume_tailor.application.profile_editor import profile_change_fingerprint
+from resume_tailor.application.resume_suggestions import (
+    ResumeSuggestionParentError,
+    canonical_suggestion_parent,
+)
 from resume_tailor.application.workflow_state import (
     GENERATED_RESUME_APPROVED_CLAIMS_KEY,
     GENERATED_RESUME_ARTIFACT_VERSION_KEY,
@@ -36,6 +40,12 @@ from resume_tailor.domain.resume_composition import (
     TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
 )
 from resume_tailor.frontend.document_canvas import generated_resume_groups, render_document_canvas
+from resume_tailor.frontend.resume_editor import (
+    active_editor_view,
+    approved_editor_revision_fingerprint,
+    render_resume_editor,
+    set_editor_revision_approved,
+)
 from resume_tailor.frontend.shared_components import (
     render_empty_state,
     render_page_header,
@@ -104,6 +114,7 @@ class ResumeStudioDependencies:
     tailor_service: Any
     resume_renderer: Any
     invalidate_tailoring: Callable[[], None]
+    editor_service: Any | None = None
 
 
 def _strategy_page_use_warning(composition: Any) -> str | None:
@@ -641,12 +652,12 @@ def _render_job_context(
 
 
 def _suggestion_context(profile: MasterProfile, resume: Any, bullet: Any) -> tuple[str, str, bool]:
-    variant = getattr(bullet, "writing_variant", None)
-    entry_id = str(getattr(variant, "entry_id", ""))
-    entries = [*profile.experiences, *profile.projects]
-    entry = next((item for item in entries if item.id == entry_id), None)
-    if entry is None:
+    try:
+        parent = canonical_suggestion_parent(profile, bullet)
+    except ResumeSuggestionParentError:
         return "Resume wording", "", False
+    entry = parent.entry
+    entry_id = entry.id
     in_resume = entry_id in resume.experience_bullets or entry_id in resume.project_bullets
     kind = "Experience" if entry.kind is EntityKind.EXPERIENCE else "Project"
     return f"{kind} · {entry.title}", entry_id, not in_resume
@@ -745,6 +756,20 @@ def _render_review(
     resume = streamlit_module.session_state.get("resume")
     if plan is None or profile is None or resume is None:
         streamlit_module.info("Build a reviewed résumé before document review.")
+        return
+    artifact = streamlit_module.session_state.get("generated_resume_artifact")
+    if (
+        isinstance(artifact, GeneratedResumeArtifact)
+        and dependencies.editor_service is not None
+        and isinstance(plan.posting, JobPosting)
+    ):
+        _render_editor_review(
+            streamlit_module,
+            dependencies,
+            artifact,
+            plan,
+            profile,
+        )
         return
     permanent_ids = set(streamlit_module.session_state.get("resume_generated_approval_ids", set()))
     outcomes = streamlit_module.session_state.get("resume_suggestion_outcomes", {})
@@ -867,6 +892,81 @@ def _render_review(
         _request_stage(streamlit_module, ResumeStudioStage.EXPORT)
 
 
+def _render_editor_review(
+    streamlit_module: Any,
+    dependencies: ResumeStudioDependencies,
+    artifact: GeneratedResumeArtifact,
+    plan: Any,
+    profile: MasterProfile,
+) -> None:
+    if not _artifact_is_current(
+        dependencies,
+        artifact,
+        plan,
+        profile,
+        _approved_artifact_ids(streamlit_module),
+    ):
+        streamlit_module.warning(
+            "The generated baseline changed. Rebuild it before continuing your edits."
+        )
+        return
+    view = render_resume_editor(
+        streamlit_module,
+        service=dependencies.editor_service,
+        artifact=artifact,
+        profile=profile,
+        posting=plan.posting,
+        clear_export=_clear_resume_export_artifacts,
+    )
+    if view is None:
+        return
+    render = view.revision.render
+    if view.has_staged_changes:
+        streamlit_module.info(
+            "You have staged changes. Apply them to update the document preview."
+        )
+    if render.page_count is not None and render.page_count > 1:
+        streamlit_module.warning(
+            "This revision exceeds one page. Nothing was removed automatically; revise or undo "
+            "the edit before export."
+        )
+    elif not render.exact_pagination:
+        streamlit_module.warning(
+            "Exact page verification is unavailable for this revision."
+        )
+    state = streamlit_module.session_state
+    can_review = (
+        not view.has_staged_changes
+        and render.exact_pagination
+        and render.page_count == 1
+    )
+    if not can_review:
+        state[_REVIEW_CONFIRMED_KEY] = False
+        state.pop(_REVIEW_WIDGET_KEY, None)
+        set_editor_revision_approved(streamlit_module, False)
+    if _REVIEW_WIDGET_KEY not in state:
+        state[_REVIEW_WIDGET_KEY] = bool(
+            state.get(_REVIEW_CONFIRMED_KEY, False)
+            and approved_editor_revision_fingerprint(streamlit_module)
+            == view.revision.revision_fingerprint
+        )
+    reviewed = streamlit_module.checkbox(
+        "I reviewed this exact résumé revision for export.",
+        key=_REVIEW_WIDGET_KEY,
+        disabled=not can_review,
+        on_change=_sync_review_confirmation,
+        args=(streamlit_module,),
+    )
+    set_editor_revision_approved(streamlit_module, bool(reviewed and can_review))
+    if streamlit_module.button(
+        "Continue to export",
+        key="resume-to-export",
+        disabled=not reviewed or not can_review,
+    ):
+        _sync_review_confirmation(streamlit_module)
+        _request_stage(streamlit_module, ResumeStudioStage.EXPORT)
+
+
 def _render_export(
     streamlit_module: Any,
     dependencies: ResumeStudioDependencies,
@@ -894,6 +994,10 @@ def _render_export(
             streamlit_module.warning(
                 "The stored resume artifact is stale. Return to Resume review and rebuild it."
             )
+            return
+        editor_view = active_editor_view(streamlit_module)
+        if dependencies.editor_service is not None and editor_view is not None:
+            _render_editor_export(streamlit_module, dependencies, editor_view)
             return
         hybrid = artifact.writing_diagnostic
         rewritten = hybrid.rewritten_bullet_count if hybrid is not None else 0
@@ -1011,6 +1115,72 @@ def _render_export(
             streamlit_module.session_state["resume_export_pdf"],
             "tailored-resume.pdf",
             key="resume-download-pdf",
+        )
+
+
+def _render_editor_export(
+    streamlit_module: Any,
+    dependencies: ResumeStudioDependencies,
+    editor_view: Any,
+) -> None:
+    revision = editor_view.revision
+    render = revision.render
+    if editor_view.has_staged_changes:
+        streamlit_module.warning(
+            "Return to résumé review and apply or discard the staged changes before export."
+        )
+        return
+    page_status = (
+        "1 page verified"
+        if render.exact_pagination and render.page_count == 1
+        else f"{render.page_count} pages" if render.page_count else "Unverified"
+    )
+    render_status_strip(
+        streamlit_module,
+        {
+            "Revision": str(revision.revision_number),
+            "Validation": "Passed",
+            "Pagination": page_status,
+            "Page use": (
+                f"{render.utilization_ratio:.0%}"
+                if render.utilization_ratio is not None
+                else "Unavailable"
+            ),
+        },
+    )
+    approved = approved_editor_revision_fingerprint(streamlit_module)
+    if approved != revision.revision_fingerprint:
+        streamlit_module.warning(
+            "Return to résumé review and approve this exact revision before export."
+        )
+        return
+    if not render.exact_pagination or render.page_count != 1:
+        streamlit_module.warning(
+            "This revision cannot be exported until it is verified as exactly one page."
+        )
+        return
+    if streamlit_module.button(
+        "Prepare current revision", key="resume-editor-prepare-export", type="primary"
+    ):
+        _clear_resume_export_artifacts(streamlit_module)
+        download = dependencies.editor_service.prepare_download(
+            revision,
+            approved_revision_fingerprint=approved,
+        )
+        streamlit_module.session_state["resume_export_docx"] = download.docx_bytes
+        streamlit_module.session_state["resume_export_status"] = (
+            "Your reviewed one-page revision is ready to download."
+        )
+    status = streamlit_module.session_state.get("resume_export_status")
+    if status and streamlit_module.session_state.get("resume_export_docx"):
+        streamlit_module.success(status)
+        streamlit_module.download_button(
+            "Download DOCX",
+            streamlit_module.session_state["resume_export_docx"],
+            "tailored-resume.docx",
+            key="resume-editor-download-docx",
+            on_click=_mark_resume_downloaded,
+            args=(streamlit_module,),
         )
 
 

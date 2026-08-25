@@ -39,6 +39,9 @@ real Streamlit/Word acceptance run remains required.
   provider calls.
 - Generated artifacts are immutable; download returns stored DOCX bytes without
   generation work.
+- The application-scoped live resume editor supports grounded bullet edits,
+  ordering/removal, reviewed-skill changes, canonical-parent suggestions, exact
+  DOCX/PDF preview, overflow feedback, reset, and revision-bound export.
 - Clean-checkout rendering tests use the tracked synthetic reference DOCX.
 - Autonomous approved-source discovery and its responsive UI are integrated.
 
@@ -50,10 +53,11 @@ Template V1 hash remains documented in [TEMPLATE_V1.md](TEMPLATE_V1.md).
 
 - Gemini does not yet consistently outperform strong reviewed source bullets;
   cross-role ranking and calibration are deferred.
-- Exact Word pagination is unavailable in this environment, so deterministic
-  utilization estimates require manual Word inspection.
+- Exact Microsoft Word pagination and DOCX-to-PDF preview conversion are verified
+  in the local Windows runtime. Deployments without an exact paginator fail closed.
 - Repository-wide Ruff and mypy debt remains outside this product closeout.
-- Editor/template customization and broader frontend redesign are deferred.
+- Runtime template customization remains deferred; the live editor preserves
+  Template V1 as the sole formatting authority.
 - Chrome extension capture is not implemented.
 - Cover-letter prose changes require one final real Streamlit/Word acceptance run.
 - Discovery-to-tailoring typed handoff is incomplete.
@@ -324,8 +328,9 @@ ongoing.
   still needs final evidence, tone, structure, and job-specific quality work.
 - The Job Discovery UI and approved-source runtime are integrated, with an empty
   production source registry by default; typed handoff into tailoring remains incomplete.
-- The existing editor manages the master profile. A dynamic structured
-  tailored-resume editor with live page-fit controls is not implemented.
+- The master-profile editor remains separate from the application-scoped tailored
+  resume editor. The latter now provides structured editing and exact page-status
+  feedback without mutating reviewed profile evidence.
 - Application tracking, a conversational chatbot agent, and career
   intelligence are not implemented.
 

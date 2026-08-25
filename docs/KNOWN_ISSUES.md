@@ -19,9 +19,9 @@ current limitations and deferred product work.
   unnecessary supervisory framing even when its technical remainder is
   preferable. Cover-letter writer inputs now suppress that framing for the
   conflicted record; the resume case remains deferred.
-- Exact Microsoft Word pagination is unavailable in the current environment.
-  Deterministic page utilization is an estimate; manual Word review remains
-  authoritative.
+- Exact Microsoft Word pagination and DOCX-to-PDF preview conversion are available
+  in the local Windows runtime. Deployments without an exact paginator remain
+  unable to authorize an edited revision for export.
 - Repository-wide Ruff and mypy debt remains and is not part of product
   behavior or this closeout.
 
@@ -42,7 +42,7 @@ Manual Word inspection remains authoritative until exact pagination is available
 
 ## Deferred product surfaces
 
-- Structured resume editor and template customization.
+- Runtime template customization beyond the fixed Template V1 renderer.
 - Broader Streamlit redesign and user-journey simplification.
 - Thin Chrome extension for job-posting capture.
 - Full browser-to-application-package acceptance testing.

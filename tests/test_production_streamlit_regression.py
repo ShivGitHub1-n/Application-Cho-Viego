@@ -356,7 +356,7 @@ def test_captured_approved_wording_rebuild_and_download_make_no_generation_calls
     assert not any(download.generation_call_counts.model_dump().values())
 
 
-def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
+def test_actual_streamlit_editor_keeps_generated_baseline_and_exports_approved_revision(
     monkeypatch, tmp_path
 ) -> None:
     profile = MasterProfile.model_validate_json(PROFILE_FIXTURE.read_text(encoding="utf-8"))
@@ -380,41 +380,36 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.GENERATED_AWAITING_REVIEW
     )
-    pending = [
-        item for item in app.checkbox if item.key and item.key.startswith("_resume_generated_")
+    suggestions = [
+        item
+        for item in app.button
+        if item.key and item.key.startswith("resume-editor-use-suggestion-")
     ]
-    assert pending
-    for item in pending[:2]:
-        app.checkbox(key=item.key).set_value(True)
+    assert suggestions
     initial_fingerprint = app.session_state["generated_resume_artifact"].artifact_fingerprint
     initial_version = app.session_state[GENERATED_RESUME_ARTIFACT_VERSION_KEY]
+    editor_context = app.session_state["resume_editor_active_context"]
+    initial_revision = app.session_state["resume_editor_workspaces"][editor_context][
+        "applied_revision"
+    ]
 
-    app.button(key="resume-apply-suggestions").click().run(timeout=60)
+    suggestions[0].click().run()
+    app.button(key="resume-editor-apply").click().run(timeout=60)
 
     rebuilt = app.session_state["generated_resume_artifact"]
+    applied_revision = app.session_state["resume_editor_workspaces"][editor_context][
+        "applied_revision"
+    ]
     assert models.calls == 1
-    assert rebuilt.artifact_fingerprint != initial_fingerprint
-    assert app.session_state[GENERATED_RESUME_ARTIFACT_VERSION_KEY] == initial_version + 1
+    assert rebuilt.artifact_fingerprint == initial_fingerprint
+    assert applied_revision.revision_fingerprint != initial_revision.revision_fingerprint
+    assert app.session_state[GENERATED_RESUME_ARTIFACT_VERSION_KEY] == initial_version
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.REBUILT_AWAITING_REVIEW
     )
     assert app.session_state[GENERATED_RESUME_REBUILD_REQUIRED_KEY] is False
     assert app.session_state[GENERATED_RESUME_WORDING_DIRTY_KEY] is False
-    # Do not force AppTest to resubmit the prior conditional-widget tree after
-    # rebuild. Streamlit correctly removed approval-widget keys that are absent
-    # from the rebuilt portfolio; the authoritative workflow flags above prove
-    # that the rebuild action is no longer available on the next browser rerun.
-    for checkbox in app.checkbox:
-        if (
-            checkbox.key
-            and checkbox.key.startswith("_resume_generated_")
-            and checkbox.key not in app.session_state
-        ):
-            # A browser sends its last widget values with the next event. AppTest
-            # instead reads them back from server state, so bridge only the stale
-            # conditional controls that the rebuilt portfolio removed.
-            app.session_state[checkbox.key] = False
-    assert "resume_studio_review_confirmed" not in app.session_state
+    assert app.session_state["resume_studio_review_confirmed"] is False
     assert any(item.key == "_resume_studio_review_confirmed_widget" for item in app.checkbox)
 
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
@@ -424,12 +419,13 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     app.button(key="resume-to-export").click().run()
     if "_resume_studio_review_confirmed_widget" not in app.session_state:
         app.session_state["_resume_studio_review_confirmed_widget"] = True
-    app.button(key="resume-verify-export").click().run()
+    if "resume-editor-visible-skills" not in app.session_state:
+        app.session_state["resume-editor-visible-skills"] = []
+    app.button(key="resume-editor-prepare-export").click().run()
     download_button = next(
         button for button in app.download_button if button.label == "Download DOCX"
     )
-    downloaded = prepare_artifact_download(rebuilt, clock=service.telemetry.clock)
-    assert downloaded.docx_bytes == rebuilt.docx_bytes
+    assert app.session_state["resume_export_docx"] == applied_revision.render.docx_bytes
     download_button.click().run()
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.DOWNLOADED
@@ -441,7 +437,6 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     )
     assert not any(button.label == "Restore current document" for button in app.button)
     assert any(button.label == "Download DOCX" for button in app.download_button)
-    assert app.session_state[GENERATED_RESUME_GENERATED_APPROVALS_KEY]
     assert models.calls == 1
 
 
