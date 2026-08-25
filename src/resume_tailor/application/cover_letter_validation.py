@@ -2298,11 +2298,12 @@ class DeterministicCoverLetterComposer:
         posting: JobPosting,
         length_class: CoverLetterLengthClass,
     ) -> CoverLetterDraftOutput:
-        posting_fact_ids = [
-            fact.id
+        posting_facts = [
+            fact
             for fact in research.facts
             if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
         ][:3]
+        posting_fact_ids = [fact.id for fact in posting_facts]
         if not posting_fact_ids:
             posting_fact_ids = [str(self._company_fact(research).id)]
         threads = self._evidence_threads(evidence)
@@ -2311,9 +2312,21 @@ class DeterministicCoverLetterComposer:
         representatives = [thread[0] for thread in threads]
         opening_record = self._opening_record(representatives, posting)
         connection_records = [opening_record]
-        posting_concepts = self._prioritize_role_concepts(
-            self._authority_concepts(research, posting),
-            posting,
+        opening_fact = (
+            self._opening_posting_fact(posting_facts, opening_record, posting)
+            if posting_facts
+            else None
+        )
+        opening_posting_fact_ids = (
+            [opening_fact.id] if opening_fact is not None else posting_fact_ids
+        )
+        posting_concepts = self._opening_posting_concepts(
+            (
+                self._posting_concepts(opening_fact.fact, posting)
+                if opening_fact is not None
+                else self._authority_concepts(research, posting)
+            ),
+            opening_record,
         )
         if length_class is CoverLetterLengthClass.CONCISE:
             per_thread = 1
@@ -2360,7 +2373,7 @@ class DeterministicCoverLetterComposer:
                     posting_concepts,
                 ),
                 evidence_ids=[item.id for item in connection_records],
-                posting_fact_ids=posting_fact_ids,
+                posting_fact_ids=opening_posting_fact_ids,
                 metadata=[
                     CoverLetterCanonicalMetadata.COMPANY_NAME,
                     CoverLetterCanonicalMetadata.ROLE_TITLE,
@@ -2384,7 +2397,7 @@ class DeterministicCoverLetterComposer:
                     posting,
                 ),
                 evidence_ids=[item.id for item in connection_records],
-                posting_fact_ids=posting_fact_ids,
+                posting_fact_ids=opening_posting_fact_ids,
                 metadata=[
                     CoverLetterCanonicalMetadata.COMPANY_NAME,
                     CoverLetterCanonicalMetadata.ROLE_TITLE,
@@ -2422,6 +2435,100 @@ class DeterministicCoverLetterComposer:
             )
 
         return max(representatives, key=key)
+
+    @classmethod
+    def _opening_posting_fact(
+        cls,
+        posting_facts: list[CompanyResearchFact],
+        record: CoverLetterEvidenceRecord,
+        posting: JobPosting,
+    ) -> CompanyResearchFact:
+        """Choose the posting fact that best supports the opening connection."""
+
+        evidence_terms = CoverLetterValidator._content_terms(
+            " ".join(
+                [
+                    record.writer_text or record.source_text,
+                    *record.technologies,
+                    *record.outcomes,
+                ]
+            )
+        )
+        metadata_terms = CoverLetterValidator._content_terms(
+            f"{posting.company_name or ''} {posting.title}"
+        )
+
+        def key(item: tuple[int, CompanyResearchFact]) -> tuple[int, int, int]:
+            index, fact = item
+            fact_terms = CoverLetterValidator._content_terms(fact.fact) - metadata_terms
+            return (
+                len(evidence_terms & fact_terms),
+                len(fact_terms),
+                -index,
+            )
+
+        return max(enumerate(posting_facts), key=key)[1]
+
+    @classmethod
+    def _opening_posting_concepts(
+        cls,
+        concepts: list[str],
+        record: CoverLetterEvidenceRecord,
+    ) -> list[str]:
+        """Keep a compact, substantive posting focus adjacent to its authority fact."""
+
+        evidence_terms = CoverLetterValidator._content_terms(
+            " ".join(
+                [
+                    record.writer_text or record.source_text,
+                    *record.technologies,
+                    *record.outcomes,
+                ]
+            )
+        )
+        ranked = sorted(
+            enumerate(concepts),
+            key=lambda item: (
+                -len(
+                    CoverLetterValidator._content_terms(item[1]) & evidence_terms
+                ),
+                -len(CoverLetterValidator._content_terms(item[1])),
+                item[0],
+            ),
+        )
+        selected: list[str] = []
+        selected_terms: set[str] = set()
+        for _, concept in ranked:
+            concept_terms = CoverLetterValidator._content_terms(concept)
+            if not concept_terms:
+                continue
+            selected.append(concept)
+            selected_terms.update(concept_terms)
+            if len(selected_terms) >= 2 or len(selected) == 2:
+                break
+        return selected
+
+    @classmethod
+    def _opening_candidate_focus(cls, record: CoverLetterEvidenceRecord) -> str:
+        values = [
+            cls._clean_focus(value)
+            for value in (
+                *record.technologies,
+                *record.outcomes,
+                *cls._technical_phrases(record.writer_text or record.source_text),
+            )
+        ]
+        selected: list[str] = []
+        selected_terms: set[str] = set()
+        for value in dict.fromkeys(values):
+            terms = CoverLetterValidator._content_terms(value)
+            if not value or not terms or terms <= selected_terms:
+                continue
+            selected.append(value)
+            selected_terms.update(terms)
+            if len(selected_terms) >= 2 or len(selected) == 2:
+                break
+        return cls._joined(selected) if selected else cls._record_focus(record)
 
     @classmethod
     def _source_bound_story_paragraph(
@@ -2472,11 +2579,18 @@ class DeterministicCoverLetterComposer:
     ) -> str:
         company = (posting.company_name or "").strip()
         destination = f" at {company}" if company else ""
-        del posting_concepts
+        role_focus = self._joined(posting_concepts[:2])
+        candidate_focus = self._opening_candidate_focus(evidence[0])
         source_fact = self._full_evidence_sentence(evidence[0], index=0).rstrip(".")
-        source_fact = source_fact[:1].lower() + source_fact[1:]
-        return (
-            f"The {posting.title} role{destination} interests me because {source_fact}."
+        return " ".join(
+            [
+                (
+                    f"The {posting.title} role{destination} interests me because its "
+                    "emphasis on "
+                    f"{role_focus} relates to my experience with {candidate_focus}."
+                ),
+                f"{source_fact}.",
+            ]
         )
 
     def _narrative_body(
@@ -3049,9 +3163,11 @@ class DeterministicCoverLetterComposer:
         action_nouns = {
             "act": "execution of",
             "architect": "architecture of",
+            "assemble": "assembly of",
             "build": "development of",
             "collaborate": "collaboration with",
             "create": "development of",
+            "debug": "debugging",
             "define": "defining",
             "design": "design of",
             "develop": "development of",
@@ -3061,6 +3177,7 @@ class DeterministicCoverLetterComposer:
             "improve": "improvement of",
             "integrate": "integration of",
             "investigate": "investigation of",
+            "inspect": "inspection of",
             "iterate": "iteration of",
             "lead": "leadership of",
             "maintain": "maintenance of",
@@ -3077,12 +3194,14 @@ class DeterministicCoverLetterComposer:
         }
         cleaned = value.strip()
         coordinated = re.fullmatch(
-            r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
-            r"select|support|test|translate|troubleshoot|validate|work)\s+and\s+"
-            r"(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
-            r"select|support|test|translate|troubleshoot|validate|work)\s+(.+)",
+            r"(act|architect|assemble|build|collaborate|create|debug|define|design|develop|"
+            r"execute|implement|diagnose|improve|inspect|integrate|investigate|iterate|lead|"
+            r"maintain|perform|prototype|run|select|support|test|translate|troubleshoot|"
+            r"validate|work)\s+and\s+"
+            r"(act|architect|assemble|build|collaborate|create|debug|define|design|develop|"
+            r"execute|implement|diagnose|improve|inspect|integrate|investigate|iterate|lead|"
+            r"maintain|perform|prototype|run|select|support|test|translate|troubleshoot|"
+            r"validate|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
         )
@@ -3091,9 +3210,10 @@ class DeterministicCoverLetterComposer:
             second = action_nouns[coordinated.group(2).casefold()].rstrip(" of")
             return f"{first} and {second} of {coordinated.group(3)}"
         action = re.match(
-            r"^(act|architect|build|collaborate|create|define|design|develop|execute|implement|"
-            r"diagnose|improve|integrate|investigate|iterate|lead|maintain|perform|prototype|run|"
-            r"select|support|test|translate|troubleshoot|validate|work)\s+(.+)",
+            r"^(act|architect|assemble|build|collaborate|create|debug|define|design|develop|"
+            r"execute|implement|diagnose|improve|inspect|integrate|investigate|iterate|lead|"
+            r"maintain|perform|prototype|run|select|support|test|translate|troubleshoot|"
+            r"validate|work)\s+(.+)",
             cleaned,
             re.IGNORECASE,
         )

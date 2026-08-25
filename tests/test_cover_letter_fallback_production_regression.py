@@ -15,7 +15,16 @@ from resume_tailor.domain.application_strategy import (
     StrategyEntryPlan,
     StrategyEvidenceChoice,
 )
-from resume_tailor.domain.cover_letter import CoverLetterQualityGateStatus
+from resume_tailor.domain.company_research import (
+    CompanyFactConfidence,
+    CompanyResearchStatus,
+)
+from resume_tailor.domain.cover_letter import (
+    CoverLetterEvidenceKind,
+    CoverLetterEvidenceRecord,
+    CoverLetterParagraphPurpose,
+    CoverLetterQualityGateStatus,
+)
 from resume_tailor.domain.models import (
     EntityKind,
     EvidenceItem,
@@ -208,6 +217,49 @@ def _hardware_posting() -> JobPosting:
     )
 
 
+def _posting_only_opening_case() -> tuple[
+    JobPosting,
+    list[CoverLetterEvidenceRecord],
+]:
+    posting = JobPosting(
+        id="posting-only-opening",
+        title="Intern",
+        company_name="Example Motion",
+        description=(
+            "The intern will debug integrated electromechanical prototypes under "
+            "bench-test conditions. Maintain clear build records for prototype "
+            "reliability."
+        ),
+    )
+    source_texts = [
+        (
+            "Authored interface-control documents defining 30 signals for ADC, DAC, "
+            "PWM, I2C, UART, and motor-driver interfaces."
+        ),
+        "Contributed C++ integration code for sensor input and prototype control outputs.",
+        "Designed fused wiring harnesses with relays and labelled connectors.",
+        "Validated actuator commands, feedback signals, and manual override behavior.",
+    ]
+    evidence = [
+        CoverLetterEvidenceRecord(
+            id=f"opening-evidence-{index}",
+            kind=CoverLetterEvidenceKind.EXPERIENCE,
+            entity_id="controls",
+            entry_title="Controls Engineer",
+            source_text=source_text,
+            technologies=(
+                ["ADC", "DAC", "PWM", "I2C", "UART"] if index == 0 else []
+            ),
+            outcomes=["30 signals"] if index == 0 else [],
+            provenance=["synthetic-reviewed-profile"],
+            retrieval_rank=index + 1,
+            selection_reason="Validated strategy-compatible story evidence.",
+        )
+        for index, source_text in enumerate(source_texts)
+    ]
+    return posting, evidence
+
+
 def _strategy_plan(profile: MasterProfile, posting: JobPosting, entries: list[str]):
     plan = DeterministicResumeOptimizer().create_plan(
         profile,
@@ -397,6 +449,117 @@ def test_old_resume_summary_cadence_is_a_typed_quality_failure() -> None:
         and gate.status is CoverLetterQualityGateStatus.FAILED
         for gate in validated.quality_gates
     )
+
+
+def test_posting_only_opening_records_candidate_and_specific_posting_authority() -> None:
+    posting, evidence = _posting_only_opening_case()
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    composer = DeterministicCoverLetterComposer()
+    outputs = [
+        *composer.variants(evidence, research, posting),
+        composer.source_bound_fallback(evidence, research, posting),
+    ]
+    facts_by_id = {fact.id: fact for fact in research.facts}
+
+    assert research.status is CompanyResearchStatus.POSTING_ONLY
+    assert all(
+        fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+        for fact in research.facts
+    )
+    assert len(outputs) == 5
+
+    for output in outputs:
+        opening = output.paragraphs[0]
+        assert opening.purpose is CoverLetterParagraphPurpose.OPENING
+        assert opening.candidate_evidence_ids == ["opening-evidence-0"]
+        assert len(opening.company_research_ids) == 1
+        posting_fact = facts_by_id[opening.company_research_ids[0]]
+        assert posting_fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+        assert all(
+            sentence.candidate_evidence_ids == ["opening-evidence-0"]
+            and sentence.posting_fact_ids == opening.company_research_ids
+            and not sentence.verified_company_fact_ids
+            for sentence in opening.source_bound_sentences
+        )
+        metadata_terms = CoverLetterValidator._content_terms(
+            f"{posting.company_name} {posting.title}"
+        )
+        substantive_posting_terms = (
+            CoverLetterValidator._content_terms(posting_fact.fact)
+            & CoverLetterValidator._content_terms(opening.text)
+        ) - metadata_terms
+        assert len(substantive_posting_terms) >= 2
+
+        validated = CoverLetterValidator().validate_output(
+            output,
+            evidence,
+            research,
+            posting,
+        )
+        relevant_gates = {
+            gate.gate: gate
+            for gate in validated.quality_gates
+            if gate.gate
+            in {
+                "candidate_grounding",
+                "company_grounding",
+                "interchangeability",
+                "opening_quality",
+            }
+        }
+        assert not [
+            claim
+            for claim in validated.rejected_claims
+            if claim.paragraph_index == 0
+        ]
+        assert all(
+            gate.status is CoverLetterQualityGateStatus.PASSED
+            for gate in relevant_gates.values()
+        )
+        assert validated.paragraphs[0].purpose is CoverLetterParagraphPurpose.OPENING
+
+
+def test_posting_only_opening_does_not_authorize_an_unsupported_company_claim() -> None:
+    posting, evidence = _posting_only_opening_case()
+    research = BoundedCompanyResearchService().research(
+        CoverLetterService.default_research_request(posting)
+    )
+    output = DeterministicCoverLetterComposer().variants(evidence, research, posting)[0]
+    paragraphs = list(output.paragraphs)
+    opening = paragraphs[0]
+    authorities = list(opening.source_bound_sentences)
+    authorities[0] = authorities[0].model_copy(
+        update={
+            "text": (
+                authorities[0].text.rstrip(".")
+                + " Example Motion ships one million production devices annually."
+            )
+        }
+    )
+    paragraphs[0] = opening.model_copy(
+        update={
+            "text": " ".join(sentence.text for sentence in authorities),
+            "source_bound_sentences": authorities,
+        }
+    )
+
+    validated = CoverLetterValidator().validate_output(
+        output.model_copy(update={"paragraphs": paragraphs}),
+        evidence,
+        research,
+        posting,
+    )
+
+    opening_rejections = [
+        code
+        for claim in validated.rejected_claims
+        if claim.paragraph_index == 0
+        for code in claim.codes
+    ]
+    assert opening_rejections
+    assert "company_fact_not_verified" in opening_rejections
 
 
 def test_hardware_fallback_without_resume_generation_does_not_open_digital_for_variety() -> None:

@@ -125,6 +125,15 @@ supplies a nonblank override, turns imperative posting fragments into noun
 phrases or complete clauses, and keeps validator terminology out of
 employer-facing prose. Sparse evidence produces a shorter diagnostic candidate
 rather than filler.
+
+In posting-only mode, the deterministic opening selects one substantive job-
+posting fact that is closest to its opening evidence, names a compact focus
+derived from that fact, and records that exact `POSTING_AUTHORITY` fact ID on
+each opening sentence together with the candidate evidence ID. Company and role
+metadata remain separate canonical authority. Attaching a general posting
+bundle without expressing a responsibility is insufficient; external company
+research is neither required nor implied.
+
 One repair request is permitted only after a malformed typed response. A
 semantically invalid response does not cause provider retries and is never
 spliced paragraph-by-paragraph into a deterministic letter. Provider
