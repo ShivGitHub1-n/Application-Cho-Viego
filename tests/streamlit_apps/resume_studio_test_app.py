@@ -26,6 +26,8 @@ class _GeneratedItem:
     id: str
     text: str
     value: str = ""
+    evidence_ids: tuple[str, ...] = ()
+    writing_variant: object | None = None
 
 
 class _Plan:
@@ -57,8 +59,14 @@ class _Resume:
         self.project_bullets = {}
         self.entity_titles = {}
         if st.session_state.get("resume-test-generated-pending", False):
+            omitted = st.session_state.get("resume-test-omitted-entry-suggestion", False)
             self.review_pending_bullets = (
-                _GeneratedItem("generated-bullet-1", "A generated bullet pending review."),
+                _GeneratedItem(
+                    "generated-bullet-1",
+                    "A generated bullet pending review.",
+                    evidence_ids=("evidence-project-two",) if omitted else (),
+                    writing_variant=(SimpleNamespace(entry_id="project-two") if omitted else None),
+                ),
             )
             self.review_pending_skills = (
                 _GeneratedItem(

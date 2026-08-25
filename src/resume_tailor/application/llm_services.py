@@ -116,6 +116,7 @@ from resume_tailor.domain.models import (
     CompositionSelection,
     ContactHyperlink,
     Decision,
+    EntityKind,
     JobPosting,
     MasterProfile,
     SkillSelectionStatus,
@@ -992,6 +993,7 @@ class HybridLlmServices:
             resume,
             variants,
             approved_claim_ids,
+            profile,
         )
         selected_ids = {
             bullet.writing_variant.variant_id
@@ -1705,6 +1707,7 @@ class HybridLlmServices:
         resume: StructuredResume,
         variants: list[BulletVariantRecord],
         approved_claim_ids: set[str],
+        profile: MasterProfile,
     ) -> StructuredResume:
         usable = [
             item
@@ -1716,7 +1719,7 @@ class HybridLlmServices:
         for item in usable:
             by_entry[item.entry_id].append(item)
         pending = [
-            *resume.review_pending_bullets,
+            *[item for item in resume.review_pending_bullets if item.id not in approved_claim_ids],
             *[
                 StructuredBullet(
                     id=item.variant_id,
@@ -1789,15 +1792,83 @@ class HybridLlmServices:
                 rewritten[entry_id] = output
             return rewritten
 
+        experience_bullets = rewrite_section(resume.experience_bullets)
+        project_bullets = rewrite_section(resume.project_bullets)
+        experiences = list(resume.experiences)
+        projects = list(resume.projects)
+        experience_ids = {item.id for item in experiences}
+        project_ids = {item.id for item in projects}
+        entity_titles = dict(resume.entity_titles)
+        profile_entries = {item.id: item for item in [*profile.experiences, *profile.projects]}
+        evidence_owner = {item.id: item.entity_id for item in profile.evidence if item.confirmed}
+        represented_entry_ids = set(experience_bullets) | set(project_bullets)
+
+        # An explicitly approved suggestion may belong to a strategist-authorized
+        # entry that was omitted from the initial page-fit seed. Preserve its
+        # canonical parent instead of dropping the approval or attaching the child
+        # elsewhere. The normal composer runs after this step and charges the real
+        # heading, metadata, spacing, and bullet cost before exact pagination.
+        approved_omitted: defaultdict[str, list[BulletVariantRecord]] = defaultdict(list)
+        for item in usable:
+            if item.variant_id not in approved_claim_ids or item.entry_id in represented_entry_ids:
+                continue
+            entry = profile_entries.get(item.entry_id)
+            if entry is None or not item.source_evidence_ids:
+                continue
+            if any(
+                evidence_owner.get(evidence_id) != item.entry_id
+                for evidence_id in item.source_evidence_ids
+            ):
+                continue
+            approved_omitted[item.entry_id].append(item)
+        for entry_id, entry_variants in approved_omitted.items():
+            entry = profile_entries[entry_id]
+            bullets: list[StructuredBullet] = []
+            covered: set[str] = set()
+            for item in sorted(entry_variants, key=_variant_sort_key):
+                source_ids = set(item.source_evidence_ids)
+                if source_ids & covered:
+                    continue
+                bullets.append(
+                    StructuredBullet(
+                        id=item.variant_id,
+                        text=item.rewritten_text,
+                        evidence_ids=item.source_evidence_ids,
+                        support=ClaimSupport.DIRECT,
+                        writing_variant=item,
+                    )
+                )
+                covered.update(source_ids)
+            if not bullets:
+                continue
+            entity_titles[entry_id] = entry.title
+            if entry.kind is EntityKind.EXPERIENCE:
+                if entry_id not in experience_ids:
+                    experiences.append(entry)
+                    experience_ids.add(entry_id)
+                experience_bullets[entry_id] = bullets
+            else:
+                if entry_id not in project_ids:
+                    projects.append(entry)
+                    project_ids.add(entry_id)
+                project_bullets[entry_id] = bullets
+
         return resume.model_copy(
             update={
-                "experience_bullets": rewrite_section(resume.experience_bullets),
-                "project_bullets": rewrite_section(resume.project_bullets),
+                "experiences": experiences,
+                "projects": projects,
+                "entity_titles": entity_titles,
+                "experience_bullets": experience_bullets,
+                "project_bullets": project_bullets,
                 "review_pending_bullets": list({item.id: item for item in pending}.values()),
                 "review_required_claim_ids": list(
                     dict.fromkeys(
                         [
-                            *resume.review_required_claim_ids,
+                            *[
+                                item
+                                for item in resume.review_required_claim_ids
+                                if item not in approved_claim_ids
+                            ],
                             *[item.id for item in pending if item.id not in approved_claim_ids],
                         ]
                     )

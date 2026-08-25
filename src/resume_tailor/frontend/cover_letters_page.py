@@ -286,6 +286,7 @@ def render_cover_letters_page(
         streamlit_module,
         "Cover Letters",
         "Evidence-backed application letters linked to the active job and tailoring plan.",
+        eyebrow="Documents",
     )
     profile = streamlit_module.session_state.get("profile")
     plan = streamlit_module.session_state.get("plan")
@@ -370,12 +371,13 @@ def render_cover_letters_page(
         # evidence review, approval, currentness, and stored-byte download to the
         # accepted cover-letter delivery view instead of the legacy draft/export
         # methods retained by the deterministic page harness.
-        render_cover_letter_view(
-            dependencies.tailor_service,
-            profile,
-            posting,
-            plan,
-        )
+        with streamlit_module.container(key="cover-letter-workspace"):
+            render_cover_letter_view(
+                dependencies.tailor_service,
+                profile,
+                posting,
+                plan,
+            )
         return
     if plan is None:
         streamlit_module.info(

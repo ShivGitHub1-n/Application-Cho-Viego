@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
+from resume_tailor.frontend.jobs_page import _windowed_recommendations
+
 HARNESS = Path(__file__).parent / "streamlit_apps" / "jobs_test_app.py"
 APP = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
+
+
+def test_large_job_feed_renders_a_bounded_window_and_keeps_selected_result() -> None:
+    items = [SimpleNamespace(job_id=f"job-{index}") for index in range(60)]
+
+    first_window = _windowed_recommendations(items, 24, None)
+    selected_window = _windowed_recommendations(items, 24, "job-45")
+
+    assert [item.job_id for item in first_window] == [f"job-{index}" for index in range(24)]
+    assert len(selected_window) == 25
+    assert selected_window[-1].job_id == "job-45"
 
 
 def test_offline_jobs_harness_renders_only_the_jobs_workspace() -> None:
@@ -20,7 +34,7 @@ def test_offline_jobs_harness_renders_only_the_jobs_workspace() -> None:
         "Preferences",
     ]
     assert not any("profile-fit score" in item.value.lower() for item in app.markdown)
-    assert any("Exact supporting evidence" in item.value for item in app.markdown)
+    assert any(expander.label == "Evidence behind this fit" for expander in app.expander)
     assert any("Material gaps" in item.value for item in app.warning)
     assert any("jobs-eligibility--unknown" in item.value for item in app.markdown)
     assert any("Provisional" in item.value for item in app.caption)

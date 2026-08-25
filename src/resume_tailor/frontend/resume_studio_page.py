@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from html import escape
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -28,13 +29,17 @@ from resume_tailor.application.workflow_state import (
 )
 from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
 from resume_tailor.domain.llm_models import LanguageModelError
-from resume_tailor.domain.models import JobPosting, MasterProfile, TemplateConstraints
+from resume_tailor.domain.models import EntityKind, JobPosting, MasterProfile, TemplateConstraints
 from resume_tailor.domain.resume_composition import (
     STRATEGY_UTILIZATION_ACCEPTABLE_FLOOR,
     TEMPLATE_V1_SEVERE_UNDERFILL_FLOOR,
 )
 from resume_tailor.frontend.document_canvas import generated_resume_groups, render_document_canvas
-from resume_tailor.frontend.shared_components import render_page_header
+from resume_tailor.frontend.shared_components import (
+    render_empty_state,
+    render_page_header,
+    render_status_strip,
+)
 from resume_tailor.infrastructure.rendering import (
     PageCountVerificationError,
     PageOverflowError,
@@ -140,6 +145,32 @@ def _store_generated_artifact(
     streamlit_module.session_state[GENERATED_RESUME_GENERATED_APPROVALS_KEY] = set(
         streamlit_module.session_state.get("resume_generated_approval_ids", set())
     )
+    approved_generated = set(
+        streamlit_module.session_state.get("resume_generated_approval_ids", set())
+    )
+    rendered_variants = {
+        bullet.writing_variant.variant_id
+        for section in (
+            artifact.final_resume.experience_bullets,
+            artifact.final_resume.project_bullets,
+        )
+        for bullets in section.values()
+        for bullet in bullets
+        if bullet.writing_variant is not None
+    }
+    known_variant_ids = {
+        item.variant_id
+        for item in (
+            artifact.writing_diagnostic.bullet_variants
+            if artifact.writing_diagnostic is not None
+            else []
+        )
+    }
+    approved_bullet_variants = approved_generated & known_variant_ids
+    streamlit_module.session_state["resume_suggestion_outcomes"] = {
+        "applied": len(approved_bullet_variants & rendered_variants),
+        "not_included": len(approved_bullet_variants - rendered_variants),
+    }
     if artifact is not existing:
         streamlit_module.session_state[GENERATED_RESUME_ARTIFACT_VERSION_KEY] = (
             int(streamlit_module.session_state.get(GENERATED_RESUME_ARTIFACT_VERSION_KEY, 0)) + 1
@@ -205,6 +236,7 @@ def _invalidate_resume_presentation_state(
         "resume_approved_claim_ids",
         "resume_evidence_selection_ids",
         "resume_generated_approval_ids",
+        "resume_suggestion_outcomes",
         _REVIEW_CONFIRMED_KEY,
         _REVIEW_WIDGET_KEY,
     ):
@@ -357,7 +389,7 @@ def _render_job_context(
             "Choose a reviewed Career Profile before creating a tailoring strategy."
         )
         return
-    streamlit_module.caption(f"Using reviewed profile · {profile.display_name} · {profile.id}")
+    streamlit_module.caption(f"Using reviewed profile · {profile.display_name}")
     _prepare_job_context_widgets(streamlit_module)
     title = streamlit_module.text_input(
         "Job title",
@@ -380,7 +412,7 @@ def _render_job_context(
         args=(streamlit_module,),
     )
     if streamlit_module.button(
-        "Create authoritative strategy", key="resume-create-strategy", type="primary"
+        "Create tailoring strategy", key="resume-create-strategy", type="primary"
     ):
         try:
             _sync_job_context(streamlit_module)
@@ -401,7 +433,14 @@ def _render_job_context(
             _invalidate_resume_presentation_state(streamlit_module, dependencies)
             if hasattr(dependencies.tailor_service, "start_generation"):
                 dependencies.tailor_service.start_generation()
-            plan = dependencies.tailor_service.create_plan(profile, posting, TemplateConstraints())
+            with streamlit_module.status(
+                "Creating your tailoring strategy", expanded=True
+            ) as status:
+                status.write("Reading the job and matching it to reviewed profile evidence")
+                plan = dependencies.tailor_service.create_plan(
+                    profile, posting, TemplateConstraints()
+                )
+                status.update(label="Tailoring strategy ready", state="complete")
             state = streamlit_module.session_state
             state["posting"] = posting
             state["plan"] = plan
@@ -442,9 +481,11 @@ def _render_strategy(streamlit_module: Any, plan: Any | None) -> None:
         streamlit_module.warning(report.profile_fit.reason)
     if report.uncovered_signals:
         streamlit_module.warning("Profile gaps: " + ", ".join(report.uncovered_signals))
-    streamlit_module.markdown("**Decision review**")
-    for decision in report.decisions:
-        streamlit_module.write(f"{decision.action.replace('_', ' ').title()} — {decision.reason}")
+    with streamlit_module.expander("Advanced strategy details", expanded=False):
+        for decision in report.decisions:
+            streamlit_module.write(
+                f"{decision.action.replace('_', ' ').title()} — {decision.reason}"
+            )
     if streamlit_module.button("Review evidence selection", key="resume-to-evidence"):
         _request_stage(streamlit_module, ResumeStudioStage.EVIDENCE)
 
@@ -455,6 +496,14 @@ def _pending_claim_ids(plan: Any) -> list[str]:
         for candidate in plan.claim_candidates
         if candidate.support.value == "strong_inference_pending_review"
     ]
+
+
+def _pending_claim_label(plan: Any, claim_id: str) -> str:
+    candidate = next(
+        (item for item in plan.claim_candidates if item.id == claim_id),
+        None,
+    )
+    return str(getattr(candidate, "text", "Suggested evidence wording"))
 
 
 def _render_evidence_selection(
@@ -475,32 +524,129 @@ def _render_evidence_selection(
     for claim_id in _pending_claim_ids(plan):
         widget_key = _approval_widget_key("evidence", claim_id)
         _seed_approval_widget(streamlit_module, widget_key, permanent_ids, claim_id)
-        if streamlit_module.checkbox(f"Approve inferred wording: {claim_id}", key=widget_key):
-            approved_ids.add(claim_id)
+        with streamlit_module.container(border=True, key=f"resume-evidence-review-{claim_id}"):
+            streamlit_module.markdown("**Review a supported inference**")
+            streamlit_module.write(_pending_claim_label(plan, claim_id))
+            streamlit_module.caption(
+                "Use this only if the wording accurately reflects your experience."
+            )
+            if streamlit_module.checkbox("Use this wording", key=widget_key):
+                approved_ids.add(claim_id)
     _record_evidence_selection(streamlit_module, approved_ids)
     if streamlit_module.button(
         "Build reviewed resume", key="resume-build-document", type="primary"
     ):
         try:
             _clear_resume_export_artifacts(streamlit_module)
-            if _uses_generated_artifact_workflow(dependencies):
-                _store_generated_artifact(
-                    streamlit_module,
-                    dependencies,
-                    profile,
-                    plan,
-                    approved_ids,
-                )
-            else:
-                streamlit_module.session_state["resume"] = (
-                    dependencies.tailor_service.build_document(plan, profile, approved_ids)
-                )
+            with streamlit_module.status("Building your résumé", expanded=True) as status:
+                status.write("Selecting wording and verifying the one-page document")
+                if _uses_generated_artifact_workflow(dependencies):
+                    _store_generated_artifact(
+                        streamlit_module,
+                        dependencies,
+                        profile,
+                        plan,
+                        approved_ids,
+                    )
+                else:
+                    streamlit_module.session_state["resume"] = (
+                        dependencies.tailor_service.build_document(plan, profile, approved_ids)
+                    )
+                status.update(label="Résumé ready for review", state="complete")
             streamlit_module.session_state["resume_approved_claim_ids"] = approved_ids
             streamlit_module.session_state[_REVIEW_CONFIRMED_KEY] = False
             streamlit_module.session_state.pop(_REVIEW_WIDGET_KEY, None)
             _request_stage(streamlit_module, ResumeStudioStage.REVIEW)
         except (ValueError, LanguageModelError) as error:
             streamlit_module.error(f"Résumé document could not be built: {error}")
+
+
+def _suggestion_context(profile: MasterProfile, resume: Any, bullet: Any) -> tuple[str, str, bool]:
+    variant = getattr(bullet, "writing_variant", None)
+    entry_id = str(getattr(variant, "entry_id", ""))
+    entries = [*profile.experiences, *profile.projects]
+    entry = next((item for item in entries if item.id == entry_id), None)
+    if entry is None:
+        return "Resume wording", "", False
+    in_resume = entry_id in resume.experience_bullets or entry_id in resume.project_bullets
+    kind = "Experience" if entry.kind is EntityKind.EXPERIENCE else "Project"
+    return f"{kind} · {entry.title}", entry_id, not in_resume
+
+
+def _source_copy(profile: MasterProfile, bullet: Any) -> list[str]:
+    evidence_ids = set(getattr(bullet, "evidence_ids", ()))
+    return [item.source_text for item in profile.evidence if item.id in evidence_ids]
+
+
+def _render_generated_suggestions(
+    streamlit_module: Any,
+    profile: MasterProfile,
+    resume: Any,
+    permanent_ids: set[str],
+) -> tuple[set[str], set[str]]:
+    pending_ids: set[str] = set()
+    visible_ids = {
+        *[bullet.id for bullet in resume.review_pending_bullets],
+        *[skill.id for skill in resume.review_pending_skills],
+    }
+    if not visible_ids:
+        render_empty_state(
+            streamlit_module,
+            "No suggestions need a decision",
+            "The current wording is ready for document review.",
+            icon="check",
+        )
+        return pending_ids, visible_ids
+    streamlit_module.markdown("### Suggestions")
+    streamlit_module.caption(
+        "Compare supported alternatives here. Internal evidence references stay in diagnostics."
+    )
+    for bullet in resume.review_pending_bullets:
+        owner, _entry_id, omitted_parent = _suggestion_context(profile, resume, bullet)
+        widget_key = _approval_widget_key("generated_bullet", bullet.id)
+        _seed_approval_widget(streamlit_module, widget_key, permanent_ids, bullet.id)
+        with streamlit_module.container(border=True, key=f"resume-suggestion-{bullet.id}"):
+            streamlit_module.markdown(
+                '<div class="pw-suggestion-label">'
+                + escape("Add omitted entry" if omitted_parent else "Suggested rewrite")
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+            streamlit_module.markdown(f"**{owner}**")
+            sources = _source_copy(profile, bullet)
+            if sources:
+                streamlit_module.markdown(
+                    '<div class="pw-current-copy"><strong>Current evidence</strong><br>'
+                    + "<br>".join(escape(item) for item in sources)
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+            streamlit_module.markdown(
+                '<div class="pw-suggested-copy"><strong>Suggested wording</strong><br>'
+                + escape(bullet.text)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+            if omitted_parent:
+                streamlit_module.caption(
+                    "Using this adds the canonical parent entry and its document cost; "
+                    "the rebuilt résumé must still pass exact pagination."
+                )
+            action_label = "Add project or experience" if omitted_parent else "Use suggestion"
+            if streamlit_module.checkbox(action_label, key=widget_key):
+                pending_ids.add(bullet.id)
+    for skill in resume.review_pending_skills:
+        widget_key = _approval_widget_key("generated_skill", skill.id)
+        _seed_approval_widget(streamlit_module, widget_key, permanent_ids, skill.id)
+        with streamlit_module.container(border=True, key=f"resume-suggestion-{skill.id}"):
+            streamlit_module.markdown(
+                '<div class="pw-suggestion-label">Suggested skill</div>',
+                unsafe_allow_html=True,
+            )
+            streamlit_module.write(skill.value)
+            if streamlit_module.checkbox("Add to skills", key=widget_key):
+                pending_ids.add(skill.id)
+    return pending_ids, visible_ids
 
 
 def _render_review(
@@ -514,33 +660,36 @@ def _render_review(
     if plan is None or profile is None or resume is None:
         streamlit_module.info("Build a reviewed résumé before document review.")
         return
-    render_document_canvas(
-        streamlit_module,
-        title="Résumé review canvas",
-        sections=generated_resume_groups(resume),
-        caption=(
-            "This canvas is a review surface. DOCX rendering and exact page "
-            "verification remain authoritative."
-        ),
-    )
-    pending_ids: set[str] = set()
-    visible_ids = {
-        *[bullet.id for bullet in resume.review_pending_bullets],
-        *[skill.id for skill in resume.review_pending_skills],
-    }
     permanent_ids = set(streamlit_module.session_state.get("resume_generated_approval_ids", set()))
-    if resume.review_pending_bullets or resume.review_pending_skills:
-        streamlit_module.markdown("**Approval-required generated content**")
-        for bullet in resume.review_pending_bullets:
-            widget_key = _approval_widget_key("generated_bullet", bullet.id)
-            _seed_approval_widget(streamlit_module, widget_key, permanent_ids, bullet.id)
-            if streamlit_module.checkbox(f"Approve inferred bullet: {bullet.text}", key=widget_key):
-                pending_ids.add(bullet.id)
-        for skill in resume.review_pending_skills:
-            widget_key = _approval_widget_key("generated_skill", skill.id)
-            _seed_approval_widget(streamlit_module, widget_key, permanent_ids, skill.id)
-            if streamlit_module.checkbox(f"Approve inferred skill: {skill.value}", key=widget_key):
-                pending_ids.add(skill.id)
+    outcomes = streamlit_module.session_state.get("resume_suggestion_outcomes", {})
+    if outcomes.get("not_included"):
+        streamlit_module.warning(
+            "An approved suggestion could not be included after document selection and exact "
+            "page fitting. It was not attached to another experience or project."
+        )
+    elif outcomes.get("applied"):
+        streamlit_module.success("Approved suggestions were applied and page fit was rechecked.")
+    control_column, document_column = streamlit_module.columns((1.05, 1.95), gap="large")
+    with control_column:
+        with streamlit_module.container(key="resume-controls"):
+            streamlit_module.markdown("### Review controls")
+            streamlit_module.caption(
+                "This control rail is ready for structure, suggestions, and formatting tools "
+                "when live editing is added."
+            )
+            pending_ids, visible_ids = _render_generated_suggestions(
+                streamlit_module, profile, resume, permanent_ids
+            )
+    with document_column:
+        render_document_canvas(
+            streamlit_module,
+            title="Document preview",
+            sections=generated_resume_groups(resume),
+            caption=(
+                "Review preview. The rendered DOCX and exact page verification remain "
+                "authoritative."
+            ),
+        )
     _record_generated_approvals(streamlit_module, pending_ids, visible_ids)
     artifact = streamlit_module.session_state.get("generated_resume_artifact")
     artifact_current = True
@@ -644,10 +793,15 @@ def _render_export(
         composition = artifact.composition_diagnostic
         page_use = f"{composition.final_utilization_ratio:.0%}"
         density_status = composition.preferred_density_status.value.replace("_", " ")
-        streamlit_module.caption(
-            f"Strategy: {strategy_status} · Writing: {writing_status} · "
-            f"Validation: Passed · Pagination: {pagination_status} · "
-            f"Page use: {page_use} ({density_status})"
+        render_status_strip(
+            streamlit_module,
+            {
+                "Strategy": strategy_status,
+                "Writing": writing_status,
+                "Validation": "Passed",
+                "Pagination": pagination_status,
+                "Page use": f"{page_use} · {density_status}",
+            },
         )
         if strategy_status == "Gemini" and (
             page_use_warning := _strategy_page_use_warning(composition)
@@ -748,6 +902,7 @@ def render_resume_studio_page(
         streamlit_module,
         "Resume Studio",
         "One evidence-backed strategy, reviewed before document generation and export.",
+        eyebrow="Documents",
     )
     selected = streamlit_module.pills(
         "Resume Studio stages",
@@ -759,16 +914,17 @@ def render_resume_studio_page(
         streamlit_module.session_state[_ACTIVE_STAGE_KEY] = selected_stage.value
         active_stage = selected_stage
     plan = streamlit_module.session_state.get("plan")
-    if active_stage is ResumeStudioStage.JOB_CONTEXT:
-        _render_job_context(streamlit_module, dependencies, reviewed_profile)
-    elif active_stage is ResumeStudioStage.STRATEGY:
-        _render_strategy(streamlit_module, plan)
-    elif active_stage is ResumeStudioStage.EVIDENCE:
-        _render_evidence_selection(streamlit_module, dependencies, reviewed_profile, plan)
-    elif active_stage is ResumeStudioStage.REVIEW:
-        _render_review(streamlit_module, dependencies, plan, reviewed_profile)
-    else:
-        _render_export(streamlit_module, dependencies, plan, reviewed_profile)
+    with streamlit_module.container(key="resume-workspace"):
+        if active_stage is ResumeStudioStage.JOB_CONTEXT:
+            _render_job_context(streamlit_module, dependencies, reviewed_profile)
+        elif active_stage is ResumeStudioStage.STRATEGY:
+            _render_strategy(streamlit_module, plan)
+        elif active_stage is ResumeStudioStage.EVIDENCE:
+            _render_evidence_selection(streamlit_module, dependencies, reviewed_profile, plan)
+        elif active_stage is ResumeStudioStage.REVIEW:
+            _render_review(streamlit_module, dependencies, plan, reviewed_profile)
+        else:
+            _render_export(streamlit_module, dependencies, plan, reviewed_profile)
 
 
 __all__ = [

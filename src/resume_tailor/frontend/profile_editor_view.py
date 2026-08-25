@@ -230,7 +230,7 @@ def _render_entries(
     for index, entry in enumerate(state.get(kind, [])):
         entry_id = entry.get("id", f"{kind}-{index}")
         with streamlit_module.container(border=True):
-            streamlit_module.markdown(f"**{heading[:-1]} {index + 1}** · `{entry_id}`")
+            streamlit_module.markdown(f"**{heading[:-1]} {index + 1}**")
             entry["title"] = streamlit_module.text_input(
                 "Name or title",
                 entry.get("title", ""),
@@ -298,29 +298,32 @@ def _render_entries(
                     bullet.get("text", ""),
                     key=_widget_key(token, kind, entry_id, "bullet", bullet_id),
                 )
-                metadata = streamlit_module.columns(2)
-                with metadata[0]:
-                    bullet["source_reference"] = streamlit_module.text_input(
-                        "Source reference",
-                        bullet.get("source_reference", "") or "",
-                        key=_widget_key(token, kind, entry_id, "bullet-source", bullet_id),
-                    )
-                    bullet["technologies"] = streamlit_module.text_input(
-                        "Evidence technologies",
-                        _comma_text(bullet.get("technologies", [])),
-                        key=_widget_key(token, kind, entry_id, "bullet-tech", bullet_id),
-                    ).split(",")
-                with metadata[1]:
-                    bullet["capabilities"] = streamlit_module.text_input(
-                        "Evidence capabilities",
-                        _comma_text(bullet.get("capabilities", [])),
-                        key=_widget_key(token, kind, entry_id, "bullet-capabilities", bullet_id),
-                    ).split(",")
-                    bullet["outcomes"] = streamlit_module.text_input(
-                        "Evidence outcomes",
-                        _comma_text(bullet.get("outcomes", [])),
-                        key=_widget_key(token, kind, entry_id, "bullet-outcomes", bullet_id),
-                    ).split(",")
+                with streamlit_module.expander("Evidence details", expanded=False):
+                    metadata = streamlit_module.columns(2)
+                    with metadata[0]:
+                        bullet["source_reference"] = streamlit_module.text_input(
+                            "Source reference",
+                            bullet.get("source_reference", "") or "",
+                            key=_widget_key(token, kind, entry_id, "bullet-source", bullet_id),
+                        )
+                        bullet["technologies"] = streamlit_module.text_input(
+                            "Evidence technologies",
+                            _comma_text(bullet.get("technologies", [])),
+                            key=_widget_key(token, kind, entry_id, "bullet-tech", bullet_id),
+                        ).split(",")
+                    with metadata[1]:
+                        bullet["capabilities"] = streamlit_module.text_input(
+                            "Evidence capabilities",
+                            _comma_text(bullet.get("capabilities", [])),
+                            key=_widget_key(
+                                token, kind, entry_id, "bullet-capabilities", bullet_id
+                            ),
+                        ).split(",")
+                        bullet["outcomes"] = streamlit_module.text_input(
+                            "Evidence outcomes",
+                            _comma_text(bullet.get("outcomes", [])),
+                            key=_widget_key(token, kind, entry_id, "bullet-outcomes", bullet_id),
+                        ).split(",")
                 bullet["confirmed"] = streamlit_module.checkbox(
                     "Evidence is confirmed",
                     bool(bullet.get("confirmed", True)),
@@ -396,11 +399,6 @@ def _render_skills(
                 category.get("category", ""),
                 key=_widget_key(token, "category", category_id, "label"),
             )
-            category["source_reference"] = streamlit_module.text_input(
-                "Category source reference",
-                category.get("source_reference", "") or "",
-                key=_widget_key(token, "category", category_id, "source-reference"),
-            )
             for skill_index, skill in enumerate(list(category.get("skills", []))):
                 skill_id = editor_ui_identity(registry, f"skill:{category_id}", skill)
                 value_column, remove_column = streamlit_module.columns((5, 1))
@@ -409,13 +407,6 @@ def _render_skills(
                         "Skill",
                         skill.get("value", ""),
                         key=_widget_key(token, "category", category_id, "skill", skill_id),
-                    )
-                    skill["source_reference"] = streamlit_module.text_input(
-                        "Skill source reference",
-                        skill.get("source_reference", "") or "",
-                        key=_widget_key(
-                            token, "category", category_id, "skill-source", skill_id
-                        ),
                     )
                 with remove_column:
                     if streamlit_module.button(
@@ -436,6 +427,21 @@ def _render_skills(
                     state, category_id
                 )
                 streamlit_module.rerun()
+            with streamlit_module.expander("Skill provenance", expanded=False):
+                category["source_reference"] = streamlit_module.text_input(
+                    "Category source reference",
+                    category.get("source_reference", "") or "",
+                    key=_widget_key(token, "category", category_id, "source-reference"),
+                )
+                for skill in list(category.get("skills", [])):
+                    skill_id = editor_ui_identity(registry, f"skill:{category_id}", skill)
+                    skill["source_reference"] = streamlit_module.text_input(
+                        "Skill source reference",
+                        skill.get("source_reference", "") or "",
+                        key=_widget_key(
+                            token, "category", category_id, "skill-source", skill_id
+                        ),
+                    )
     if streamlit_module.button("Add skill category", key=_widget_key(token, "category-add")):
         streamlit_module.session_state["profile_editor_state"] = add_skill_category(state)
         streamlit_module.rerun()

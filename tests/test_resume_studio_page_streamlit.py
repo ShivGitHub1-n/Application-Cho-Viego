@@ -104,8 +104,12 @@ def test_resume_approvals_survive_stage_revisits_until_explicitly_changed() -> N
     app.session_state["resume-test-generated-pending"] = True
     app.button(key="resume-build-document").click().run()
 
-    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(True).run()
-    app.checkbox(key="_resume_generated_skill_approval_widget_generated-skill-1").set_value(True).run()
+    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
+        True
+    ).run()
+    app.checkbox(key="_resume_generated_skill_approval_widget_generated-skill-1").set_value(
+        True
+    ).run()
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
     app.button(key="resume-verify-export").click().run()
@@ -135,9 +139,26 @@ def test_resume_approvals_survive_stage_revisits_until_explicitly_changed() -> N
     assert app.session_state["resume_studio_review_confirmed"] is True
     assert "resume_export_status" in app.session_state
 
-    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(False).run()
+    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
+        False
+    ).run()
     assert "resume_export_status" not in app.session_state
     assert "resume_studio_review_confirmed" not in app.session_state
+
+
+def test_omitted_entry_suggestion_names_its_canonical_parent_and_document_cost() -> None:
+    app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
+    app.button(key="resume-create-strategy").click().run()
+    app.button(key="resume-to-evidence").click().run()
+    app.session_state["resume-test-generated-pending"] = True
+    app.session_state["resume-test-omitted-entry-suggestion"] = True
+    app.button(key="resume-build-document").click().run()
+
+    assert app.exception == []
+    assert any("Project · Automation Challenge" in item.value for item in app.markdown)
+    action = app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1")
+    assert action.label == "Add project or experience"
+    assert any("canonical parent entry" in item.value for item in app.caption)
 
 
 def test_jobs_handoff_context_is_the_first_resume_studio_context_and_survives_stages() -> None:

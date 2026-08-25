@@ -280,6 +280,15 @@ def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
         EvidenceBoundResumeWriter(),
         cover_letter_service=cover_service,
     )
+    generation_calls = 0
+    generate_cover_letter_artifact = service.generate_cover_letter_artifact
+
+    def tracked_generation(*args, **kwargs):
+        nonlocal generation_calls
+        generation_calls += 1
+        return generate_cover_letter_artifact(*args, **kwargs)
+
+    service.generate_cover_letter_artifact = tracked_generation
     monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
     monkeypatch.setattr(
         dependencies,
@@ -296,9 +305,10 @@ def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
     next(button for button in app.button if button.label == "Generate cover letter").click().run()
 
     artifact = app.session_state[COVER_LETTER_ARTIFACT_KEY]
+    assert generation_calls == 1
     assert artifact.ready_for_review
     assert artifact.docx_bytes.startswith(b"PK\x03\x04")
-    assert any(expander.label == "Evidence, sources, and diagnostics" for expander in app.expander)
+    assert any(expander.label == "Advanced diagnostics" for expander in app.expander)
     next(
         checkbox
         for checkbox in app.checkbox
@@ -309,6 +319,13 @@ def test_streamlit_cover_letter_uses_artifact_review_and_stored_byte_download(
     approved = app.session_state[COVER_LETTER_ARTIFACT_KEY]
     assert approved.review_state.value == "approved"
     assert any(button.label == "Download approved DOCX" for button in app.get("download_button"))
+
+    _navigate(app, "career_profile")
+    _navigate(app, "cover_letters")
+    assert generation_calls == 1
+    assert app.session_state[COVER_LETTER_ARTIFACT_KEY].artifact_fingerprint == (
+        approved.artifact_fingerprint
+    )
 
 
 def test_failed_cover_letter_rebuild_preserves_prior_valid_artifact() -> None:
@@ -400,7 +417,7 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
         "Validated SPI hardware sensor interfaces."
     )
     assert app.session_state["generated_content_reviewed"] is False
-    assert any("Résumé review canvas" in element.value for element in app.markdown)
+    assert any("Document preview" in element.value for element in app.markdown)
     assert app.session_state["generated_resume_artifact"].docx_bytes
 
 

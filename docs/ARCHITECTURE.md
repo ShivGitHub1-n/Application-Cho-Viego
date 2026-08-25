@@ -427,7 +427,10 @@ the default route.
 Session state carries reviewed profile and generated-workflow objects across
 navigation. Structured profile controls are primary; raw JSON and long
 diagnostics are collapsed delivery affordances. Job Discovery dependencies are
-constructed only when Job Search is selected and a reviewed profile is loaded.
+constructed only when Jobs is selected and are reused for the Streamlit session;
+ordinary navigation, filtering, and card selection do not rebuild HTTP clients or
+repositories. The normal/advanced surface rules and future-editor-ready Resume Studio
+shell are documented in [FRONTEND_WORKSPACE.md](FRONTEND_WORKSPACE.md).
 
 Each generated artifact owns a fresh telemetry window even when Streamlit reuses
 the long-lived service and writer cache. Exact-pagination attempts therefore

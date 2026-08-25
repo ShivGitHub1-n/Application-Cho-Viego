@@ -17,7 +17,7 @@ from resume_tailor.application.profile_editor import (
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import MasterProfile
 from resume_tailor.frontend.profile_editor_view import render_profile_editor
-from resume_tailor.frontend.shared_components import render_page_header
+from resume_tailor.frontend.shared_components import render_page_header, render_status_strip
 from resume_tailor.infrastructure.profile_repository import (
     CorruptStoredProfileError,
     ProfileStoreError,
@@ -385,7 +385,7 @@ def _render_reviewed_profile_selector(
         streamlit_module.info("No reviewed profiles are available yet.")
         return
     ids = [item.id for item in profiles]
-    labels = {item.id: f"{item.display_name} — {item.id}" for item in profiles}
+    labels = {item.id: item.display_name for item in profiles}
     active_id = getattr(profile, "id", None) or streamlit_module.session_state.get("profile_id")
     selected = streamlit_module.selectbox(
         "Reviewed profile",
@@ -443,45 +443,62 @@ def _render_overview_v2(
                 streamlit_module.rerun()
         _render_reviewed_profile_selector(streamlit_module, dependencies, None)
         return None
-    streamlit_module.markdown(
-        f"**{profile.display_name}** · `{profile.id}` · version {profile.version}"
+    streamlit_module.markdown(f"### {profile.display_name}")
+    confirmed_evidence = sum(item.confirmed for item in profile.evidence)
+    readiness_checks = (
+        bool(profile.experiences or profile.projects),
+        bool(confirmed_evidence),
+        bool(profile.technical_skills),
+        bool(profile.contact.email or profile.contact.phone),
     )
-    columns = streamlit_module.columns(5)
-    values = (
-        ("Education", len(profile.education)),
-        ("Experiences", len(profile.experiences)),
-        ("Projects", len(profile.projects)),
-        ("Evidence", len(profile.evidence)),
-        ("Skill groups", len(profile.technical_skills)),
+    readiness = (
+        "Ready for tailoring"
+        if all(readiness_checks)
+        else "Nearly ready"
+        if sum(readiness_checks) >= 3
+        else "Needs review"
     )
-    for column, (label, value) in zip(columns, values, strict=True):
-        with column:
-            streamlit_module.metric(label, value)
-    streamlit_module.info(
-        "Review confirmation, source references, and validation remain attached "
-        "to profile evidence."
+    render_status_strip(
+        streamlit_module,
+        {
+            "Profile status": readiness,
+            "Career history": (
+                f"{len(profile.experiences)} experience"
+                f"{'s' if len(profile.experiences) != 1 else ''}"
+            ),
+            "Project work": (
+                f"{len(profile.projects)} project{'s' if len(profile.projects) != 1 else ''}"
+            ),
+            "Evidence review": (
+                "Reviewed and traceable" if confirmed_evidence else "No reviewed evidence"
+            ),
+        },
+    )
+    streamlit_module.caption(
+        "Jobs and document generation use only the reviewed information in this profile."
     )
     try:
         profiles = list(dependencies.profile_repository.list_all())
     except (ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
         streamlit_module.error(f"Reviewed profiles could not be listed: {error}")
         profiles = []
-    if profiles:
+    if len(profiles) > 1:
         ids = [item.id for item in profiles]
-        labels = {item.id: f"{item.display_name} — {item.id}" for item in profiles}
-        selected = streamlit_module.selectbox(
-            "Reviewed profile",
-            ids,
-            index=ids.index(profile.id) if profile is not None and profile.id in ids else 0,
-            format_func=lambda value: labels[value],
-            key="profile-reviewed-selector",
-        )
-        if streamlit_module.button(
-            "Load selected profile", key="profile-reviewed-load", type="primary"
-        ):
-            _load_existing_profile(streamlit_module, dependencies, selected)
-            streamlit_module.rerun()
-    else:
+        labels = {item.id: item.display_name for item in profiles}
+        with streamlit_module.expander("Switch reviewed profile", expanded=False):
+            selected = streamlit_module.selectbox(
+                "Reviewed profile",
+                ids,
+                index=ids.index(profile.id) if profile is not None and profile.id in ids else 0,
+                format_func=lambda value: labels[value],
+                key="profile-reviewed-selector",
+            )
+            if streamlit_module.button(
+                "Switch profile", key="profile-reviewed-load", type="primary"
+            ):
+                _load_existing_profile(streamlit_module, dependencies, selected)
+                streamlit_module.rerun()
+    elif not profiles:
         streamlit_module.info("No reviewed profiles are available yet.")
     buttons = streamlit_module.columns(2)
     with buttons[0]:
@@ -518,6 +535,7 @@ def _render_profile_page_v2(streamlit_module: Any, dependencies: ProfilePageDepe
         streamlit_module,
         "Career Profile",
         "Reviewed source of truth for tailored jobs and evidence-backed documents.",
+        eyebrow="Profile",
     )
     legacy = streamlit_module.session_state.get("profile-active-section")
     if legacy in _LEGACY_SECTION_MAP:
@@ -580,9 +598,12 @@ def _render_profile_page_v2(streamlit_module: Any, dependencies: ProfilePageDepe
                 on_save=lambda edited: _persist_profile(streamlit_module, dependencies, edited),
                 on_discard=discard,
             )
-    streamlit_module.caption(
-        streamlit_module.session_state.get("profile_load_status", "Profile not loaded.")
-    )
+    profile_status = str(streamlit_module.session_state.get("profile_load_status", ""))
+    if any(
+        signal in profile_status.casefold()
+        for signal in ("unavailable", "could not", "not found", "not saved", "repair")
+    ):
+        streamlit_module.warning(profile_status)
 
 
 def render_profile_page(streamlit_module: Any, dependencies: ProfilePageDependencies) -> None:

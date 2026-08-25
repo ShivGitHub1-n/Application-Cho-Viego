@@ -141,6 +141,10 @@ def test_job_search_services_initialize_only_on_job_search_page(
         _navigate(app, route)
         assert not app.exception
 
+    _navigate(app, AppRoute.CAREER_PROFILE)
+    _navigate(app, AppRoute.JOBS)
+    assert not app.exception
+
     assert calls == 1
 
 
@@ -156,6 +160,35 @@ def test_default_startup_needs_no_gemini_credentials(
 
     assert not app.exception
     assert app.session_state["app_active_page"] == AppRoute.CAREER_PROFILE.value
+
+
+def test_startup_activates_the_visible_stored_profile_when_default_id_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("APPLICATION_VIEGO_DATA_DIR", str(tmp_path))
+    repository = SQLiteMasterProfileRepository(tmp_path / "profile-selection.sqlite3")
+    repository.save(
+        MasterProfile(
+            id="stored-candidate",
+            user_id="stored-user",
+            display_name="Stored Candidate",
+        )
+    )
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+    )
+    monkeypatch.setattr(dependencies, "create_profile_repository", lambda: repository)
+    monkeypatch.setattr(dependencies, "create_tailor_service", lambda: service)
+
+    app = AppTest.from_file(str(_app_path())).run()
+
+    assert not app.exception
+    assert app.session_state["profile"].id == "stored-candidate"
+    assert app.session_state["profile_id"] == "stored-candidate"
+    assert any("Stored Candidate" in item.value for item in app.markdown)
+    assert not any("No saved profile found" in item.value for item in app.caption)
 
 
 def test_job_search_initialization_with_profile_does_not_call_sources(

@@ -678,6 +678,25 @@ def _tailor_service_configuration_fingerprint(settings: Settings) -> str:
     return sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+def _job_service_configuration_fingerprint(settings: Settings) -> str:
+    """Hash reusable Jobs composition inputs without including mutable feed state."""
+
+    payload = {
+        "enabled": settings.job_discovery_enabled,
+        "registry": str(settings.job_discovery_source_registry_path or ""),
+        "database": str(
+            application_database_path(
+                settings.app_data_directory,
+                settings.profile_store_filename,
+            )
+        ),
+        "timeout": settings.job_discovery_source_timeout_seconds,
+        "page_size": settings.job_discovery_source_page_size,
+        "max_pages": settings.job_discovery_source_max_pages,
+    }
+    return sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
 def _clear_cover_letter_state() -> None:
     for key in (
         *COVER_LETTER_DERIVED_KEYS,
@@ -2459,6 +2478,12 @@ if not st.session_state.get("_profile_bootstrap_complete"):
 
 active_profile = cast(MasterProfile | None, st.session_state.get("profile"))
 profile_options = _profile_options(profile_repository)
+if active_profile is None and profile_options:
+    available_profile_ids = {profile_id for profile_id, _ in profile_options}
+    requested_profile_id = str(st.session_state.get("profile_id", "")).strip()
+    if requested_profile_id not in available_profile_ids:
+        _activate_profile(profile_options[0][0], profile_repository)
+        active_profile = cast(MasterProfile | None, st.session_state.get("profile"))
 active_route = normalize_route(
     render_application_shell(
         st,
@@ -2481,18 +2506,30 @@ if active_route is AppRoute.CAREER_PROFILE:
         ),
     )
 elif active_route is AppRoute.JOBS:
-    job_services = None
     try:
-        job_services = create_job_discovery_services(
-            settings,
-            profile_repository=profile_repository,
-        )
-        render_jobs_page(create_jobs_experience(profile_repository, services=job_services))
+        jobs_fingerprint = _job_service_configuration_fingerprint(settings)
+        if (
+            "_job_discovery_services" not in st.session_state
+            or st.session_state.get("_job_discovery_services_fingerprint") != jobs_fingerprint
+        ):
+            previous_job_services = st.session_state.get("_job_discovery_services")
+            if previous_job_services is not None:
+                previous_job_services.close()
+            st.session_state["_job_discovery_services"] = create_job_discovery_services(
+                settings,
+                profile_repository=profile_repository,
+            )
+            st.session_state["_job_discovery_services_fingerprint"] = jobs_fingerprint
+            st.session_state.pop("_jobs_experience", None)
+        job_services = st.session_state["_job_discovery_services"]
+        if "_jobs_experience" not in st.session_state:
+            st.session_state["_jobs_experience"] = create_jobs_experience(
+                profile_repository,
+                services=job_services,
+            )
+        render_jobs_page(st.session_state["_jobs_experience"])
     except sqlite3.OperationalError:
         render_jobs_unavailable(st)
-    finally:
-        if job_services is not None:
-            job_services.close()
 elif active_route is AppRoute.RESUME_STUDIO:
     render_resume_studio_page(
         st,

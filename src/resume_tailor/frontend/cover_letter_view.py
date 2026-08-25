@@ -27,6 +27,7 @@ from resume_tailor.domain.cover_letter import (
 )
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import JobPosting, MasterProfile, TailoringPlan
+from resume_tailor.frontend.shared_components import render_status_strip
 
 
 def render_cover_letter_view(
@@ -37,7 +38,7 @@ def render_cover_letter_view(
 ) -> None:
     """Render a review-first cover-letter workflow around immutable artifacts."""
 
-    with st.container(border=True):
+    with st.container(border=True, key="cover-letter-context"):
         company_column, role_column = st.columns(2)
         company_column.caption("COMPANY")
         company_column.write(posting.company_name or "Company not provided")
@@ -110,10 +111,16 @@ def render_cover_letter_view(
 
     error_message = st.session_state.get(COVER_LETTER_GENERATION_ERROR_KEY)
     if error_message:
-        st.error(f"Cover-letter generation failed: {error_message}")
+        with st.container(border=True, key="cover-letter-error-summary"):
+            st.error("We couldn't create a letter that passed the quality checks.")
+            st.write(
+                "Your profile and any previously completed letter are safe. Review the active "
+                "job context, then try generation again."
+            )
         diagnostics = st.session_state.get(COVER_LETTER_CANDIDATE_DIAGNOSTICS_KEY, [])
-        if diagnostics:
-            with st.expander("Candidate validation details", expanded=True):
+        with st.expander("Advanced diagnostics", expanded=False):
+            st.code(str(error_message))
+            if diagnostics:
                 for diagnostic in diagnostics:
                     failed = ", ".join(diagnostic.rejection_codes) or "none"
                     st.write(
@@ -161,6 +168,10 @@ def _render_inputs(
     posting_fingerprint = content_fingerprint(posting)
     widget_scope = posting_fingerprint[:16]
     with st.form("cover-letter-inputs", border=True):
+        st.markdown("### Letter details")
+        st.caption(
+            "Optional details help personalize the finished letter without changing evidence."
+        )
         recipient_name = st.text_input(
             "Recipient name (optional)",
             key=f"cover_recipient_name_{widget_scope}",
@@ -169,27 +180,28 @@ def _render_inputs(
             "Recipient title (optional)",
             key=f"cover_recipient_title_{widget_scope}",
         )
-        company_domain = st.text_input(
-            "Company domain (optional)",
-            help="Used to restrict official-source fetching to the company's domain.",
-            key=f"cover_company_domain_{widget_scope}",
-        )
-        official_urls_text = st.text_area(
-            "Official company source URLs (optional, one per line; maximum three)",
-            height=96,
-            key=f"cover_official_urls_{widget_scope}",
-        )
-        company_facts_text = st.text_area(
-            "Verified company facts you supplied (optional, one per line; maximum three)",
-            height=96,
-            key=f"cover_company_facts_{widget_scope}",
-        )
         motivation_text = st.text_area(
             "Your motivation or role preference (optional)",
             help="Only explicit wording entered here may be treated as personal motivation.",
             height=88,
             key=f"cover_motivation_{widget_scope}",
         )
+        with st.expander("Optional company context", expanded=False):
+            company_domain = st.text_input(
+                "Company domain",
+                help="Restricts official-source fetching to the company's domain.",
+                key=f"cover_company_domain_{widget_scope}",
+            )
+            official_urls_text = st.text_area(
+                "Official company sources (one URL per line; maximum three)",
+                height=96,
+                key=f"cover_official_urls_{widget_scope}",
+            )
+            company_facts_text = st.text_area(
+                "Verified company facts you supplied (one per line; maximum three)",
+                height=96,
+                key=f"cover_company_facts_{widget_scope}",
+            )
         submitted = st.form_submit_button(
             "Generate cover letter",
             type="primary",
@@ -252,21 +264,21 @@ def _render_status(
         for gate in artifact.quality_gates
         if gate.gate in {"candidate_grounding", "company_grounding", "resume_consistency"}
     )
-    columns = st.columns(4)
-    columns[0].metric(
-        "Research",
-        artifact.company_research.status.value.replace("_", " ").title(),
+    render_status_strip(
+        st,
+        {
+            "Research": artifact.company_research.status.value.replace("_", " ").title(),
+            "Writing": _writer_status(artifact),
+            "Claims": "Passed" if passed_claims else "Review required",
+            "Page use": f"{artifact.page_fit.estimated_utilization:.0%}",
+        },
     )
-    columns[1].metric("Writer", _writer_status(artifact))
-    columns[2].metric("Claims", "Passed" if passed_claims else "Review required")
-    columns[3].metric("Page use", f"{artifact.page_fit.estimated_utilization:.0%}")
-    st.caption(
-        f"State: {artifact.review_state.value.replace('_', ' ')} · "
-        f"{'Artifact' if artifact.ready_for_review else 'Diagnostic candidate'} "
-        f"v{artifact.artifact_version} · "
-        f"{'Current' if artifact_current else 'Stale'} · "
-        f"{artifact.page_fit.estimated_remaining_lines} estimated lines remaining"
+    review_label = (
+        "Ready for review"
+        if artifact.ready_for_review
+        else "Diagnostic only — not available for approval or download"
     )
+    st.caption(f"{review_label} · {'Current job' if artifact_current else 'Out of date'}")
 
 
 def _writer_status(artifact: GeneratedCoverLetterArtifact) -> str:
@@ -301,7 +313,7 @@ def _render_letter(artifact: GeneratedCoverLetterArtifact) -> None:
 
 
 def _render_diagnostics(artifact: GeneratedCoverLetterArtifact) -> None:
-    with st.expander("Evidence, sources, and diagnostics", expanded=False):
+    with st.expander("Advanced diagnostics", expanded=False):
         for paragraph in artifact.letter.paragraphs:
             st.markdown(f"**{paragraph.purpose.value.replace('_', ' ').title()}**")
             st.caption(
@@ -392,11 +404,7 @@ def _render_approval(
         "Approve cover letter",
         type="primary",
         icon=":material/verified:",
-        disabled=(
-            not reviewed
-            or not artifact.ready_for_review
-            or not artifact_current
-        ),
+        disabled=(not reviewed or not artifact.ready_for_review or not artifact_current),
     ):
         artifact = cast(
             GeneratedCoverLetterArtifact,
@@ -423,13 +431,10 @@ def _render_download(
     if not artifact_current:
         st.caption("No download is available because this artifact is stale.")
         return
-    if (
-        artifact.review_state
-        not in {
-            CoverLetterReviewState.APPROVED,
-            CoverLetterReviewState.DOWNLOADED,
-        }
-    ):
+    if artifact.review_state not in {
+        CoverLetterReviewState.APPROVED,
+        CoverLetterReviewState.DOWNLOADED,
+    }:
         st.caption("Download is enabled after explicit approval of the current artifact.")
         return
     download = service.prepare_cover_letter_download(

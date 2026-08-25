@@ -281,9 +281,7 @@ def _render_detail(
             actions = streamlit_module.columns(4, gap="small")
             with actions[0]:
                 if item.official_url:
-                    streamlit_module.link_button(
-                        "Open official posting", item.official_url, type="primary", width="content"
-                    )
+                    streamlit_module.link_button("Open posting", item.official_url, width="content")
                 else:
                     streamlit_module.caption("Official posting link unavailable.")
             with actions[1]:
@@ -302,6 +300,7 @@ def _render_detail(
                 if streamlit_module.button(
                     "Tailor resume",
                     key=f"jobs-tailor-{selection_scope}-{_safe_key(item.job_id)}",
+                    type="primary",
                     width="content",
                 ):
                     on_tailor(item.job_id)
@@ -320,7 +319,8 @@ def _render_detail(
                 [normalize_job_description_for_display(detail.description)],
             )
         _render_list(streamlit_module, "Why it fits", item.reasons)
-        _render_list(streamlit_module, "Exact supporting evidence", item.supporting_evidence)
+        with streamlit_module.expander("Evidence behind this fit", expanded=False):
+            _render_list(streamlit_module, "Supporting profile evidence", item.supporting_evidence)
         if item.gaps:
             streamlit_module.warning("Material gaps: " + " · ".join(item.gaps))
         if item.unresolved_facts:

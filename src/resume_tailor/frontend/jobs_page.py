@@ -59,6 +59,23 @@ class JobsPageExperience(Protocol):
 # Compatibility export for callers that historically imported jobs_css from
 # this module. The implementation lives in the centralized token module.
 jobs_css = shared_jobs_css
+_JOB_CARD_WINDOW_SIZE = 24
+
+
+def _windowed_recommendations(
+    items: list[Any], visible_limit: int, selected_job_id: str | None
+) -> list[Any]:
+    """Bound card rendering while retaining an explicitly selected result."""
+
+    windowed = list(items[:visible_limit])
+    if selected_job_id and selected_job_id not in {item.job_id for item in windowed}:
+        selected_item = next(
+            (item for item in items if item.job_id == selected_job_id),
+            None,
+        )
+        if selected_item is not None:
+            windowed.append(selected_item)
+    return windowed
 
 
 def apply_tailoring_handoff(
@@ -388,6 +405,14 @@ def _render_feed(
         selection_scope = f"{selection_scope}-{_safe_key(str(sector))}"
     else:
         sector = None
+    window_key = f"jobs-visible-window-{selection_scope}"
+    visible_limit = max(
+        _JOB_CARD_WINDOW_SIZE,
+        int(streamlit_module.session_state.get(window_key, _JOB_CARD_WINDOW_SIZE)),
+    )
+    full_visible = list(feed.visible)
+    windowed_visible = _windowed_recommendations(full_visible, visible_limit, selected)
+    display_feed = _project_feed(feed, windowed_visible)
     excluded = experience.load_excluded(profile_id, feed_kind, sector=sector) if expanded else []
     if not feed.visible:
         streamlit_module.session_state.pop(selected_key, None)
@@ -413,7 +438,7 @@ def _render_feed(
 
     with streamlit_module.container(key="jobs-feed-layout"):
         render_feed(
-            feed,
+            display_feed,
             selected_job_id=selected,
             selected_key=selected_key,
             selection_scope=selection_scope,
@@ -434,6 +459,19 @@ def _render_feed(
             on_toggle_excluded=toggle_excluded,
             base_visible_count=base_visible_count,
         )
+        if len(full_visible) > len(windowed_visible):
+            streamlit_module.caption(
+                f"Showing {len(windowed_visible)} of {len(full_visible)} matching jobs"
+            )
+            if streamlit_module.button(
+                "Load more jobs",
+                key=f"jobs-load-more-{selection_scope}",
+                width="stretch",
+            ):
+                streamlit_module.session_state[window_key] = min(
+                    len(full_visible), visible_limit + _JOB_CARD_WINDOW_SIZE
+                )
+                streamlit_module.rerun()
 
 
 def _tailor(
@@ -598,6 +636,9 @@ def _clear_profile_state(state: MutableMapping[str, object]) -> None:
         "jobs-pref-excluded-companies",
     ):
         state.pop(key, None)
+    for key in tuple(state):
+        if key.startswith("jobs-visible-window-"):
+            state.pop(key, None)
     clear_browse_state(state)
 
 

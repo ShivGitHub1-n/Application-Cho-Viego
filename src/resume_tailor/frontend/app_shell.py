@@ -109,8 +109,8 @@ def render_application_shell(
     with streamlit_module.container(key="pw-shell-root"):
         with streamlit_module.sidebar:
             with streamlit_module.container(key="pw-sidebar-brand"):
-                streamlit_module.markdown("### Application Cho Viego")
-                streamlit_module.caption("Evidence-backed application workbench")
+                streamlit_module.markdown("### Viego")
+                streamlit_module.caption("Your application workspace")
             streamlit_module.caption("Workspace")
             for route in ROUTE_OPTIONS:
                 _render_route_control(streamlit_module, route, active_route, "sidebar")
@@ -133,13 +133,15 @@ def render_application_shell(
                         on_change=_select_profile,
                         args=(state, on_profile_change),
                     )
-                    streamlit_module.caption(f"Reviewed · {selected}")
+                    streamlit_module.caption("Reviewed profile")
                 else:
                     label = active_profile_label or state.get("profile_display_name")
                     streamlit_module.markdown(label or "Choose a reviewed profile")
-                    streamlit_module.caption(f"Reviewed · {profile_id or 'not selected'}")
+                    streamlit_module.caption(
+                        "Reviewed profile" if profile_id else "No profile selected"
+                    )
             if development_ui is not None:
-                with streamlit_module.expander("Offline scenario", expanded=False):
+                with streamlit_module.expander("Developer preview", expanded=False):
                     development_ui()
         _render_mobile_navigation(streamlit_module, active_route)
     return active_route.value
