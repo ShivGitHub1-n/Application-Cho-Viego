@@ -8,6 +8,7 @@ from enum import StrEnum
 from html import escape
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import perf_counter
 from typing import Any
 
 from resume_tailor.application.generated_artifact import (
@@ -27,7 +28,7 @@ from resume_tailor.application.workflow_state import (
     GENERATED_RESUME_WORDING_DIRTY_KEY,
     GeneratedResumeReviewState,
 )
-from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact
+from resume_tailor.domain.generated_artifact import GeneratedResumeArtifact, GenerationStage
 from resume_tailor.domain.llm_models import LanguageModelError
 from resume_tailor.domain.models import EntityKind, JobPosting, MasterProfile, TemplateConstraints
 from resume_tailor.domain.resume_composition import (
@@ -48,13 +49,15 @@ from resume_tailor.infrastructure.rendering import (
 
 class ResumeStudioStage(StrEnum):
     JOB_CONTEXT = "Job context"
-    STRATEGY = "Strategy"
-    EVIDENCE = "Evidence selection"
     REVIEW = "Resume review"
     EXPORT = "Export"
 
 
-STAGE_OPTIONS = tuple(stage.value for stage in ResumeStudioStage)
+STAGE_OPTIONS = (
+    ResumeStudioStage.JOB_CONTEXT.value,
+    ResumeStudioStage.REVIEW.value,
+    ResumeStudioStage.EXPORT.value,
+)
 
 _ACTIVE_STAGE_KEY = "resume_studio_stage"
 _STAGE_WIDGET_KEY = "_resume_studio_stage_widget"
@@ -67,6 +70,31 @@ _JOB_DESCRIPTION_KEY = "job_description_input"
 _JOB_DESCRIPTION_WIDGET_KEY = "_resume_studio_job_description_widget"
 _REVIEW_CONFIRMED_KEY = "resume_studio_review_confirmed"
 _REVIEW_WIDGET_KEY = "_resume_studio_review_confirmed_widget"
+_GENERATION_TIMINGS_KEY = "resume_generation_phase_timings"
+
+_PLAN_PROGRESS = {
+    GenerationStage.POSTING_NORMALIZATION: ("Analyzing the role", 8),
+    GenerationStage.EVIDENCE_RETRIEVAL: ("Selecting your strongest evidence", 22),
+    GenerationStage.DETERMINISTIC_PLANNING: ("Selecting your strongest evidence", 28),
+    GenerationStage.SEMANTIC_PLANNING: ("Selecting your strongest evidence", 36),
+    GenerationStage.PLAN_VALIDATION: ("Checking the tailoring plan", 43),
+}
+
+_BUILD_PROGRESS = {
+    GenerationStage.WRITER_SHORTLIST: ("Tailoring bullet wording", 52),
+    GenerationStage.WRITER_CACHE_LOOKUP: ("Tailoring bullet wording", 56),
+    GenerationStage.PROVIDER_REQUEST: ("Tailoring bullet wording", 62),
+    GenerationStage.PROVIDER_RESPONSE_PARSING: ("Tailoring bullet wording", 66),
+    GenerationStage.CLAIM_VALIDATION: ("Checking claims", 71),
+    GenerationStage.WRITER_VARIANT_SELECTION: ("Checking claims", 75),
+    GenerationStage.COMPOSITION_CANDIDATE_CONSTRUCTION: (
+        "Fitting the résumé to one page",
+        80,
+    ),
+    GenerationStage.PORTFOLIO_PAGE_FIT_SEARCH: ("Fitting the résumé to one page", 84),
+    GenerationStage.DOCX_RENDERING: ("Fitting the résumé to one page", 88),
+    GenerationStage.EXACT_WORD_PAGINATION: ("Fitting the résumé to one page", 94),
+}
 
 
 @dataclass(frozen=True)
@@ -193,6 +221,8 @@ def _profile_fingerprint(profile: MasterProfile) -> str:
 
 
 def _normalize_stage(value: object) -> ResumeStudioStage:
+    if str(value) in {"Strategy", "Evidence selection"}:
+        return ResumeStudioStage.JOB_CONTEXT
     try:
         return ResumeStudioStage(str(value))
     except ValueError:
@@ -304,6 +334,72 @@ def _sync_job_context(streamlit_module: Any) -> None:
     state[_JOB_DESCRIPTION_KEY] = str(state.get(_JOB_DESCRIPTION_WIDGET_KEY, ""))
 
 
+def _posting_matches(left: JobPosting | None, right: JobPosting) -> bool:
+    return bool(
+        isinstance(left, JobPosting)
+        and left.title == right.title
+        and left.description == right.description
+        and left.company_name == right.company_name
+    )
+
+
+def _timing_summary(timings: list[Any]) -> dict[str, float]:
+    return {
+        str(timing.stage.value): round(float(timing.elapsed_seconds), 3)
+        for timing in timings
+        if int(timing.invocation_count) > 0
+    }
+
+
+def _progress_callback(
+    status: Any,
+    progress: Any,
+    mapping: dict[GenerationStage, tuple[str, int]],
+) -> Callable[[GenerationStage], None]:
+    last_label: list[str] = []
+
+    def show(stage: GenerationStage) -> None:
+        item = mapping.get(stage)
+        if item is None:
+            return
+        label, percent = item
+        if last_label and last_label[-1] == label:
+            return
+        progress.progress(percent, text=label)
+        status.update(label=label)
+        status.write(label)
+        last_label.append(label)
+
+    return show
+
+
+def _render_tailoring_details(streamlit_module: Any, plan: Any) -> None:
+    application_strategy = getattr(plan, "application_strategy", None)
+    priorities = list(getattr(application_strategy, "role_priorities", ()) or ())
+    if not priorities:
+        primary_focus = str(getattr(getattr(plan, "strategy", None), "primary_focus", ""))
+        priorities = [primary_focus] if primary_focus else []
+    if priorities:
+        streamlit_module.markdown("**Tailoring priorities**")
+        for priority in priorities[:4]:
+            text = str(getattr(priority, "theme", priority)).strip()
+            if text:
+                streamlit_module.markdown(f"- {text}")
+    with streamlit_module.expander("Advanced tailoring details", expanded=False):
+        strategy = getattr(plan, "strategy", None)
+        if strategy is not None:
+            streamlit_module.write(strategy.rationale)
+        if application_strategy is not None:
+            streamlit_module.caption(
+                "Semantic strategy was used; evidence, claims, and page fit remain validated."
+            )
+            streamlit_module.write(application_strategy.application_thesis)
+        for decision in getattr(getattr(plan, "report", None), "decisions", ()):
+            streamlit_module.write(
+                f"{decision.action.replace('_', ' ').title()} — {decision.reason}"
+            )
+
+
 def _approval_widget_key(kind: str, item_id: str) -> str:
     """Return a transient key for an approval control.
 
@@ -320,17 +416,6 @@ def _seed_approval_widget(
     state = streamlit_module.session_state
     if key not in state:
         state[key] = item_id in approved_ids
-
-
-def _record_evidence_selection(streamlit_module: Any, approved_ids: set[str]) -> None:
-    state = streamlit_module.session_state
-    previous = set(state.get("resume_evidence_selection_ids", set()))
-    if previous != approved_ids:
-        state["resume_evidence_selection_ids"] = approved_ids
-        state.pop("resume", None)
-        state.pop(_REVIEW_CONFIRMED_KEY, None)
-        state[_REVIEW_WIDGET_KEY] = False
-        _clear_resume_export_artifacts(streamlit_module)
 
 
 def _record_generated_approvals(
@@ -383,38 +468,57 @@ def _render_job_context(
     dependencies: ResumeStudioDependencies,
     profile: MasterProfile | None,
 ) -> None:
-    streamlit_module.subheader("Job context")
+    streamlit_module.subheader("Create a tailored résumé")
     if profile is None:
         streamlit_module.info(
-            "Choose a reviewed Career Profile before creating a tailoring strategy."
+            "Choose a reviewed Career Profile before generating a tailored résumé."
         )
         return
-    streamlit_module.caption(f"Using reviewed profile · {profile.display_name}")
+    streamlit_module.caption(f"Using {profile.display_name}'s reviewed Career Profile")
     _prepare_job_context_widgets(streamlit_module)
-    title = streamlit_module.text_input(
-        "Job title",
-        key=_JOB_TITLE_WIDGET_KEY,
-        on_change=_sync_job_context,
-        args=(streamlit_module,),
-    )
-    company = streamlit_module.text_input(
-        "Company",
-        key=_JOB_COMPANY_WIDGET_KEY,
-        on_change=_sync_job_context,
-        args=(streamlit_module,),
-    )
-    description = streamlit_module.text_area(
-        "Paste job description",
-        key=_JOB_DESCRIPTION_WIDGET_KEY,
-        height=220,
-        placeholder="Paste the full posting or arrive here from a selected Jobs posting.",
-        on_change=_sync_job_context,
-        args=(streamlit_module,),
-    )
+    has_context = bool(str(streamlit_module.session_state.get(_JOB_DESCRIPTION_KEY, "")).strip())
+    if has_context:
+        with streamlit_module.container(border=True, key="resume-job-summary"):
+            streamlit_module.markdown(
+                f"### {escape(str(streamlit_module.session_state.get(_JOB_TITLE_KEY, 'Role')))}"
+            )
+            company_label = str(streamlit_module.session_state.get(_JOB_COMPANY_KEY, "")).strip()
+            streamlit_module.caption(company_label or "Company not provided")
+        editor = streamlit_module.expander("Review or edit posting", expanded=False)
+    else:
+        editor = streamlit_module.container()
+    with editor:
+        title = streamlit_module.text_input(
+            "Job title",
+            key=_JOB_TITLE_WIDGET_KEY,
+            on_change=_sync_job_context,
+            args=(streamlit_module,),
+        )
+        company = streamlit_module.text_input(
+            "Company",
+            key=_JOB_COMPANY_WIDGET_KEY,
+            on_change=_sync_job_context,
+            args=(streamlit_module,),
+        )
+        description = streamlit_module.text_area(
+            "Job description",
+            key=_JOB_DESCRIPTION_WIDGET_KEY,
+            height=180,
+            placeholder="Paste the full posting or open a role from Jobs.",
+            on_change=_sync_job_context,
+            args=(streamlit_module,),
+        )
     if streamlit_module.button(
-        "Create tailoring strategy", key="resume-create-strategy", type="primary"
+        "Generate tailored résumé",
+        key="resume-create-strategy",
+        type="primary",
+        icon=":material/auto_awesome:",
     ):
         try:
+            telemetry = getattr(dependencies.tailor_service, "telemetry", None)
+            clock = telemetry.clock if telemetry is not None else perf_counter
+            generation_started = clock()
+            posting_started = clock()
             _sync_job_context(streamlit_module)
             active_posting = streamlit_module.session_state.get("posting")
             posting = build_job_posting(
@@ -423,142 +527,117 @@ def _render_job_context(
                 description,
                 company_name=company,
             )
-            if (
-                isinstance(active_posting, JobPosting)
-                and active_posting.title == posting.title
-                and active_posting.description == posting.description
-                and active_posting.company_name == posting.company_name
-            ):
+            if _posting_matches(active_posting, posting):
                 posting = active_posting
-            _invalidate_resume_presentation_state(streamlit_module, dependencies)
+            posting_elapsed = clock() - posting_started
+            state = streamlit_module.session_state
+            profile_fingerprint = _profile_fingerprint(profile)
+            posting_fingerprint = content_fingerprint(posting)
+            plan = state.get("plan")
+            artifact = state.get("generated_resume_artifact")
+            unchanged = (
+                plan is not None
+                and state.get("workflow_profile_fingerprint") == profile_fingerprint
+                and state.get("workflow_posting_fingerprint") == posting_fingerprint
+            )
+            if unchanged and isinstance(artifact, GeneratedResumeArtifact) and _artifact_is_current(
+                dependencies,
+                artifact,
+                plan,
+                profile,
+                _approved_artifact_ids(streamlit_module),
+            ):
+                state["resume"] = artifact.final_resume
+                state[_GENERATION_TIMINGS_KEY] = {
+                    "reused": True,
+                    "posting_processing_seconds": round(posting_elapsed, 3),
+                    "total_seconds": round(clock() - generation_started, 3),
+                }
+                streamlit_module.toast("Your current tailored résumé is ready.")
+                _request_stage(streamlit_module, ResumeStudioStage.REVIEW)
+                return
+            if not unchanged:
+                _invalidate_resume_presentation_state(streamlit_module, dependencies)
             if hasattr(dependencies.tailor_service, "start_generation"):
                 dependencies.tailor_service.start_generation()
-            with streamlit_module.status(
-                "Creating your tailoring strategy", expanded=True
-            ) as status:
-                status.write("Reading the job and matching it to reviewed profile evidence")
-                plan = dependencies.tailor_service.create_plan(
-                    profile, posting, TemplateConstraints()
+            with streamlit_module.status("Analyzing the role", expanded=True) as status:
+                progress = streamlit_module.progress(4, text="Analyzing the role")
+                plan_snapshot = telemetry.snapshot() if telemetry is not None else None
+                if not unchanged:
+                    if telemetry is not None:
+                        telemetry.set_stage_callback(
+                            _progress_callback(status, progress, _PLAN_PROGRESS)
+                        )
+                    try:
+                        plan = dependencies.tailor_service.create_plan(
+                            profile, posting, TemplateConstraints()
+                        )
+                    finally:
+                        if telemetry is not None:
+                            telemetry.set_stage_callback(None)
+                plan_timings = (
+                    telemetry.timings_since(plan_snapshot, include_missing=False)
+                    if telemetry is not None and plan_snapshot is not None
+                    else []
                 )
-                status.update(label="Tailoring strategy ready", state="complete")
-            state = streamlit_module.session_state
-            state["posting"] = posting
-            state["plan"] = plan
-            state["workflow_profile_fingerprint"] = _profile_fingerprint(profile)
-            state["workflow_posting_fingerprint"] = content_fingerprint(posting)
-            state["resume_approved_claim_ids"] = set()
-            state["resume_evidence_selection_ids"] = set()
+                # Preserve the normalized application context even when document
+                # construction fails, so retry does not lose the user's posting.
+                state["posting"] = posting
+                state["plan"] = plan
+                state["workflow_profile_fingerprint"] = profile_fingerprint
+                state["workflow_posting_fingerprint"] = posting_fingerprint
+                progress.progress(48, text="Tailoring bullet wording")
+                build_snapshot = telemetry.snapshot() if telemetry is not None else None
+                if telemetry is not None:
+                    telemetry.set_stage_callback(
+                        _progress_callback(status, progress, _BUILD_PROGRESS)
+                    )
+                try:
+                    approved_ids = _approved_artifact_ids(streamlit_module)
+                    if _uses_generated_artifact_workflow(dependencies):
+                        _store_generated_artifact(
+                            streamlit_module,
+                            dependencies,
+                            profile,
+                            plan,
+                            approved_ids,
+                        )
+                    else:
+                        state["resume"] = dependencies.tailor_service.build_document(
+                            plan, profile, approved_ids
+                        )
+                finally:
+                    if telemetry is not None:
+                        telemetry.set_stage_callback(None)
+                progress.progress(100, text="Preparing suggestions")
+                status.update(label="Your tailored résumé is ready", state="complete")
+            timing_details: dict[str, Any] = {}
+            timing_details["posting_processing_seconds"] = round(posting_elapsed, 3)
+            if telemetry is not None:
+                if plan_snapshot is not None:
+                    timing_details["plan"] = _timing_summary(plan_timings)
+                if build_snapshot is not None:
+                    timing_details["document"] = _timing_summary(
+                        telemetry.timings_since(build_snapshot, include_missing=False)
+                    )
+                timing_details["total_seconds"] = round(
+                    telemetry.clock() - generation_started, 3
+                )
+            else:
+                timing_details["total_seconds"] = round(clock() - generation_started, 3)
+            state[_GENERATION_TIMINGS_KEY] = timing_details
+            state.setdefault("resume_approved_claim_ids", set())
+            state.setdefault("resume_evidence_selection_ids", set())
             state[_REVIEW_CONFIRMED_KEY] = False
-            _request_stage(streamlit_module, ResumeStudioStage.STRATEGY)
-        except (InvalidJobDescriptionError, ValueError, LanguageModelError) as error:
-            streamlit_module.error(f"Job context could not produce a strategy: {error}")
-
-
-def _render_strategy(streamlit_module: Any, plan: Any | None) -> None:
-    streamlit_module.subheader("Recommended strategy")
-    if plan is None:
-        streamlit_module.info("Create job context before reviewing the recommendation.")
-        return
-    strategy = getattr(plan, "strategy", None)
-    if strategy is None:
-        warnings = getattr(getattr(plan, "report", None), "warnings", ())
-        streamlit_module.warning(
-            warnings[0] if warnings else "A strategy is not available for this context."
-        )
-        return
-    streamlit_module.write(strategy.rationale)
-    streamlit_module.caption(f"Primary focus: {strategy.primary_focus}")
-    streamlit_module.caption(
-        "Strategy: Gemini"
-        if getattr(plan, "application_strategy", None) is not None
-        else "Strategy: Deterministic fallback"
-    )
-    application_strategy = getattr(plan, "application_strategy", None)
-    if application_strategy is not None:
-        streamlit_module.write(application_strategy.application_thesis)
-    report = plan.report
-    if report.profile_fit and report.profile_fit.status.value != "sufficient":
-        streamlit_module.warning(report.profile_fit.reason)
-    if report.uncovered_signals:
-        streamlit_module.warning("Profile gaps: " + ", ".join(report.uncovered_signals))
-    with streamlit_module.expander("Advanced strategy details", expanded=False):
-        for decision in report.decisions:
-            streamlit_module.write(
-                f"{decision.action.replace('_', ' ').title()} — {decision.reason}"
-            )
-    if streamlit_module.button("Review evidence selection", key="resume-to-evidence"):
-        _request_stage(streamlit_module, ResumeStudioStage.EVIDENCE)
-
-
-def _pending_claim_ids(plan: Any) -> list[str]:
-    return [
-        candidate.id
-        for candidate in plan.claim_candidates
-        if candidate.support.value == "strong_inference_pending_review"
-    ]
-
-
-def _pending_claim_label(plan: Any, claim_id: str) -> str:
-    candidate = next(
-        (item for item in plan.claim_candidates if item.id == claim_id),
-        None,
-    )
-    return str(getattr(candidate, "text", "Suggested evidence wording"))
-
-
-def _render_evidence_selection(
-    streamlit_module: Any,
-    dependencies: ResumeStudioDependencies,
-    profile: MasterProfile | None,
-    plan: Any | None,
-) -> None:
-    streamlit_module.subheader("Evidence selection")
-    if profile is None or plan is None or getattr(plan, "strategy", None) is None:
-        streamlit_module.info(
-            "A reviewed profile and strategy are required before document generation."
-        )
-        return
-    streamlit_module.caption("Only reviewed profile evidence can support generated résumé content.")
-    approved_ids: set[str] = set()
-    permanent_ids = set(streamlit_module.session_state.get("resume_evidence_selection_ids", set()))
-    for claim_id in _pending_claim_ids(plan):
-        widget_key = _approval_widget_key("evidence", claim_id)
-        _seed_approval_widget(streamlit_module, widget_key, permanent_ids, claim_id)
-        with streamlit_module.container(border=True, key=f"resume-evidence-review-{claim_id}"):
-            streamlit_module.markdown("**Review a supported inference**")
-            streamlit_module.write(_pending_claim_label(plan, claim_id))
-            streamlit_module.caption(
-                "Use this only if the wording accurately reflects your experience."
-            )
-            if streamlit_module.checkbox("Use this wording", key=widget_key):
-                approved_ids.add(claim_id)
-    _record_evidence_selection(streamlit_module, approved_ids)
-    if streamlit_module.button(
-        "Build reviewed resume", key="resume-build-document", type="primary"
-    ):
-        try:
-            _clear_resume_export_artifacts(streamlit_module)
-            with streamlit_module.status("Building your résumé", expanded=True) as status:
-                status.write("Selecting wording and verifying the one-page document")
-                if _uses_generated_artifact_workflow(dependencies):
-                    _store_generated_artifact(
-                        streamlit_module,
-                        dependencies,
-                        profile,
-                        plan,
-                        approved_ids,
-                    )
-                else:
-                    streamlit_module.session_state["resume"] = (
-                        dependencies.tailor_service.build_document(plan, profile, approved_ids)
-                    )
-                status.update(label="Résumé ready for review", state="complete")
-            streamlit_module.session_state["resume_approved_claim_ids"] = approved_ids
-            streamlit_module.session_state[_REVIEW_CONFIRMED_KEY] = False
-            streamlit_module.session_state.pop(_REVIEW_WIDGET_KEY, None)
+            state.pop(_REVIEW_WIDGET_KEY, None)
             _request_stage(streamlit_module, ResumeStudioStage.REVIEW)
-        except (ValueError, LanguageModelError) as error:
-            streamlit_module.error(f"Résumé document could not be built: {error}")
+        except (InvalidJobDescriptionError, ValueError, LanguageModelError) as error:
+            streamlit_module.error(
+                "We couldn't finish this résumé. Your profile and any previous document "
+                "are safe; review the posting and try again."
+            )
+            with streamlit_module.expander("Advanced diagnostics", expanded=False):
+                streamlit_module.code(str(error))
 
 
 def _suggestion_context(profile: MasterProfile, resume: Any, bullet: Any) -> tuple[str, str, bool]:
@@ -583,7 +662,7 @@ def _render_generated_suggestions(
     profile: MasterProfile,
     resume: Any,
     permanent_ids: set[str],
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], bool]:
     pending_ids: set[str] = set()
     visible_ids = {
         *[bullet.id for bullet in resume.review_pending_bullets],
@@ -596,59 +675,66 @@ def _render_generated_suggestions(
             "The current wording is ready for document review.",
             icon="check",
         )
-        return pending_ids, visible_ids
+        return pending_ids, visible_ids, False
     streamlit_module.markdown("### Suggestions")
     streamlit_module.caption(
-        "Compare supported alternatives here. Internal evidence references stay in diagnostics."
+        "Choose any supported improvements, then apply them together."
     )
-    for bullet in resume.review_pending_bullets:
-        owner, _entry_id, omitted_parent = _suggestion_context(profile, resume, bullet)
-        widget_key = _approval_widget_key("generated_bullet", bullet.id)
-        _seed_approval_widget(streamlit_module, widget_key, permanent_ids, bullet.id)
-        with streamlit_module.container(border=True, key=f"resume-suggestion-{bullet.id}"):
-            streamlit_module.markdown(
-                '<div class="pw-suggestion-label">'
-                + escape("Add omitted entry" if omitted_parent else "Suggested rewrite")
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-            streamlit_module.markdown(f"**{owner}**")
-            sources = _source_copy(profile, bullet)
-            if sources:
+    with streamlit_module.form("resume-suggestions-form", border=False):
+        for bullet in resume.review_pending_bullets:
+            owner, _entry_id, omitted_parent = _suggestion_context(profile, resume, bullet)
+            widget_key = _approval_widget_key("generated_bullet", bullet.id)
+            _seed_approval_widget(streamlit_module, widget_key, permanent_ids, bullet.id)
+            with streamlit_module.container(border=True, key=f"resume-suggestion-{bullet.id}"):
                 streamlit_module.markdown(
-                    '<div class="pw-current-copy"><strong>Current evidence</strong><br>'
-                    + "<br>".join(escape(item) for item in sources)
+                    '<div class="pw-suggestion-label">'
+                    + escape("Add omitted entry" if omitted_parent else "Suggested rewrite")
                     + "</div>",
                     unsafe_allow_html=True,
                 )
-            streamlit_module.markdown(
-                '<div class="pw-suggested-copy"><strong>Suggested wording</strong><br>'
-                + escape(bullet.text)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-            if omitted_parent:
-                streamlit_module.caption(
-                    "Using this adds the canonical parent entry and its document cost; "
-                    "the rebuilt résumé must still pass exact pagination."
+                streamlit_module.markdown(f"**{owner}**")
+                sources = _source_copy(profile, bullet)
+                if sources:
+                    streamlit_module.markdown(
+                        '<div class="pw-current-copy"><strong>Current evidence</strong><br>'
+                        + "<br>".join(escape(item) for item in sources)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                streamlit_module.markdown(
+                    '<div class="pw-suggested-copy"><strong>Suggested wording</strong><br>'
+                    + escape(bullet.text)
+                    + "</div>",
+                    unsafe_allow_html=True,
                 )
-            action_label = "Add project or experience" if omitted_parent else "Use suggestion"
-            if streamlit_module.checkbox(action_label, key=widget_key):
-                pending_ids.add(bullet.id)
-    for skill in resume.review_pending_skills:
-        widget_key = _approval_widget_key("generated_skill", skill.id)
-        _seed_approval_widget(streamlit_module, widget_key, permanent_ids, skill.id)
-        with streamlit_module.container(border=True, key=f"resume-suggestion-{skill.id}"):
-            streamlit_module.markdown(
-                '<div class="pw-suggestion-label">Suggested skill</div>',
-                unsafe_allow_html=True,
-            )
-            streamlit_module.write(skill.value)
-            if streamlit_module.checkbox("Add to skills", key=widget_key):
-                pending_ids.add(skill.id)
-    return pending_ids, visible_ids
-
-
+                if omitted_parent:
+                    streamlit_module.caption(
+                        "Using this adds the canonical parent entry and its document cost; "
+                        "the rebuilt résumé must still pass exact pagination."
+                    )
+                action_label = (
+                    "Add project or experience" if omitted_parent else "Use suggestion"
+                )
+                if streamlit_module.checkbox(action_label, key=widget_key):
+                    pending_ids.add(bullet.id)
+        for skill in resume.review_pending_skills:
+            widget_key = _approval_widget_key("generated_skill", skill.id)
+            _seed_approval_widget(streamlit_module, widget_key, permanent_ids, skill.id)
+            with streamlit_module.container(border=True, key=f"resume-suggestion-{skill.id}"):
+                streamlit_module.markdown(
+                    '<div class="pw-suggestion-label">Suggested skill</div>',
+                    unsafe_allow_html=True,
+                )
+                streamlit_module.write(skill.value)
+                if streamlit_module.checkbox("Add to skills", key=widget_key):
+                    pending_ids.add(skill.id)
+        submitted = streamlit_module.form_submit_button(
+            "Apply selected changes",
+            type="primary",
+            icon=":material/check:",
+            key="resume-apply-suggestions",
+        )
+    return pending_ids, visible_ids, submitted
 def _render_review(
     streamlit_module: Any,
     dependencies: ResumeStudioDependencies,
@@ -673,11 +759,8 @@ def _render_review(
     with control_column:
         with streamlit_module.container(key="resume-controls"):
             streamlit_module.markdown("### Review controls")
-            streamlit_module.caption(
-                "This control rail is ready for structure, suggestions, and formatting tools "
-                "when live editing is added."
-            )
-            pending_ids, visible_ids = _render_generated_suggestions(
+            streamlit_module.caption("Choose supported improvements and apply them together.")
+            pending_ids, visible_ids, suggestions_submitted = _render_generated_suggestions(
                 streamlit_module, profile, resume, permanent_ids
             )
     with document_column:
@@ -690,7 +773,49 @@ def _render_review(
                 "authoritative."
             ),
         )
-    _record_generated_approvals(streamlit_module, pending_ids, visible_ids)
+    if suggestions_submitted:
+        previous_generated_ids = set(
+            streamlit_module.session_state.get("resume_generated_approval_ids", set())
+        )
+        previous_review_state = streamlit_module.session_state.get(
+            GENERATED_RESUME_REVIEW_STATE_KEY
+        )
+        _record_generated_approvals(streamlit_module, pending_ids, visible_ids)
+        try:
+            with streamlit_module.status("Applying your changes", expanded=True) as status:
+                status.write("Rebuilding once and rechecking the one-page document")
+                if _uses_generated_artifact_workflow(dependencies):
+                    _store_generated_artifact(
+                        streamlit_module,
+                        dependencies,
+                        profile,
+                        plan,
+                        _approved_artifact_ids(streamlit_module),
+                    )
+                else:
+                    streamlit_module.session_state["resume"] = (
+                        dependencies.tailor_service.build_document(
+                            plan,
+                            profile,
+                            _approved_artifact_ids(streamlit_module),
+                        )
+                    )
+                status.update(label="Suggestions applied", state="complete")
+            streamlit_module.rerun()
+        except (PageOverflowError, ValueError, LanguageModelError) as error:
+            state = streamlit_module.session_state
+            state["resume_generated_approval_ids"] = previous_generated_ids
+            state[GENERATED_RESUME_GENERATED_APPROVALS_KEY] = previous_generated_ids
+            state[GENERATED_RESUME_WORDING_DIRTY_KEY] = False
+            state[GENERATED_RESUME_REBUILD_REQUIRED_KEY] = False
+            state[GENERATED_RESUME_REBUILD_IN_PROGRESS_KEY] = False
+            if previous_review_state is not None:
+                state[GENERATED_RESUME_REVIEW_STATE_KEY] = previous_review_state
+            streamlit_module.error(
+                "Those changes could not fit safely. Your previous résumé is unchanged."
+            )
+            with streamlit_module.expander("Advanced diagnostics", expanded=False):
+                streamlit_module.code(str(error))
     artifact = streamlit_module.session_state.get("generated_resume_artifact")
     artifact_current = True
     if isinstance(artifact, GeneratedResumeArtifact):
@@ -706,11 +831,7 @@ def _render_review(
                 "Approved wording changed. Rebuild the immutable resume artifact "
                 "before final review and download."
             )
-            if streamlit_module.button(
-                "Rebuild with approved wording",
-                key="resume-rebuild-document",
-                type="primary",
-            ):
+            if streamlit_module.button("Restore current document", key="resume-rebuild-document"):
                 try:
                     _store_generated_artifact(
                         streamlit_module,
@@ -760,10 +881,7 @@ def _render_export(
             "Complete document review before requesting exact page verification and export."
         )
         return
-    streamlit_module.caption(
-        "Exact Word pagination is authoritative when available. Otherwise the "
-        "stored DOCX remains explicitly unverified and requires manual Word inspection."
-    )
+    streamlit_module.caption("Download the reviewed, one-page résumé for this application.")
     artifact = streamlit_module.session_state.get("generated_resume_artifact")
     if isinstance(artifact, GeneratedResumeArtifact):
         if not _artifact_is_current(
@@ -778,14 +896,9 @@ def _render_export(
             )
             return
         hybrid = artifact.writing_diagnostic
-        strategy_status = (
-            "Gemini"
-            if getattr(artifact.final_resume, "application_strategy", None) is not None
-            else "Deterministic fallback"
-        )
         rewritten = hybrid.rewritten_bullet_count if hybrid is not None else 0
         writing_status = (
-            f"Gemini · {rewritten} improvement(s) applied" if rewritten else "Source retained"
+            f"{rewritten} wording improvement(s)" if rewritten else "Reviewed wording"
         )
         pagination_status = (
             "1 page verified" if artifact.pagination_diagnostic.status == "exact" else "Unverified"
@@ -796,14 +909,13 @@ def _render_export(
         render_status_strip(
             streamlit_module,
             {
-                "Strategy": strategy_status,
                 "Writing": writing_status,
                 "Validation": "Passed",
                 "Pagination": pagination_status,
                 "Page use": f"{page_use} · {density_status}",
             },
         )
-        if strategy_status == "Gemini" and (
+        if getattr(artifact.final_resume, "application_strategy", None) is not None and (
             page_use_warning := _strategy_page_use_warning(composition)
         ):
             streamlit_module.warning(page_use_warning)
@@ -818,14 +930,27 @@ def _render_export(
             streamlit_module.session_state["resume_export_docx"] = download.docx_bytes
             if artifact.pagination_diagnostic.status == "exact":
                 streamlit_module.session_state["resume_export_status"] = (
-                    "Exact one-page pagination was verified by "
-                    f"{artifact.pagination_diagnostic.provider}."
+                    "Your one-page résumé is ready to download."
                 )
             else:
                 streamlit_module.session_state["resume_export_status"] = (
-                    "Pagination is unverified in this environment; the stored DOCX "
-                    "is ready for required manual Microsoft Word inspection."
+                    "We could not verify the final page count here. Open the document in "
+                    "Word and confirm it remains one page before using it."
                 )
+        with streamlit_module.expander("Advanced diagnostics", expanded=False):
+            streamlit_module.write(
+                {
+                    "strategy": (
+                        "gemini"
+                        if getattr(artifact.final_resume, "application_strategy", None) is not None
+                        else "deterministic_fallback"
+                    ),
+                    "pagination_provider": artifact.pagination_diagnostic.provider,
+                    "generation_timings": streamlit_module.session_state.get(
+                        _GENERATION_TIMINGS_KEY, {}
+                    ),
+                }
+            )
         status = streamlit_module.session_state.get("resume_export_status")
         if status:
             if artifact.pagination_diagnostic.status == "exact":
@@ -892,7 +1017,7 @@ def _render_export(
 def render_resume_studio_page(
     streamlit_module: Any, dependencies: ResumeStudioDependencies
 ) -> None:
-    """Render five stages without taking ownership of planning or rendering policy."""
+    """Render a three-step document workflow over the existing tailoring architecture."""
 
     profile = streamlit_module.session_state.get("profile")
     reviewed_profile = profile if isinstance(profile, MasterProfile) else None
@@ -901,7 +1026,7 @@ def render_resume_studio_page(
     render_page_header(
         streamlit_module,
         "Resume Studio",
-        "One evidence-backed strategy, reviewed before document generation and export.",
+        "Build a résumé around the experience that matters most for this role.",
         eyebrow="Documents",
     )
     selected = streamlit_module.pills(
@@ -917,11 +1042,9 @@ def render_resume_studio_page(
     with streamlit_module.container(key="resume-workspace"):
         if active_stage is ResumeStudioStage.JOB_CONTEXT:
             _render_job_context(streamlit_module, dependencies, reviewed_profile)
-        elif active_stage is ResumeStudioStage.STRATEGY:
-            _render_strategy(streamlit_module, plan)
-        elif active_stage is ResumeStudioStage.EVIDENCE:
-            _render_evidence_selection(streamlit_module, dependencies, reviewed_profile, plan)
         elif active_stage is ResumeStudioStage.REVIEW:
+            if plan is not None:
+                _render_tailoring_details(streamlit_module, plan)
             _render_review(streamlit_module, dependencies, plan, reviewed_profile)
         else:
             _render_export(streamlit_module, dependencies, plan, reviewed_profile)

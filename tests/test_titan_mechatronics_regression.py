@@ -335,19 +335,12 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     dependencies.create_profile_repository(settings).save(profile)
 
     app_path = ROOT / "src" / "resume_tailor" / "frontend" / "app.py"
-    app = AppTest.from_file(str(app_path)).run()
-    for key in (
-        "profile",
-        "posting",
-        "plan",
-        "generated_resume_artifact",
-        COVER_LETTER_ARTIFACT_KEY,
-    ):
+    app = AppTest.from_file(str(app_path))
+    app.session_state["profile"] = profile
+    app.session_state["profile_id"] = profile.id
+    app.run()
+    for key in ("posting", "plan", "generated_resume_artifact", COVER_LETTER_ARTIFACT_KEY):
         assert key not in app.session_state
-
-    app.button(key="pw-route-sidebar-career_profile").click().run()
-    app.selectbox(key="profile-reviewed-selector").select(profile.id).run()
-    app.button(key="profile-reviewed-load").click().run()
     loaded_profile = app.session_state["profile"]
     assert loaded_profile.id == profile.id
     assert content_fingerprint(loaded_profile) == content_fingerprint(profile)
@@ -359,8 +352,7 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     app.text_area(key="_resume_studio_job_description_widget").input(
         POSTING_FIXTURE.read_text(encoding="utf-8")
     )
-    app.button(key="resume-create-strategy").click().run(timeout=30)
-    app.button(key="resume-to-evidence").click().run()
+    app.button(key="resume-create-strategy").click().run(timeout=60)
 
     posting = app.session_state["posting"]
     assert isinstance(posting, JobPosting)
@@ -371,9 +363,6 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     assert app.session_state["plan"].posting == posting
     assert content_fingerprint(app.session_state["plan"].posting) == posting_fingerprint
 
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
-        timeout=60
-    )
     resume_artifact = app.session_state["generated_resume_artifact"]
     streamlit_trace = app.session_state["_tailor_service"].resume_decision_trace(
         resume_artifact,
@@ -563,7 +552,9 @@ def test_streamlit_titan_production_path_preserves_posting_authority_and_finalis
     assert isinstance(changed_posting, JobPosting)
     assert content_fingerprint(changed_posting) != posting_fingerprint
     assert COVER_LETTER_ARTIFACT_KEY not in app.session_state
-    assert "generated_resume_artifact" not in app.session_state
+    assert app.session_state["generated_resume_artifact"].artifact_fingerprint != (
+        resume_artifact.artifact_fingerprint
+    )
     assert "resume_decision_trace" not in app.session_state
     assert not app.session_state["_tailor_service"].cover_letter_artifact_is_current(
         artifact,

@@ -17,12 +17,21 @@ def application_shell_css() -> str:
   color: var(--pw-text);
 }
 [data-testid="stMain"] {
-  background: var(--pw-canvas);
+  background:
+    radial-gradient(circle at 88% 4%, var(--pw-surface-glow), transparent 28rem),
+    radial-gradient(circle at 18% 92%,
+      color-mix(in srgb, var(--pw-accent-secondary) 7%, transparent), transparent 32rem),
+    var(--pw-canvas);
 }
 [data-testid="stMainBlockContainer"] {
   color: var(--pw-text);
   max-width: 92rem;
-  padding-top: 2rem;
+  padding-top: 2.35rem;
+}
+[data-testid="stSidebar"] > div:first-child {
+  background: linear-gradient(180deg, var(--pw-surface) 0%, var(--pw-canvas) 100%);
+  border-right: 1px solid color-mix(in srgb, var(--pw-border) 72%, transparent);
+  box-shadow: 14px 0 42px rgba(0, 0, 0, .08);
 }
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
@@ -44,13 +53,18 @@ def application_shell_css() -> str:
   outline-offset: 2px;
 }
 [data-testid="stBaseButton-primary"] {
-  background: var(--pw-action-primary) !important;
-  border-color: var(--pw-action-primary) !important;
+  background: linear-gradient(135deg,
+    var(--pw-action-primary), var(--pw-action-primary-strong)) !important;
+  border-color: color-mix(in srgb, var(--pw-action-primary) 75%, white) !important;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--pw-action-primary) 25%, transparent);
   color: #071014 !important;
+  font-weight: 700 !important;
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
 }
 [data-testid="stBaseButton-primary"]:hover {
-  background: var(--pw-action-primary-strong) !important;
-  border-color: var(--pw-action-primary-strong) !important;
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 11px 24px color-mix(in srgb, var(--pw-action-primary) 30%, transparent);
 }
 [data-testid="stBaseButton-primary"]:disabled {
   background: var(--pw-surface-raised) !important;
@@ -61,16 +75,30 @@ def application_shell_css() -> str:
   background: var(--pw-surface);
   border-color: var(--pw-border) !important;
   border-radius: var(--pw-radius-panel);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .025);
 }
 .st-key-pw-page-header {
-  border-bottom: 1px solid var(--pw-border);
-  margin-bottom: 1rem;
-  padding: .25rem 0 1rem;
+  margin-bottom: 1.35rem;
+  padding: .35rem 0 .85rem;
+  position: relative;
+}
+.st-key-pw-page-header::after {
+  background: linear-gradient(90deg,
+    var(--pw-action-primary), var(--pw-accent-secondary), transparent 72%);
+  border-radius: 999px;
+  bottom: 0;
+  content: "";
+  height: 2px;
+  left: 0;
+  opacity: .7;
+  position: absolute;
+  width: min(28rem, 72%);
 }
 .st-key-pw-page-header h1 {
-  font-size: clamp(1.75rem, 3vw, 2.4rem);
-  letter-spacing: -.035em;
-  line-height: 1.05;
+  font-size: clamp(2rem, 3.3vw, 2.75rem);
+  font-weight: 760;
+  letter-spacing: -.045em;
+  line-height: 1.02;
   margin: 0;
 }
 .st-key-pw-page-header [data-testid="stCaptionContainer"] {
@@ -79,7 +107,7 @@ def application_shell_css() -> str:
   max-width: 48rem;
 }
 .pw-eyebrow {
-  color: var(--pw-state-info);
+  color: var(--pw-action-primary);
   font-size: .68rem;
   font-weight: 700;
   letter-spacing: .12em;
@@ -88,16 +116,18 @@ def application_shell_css() -> str:
 }
 .pw-status-strip {
   display: grid;
-  gap: 1px;
+  gap: .6rem;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  overflow: hidden;
-  background: var(--pw-border);
-  border: 1px solid var(--pw-border);
+  overflow: visible;
+  background: transparent;
+  border: 0;
   border-radius: var(--pw-radius-panel);
   margin: .5rem 0 1rem;
 }
 .pw-status-item {
-  background: var(--pw-surface);
+  background: linear-gradient(145deg, var(--pw-surface-raised), var(--pw-surface));
+  border: 1px solid var(--pw-border);
+  border-radius: var(--pw-radius-control);
   display: flex;
   flex-direction: column;
   gap: .18rem;
@@ -119,7 +149,8 @@ def application_shell_css() -> str:
   border-radius: var(--pw-radius-panel);
   display: flex;
   gap: .85rem;
-  padding: 1.1rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  padding: 1.35rem;
 }
 .pw-empty-state p { color: var(--pw-text-muted); margin: .2rem 0 0; }
 .pw-empty-icon {
@@ -135,16 +166,36 @@ def application_shell_css() -> str:
   justify-content: center;
 }
 .pw-empty-icon svg { height: 1rem; width: 1rem; }
-.st-key-resume-workspace > [data-testid="stVerticalBlock"] { gap: .8rem; }
+.st-key-resume-workspace > [data-testid="stVerticalBlock"] { gap: 1rem; }
+.st-key-resume-workspace {
+  background: color-mix(in srgb, var(--pw-surface) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pw-border) 82%, transparent);
+  border-radius: calc(var(--pw-radius-panel) + .2rem);
+  box-shadow: var(--pw-shadow-panel);
+  padding: clamp(.9rem, 2vw, 1.5rem);
+}
+.st-key-resume-job-summary {
+  background:
+    linear-gradient(125deg, var(--pw-surface-raised),
+      color-mix(in srgb, var(--pw-action-primary) 7%, var(--pw-surface)));
+  border-color: color-mix(in srgb, var(--pw-action-primary) 32%, var(--pw-border)) !important;
+}
 .st-key-resume-controls {
-  background: var(--pw-surface-raised);
+  background: linear-gradient(180deg, var(--pw-surface-raised), var(--pw-surface));
   border: 1px solid var(--pw-border);
   border-radius: var(--pw-radius-panel);
-  padding: .35rem;
+  box-shadow: 0 12px 30px rgba(0,0,0,.1);
+  padding: .7rem;
 }
 [class*="st-key-resume-suggestion-"] {
   background: var(--pw-surface) !important;
   border-left: 3px solid var(--pw-state-review) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.08);
+  transition: border-color .16s ease, transform .16s ease;
+}
+[class*="st-key-resume-suggestion-"]:hover {
+  border-color: color-mix(in srgb, var(--pw-state-review) 70%, var(--pw-border)) !important;
+  transform: translateY(-1px);
 }
 .pw-suggestion-label {
   color: var(--pw-state-review);
@@ -187,16 +238,36 @@ def application_shell_css() -> str:
 }
 .st-key-pw-sidebar-brand {
   border-bottom: 1px solid var(--pw-border);
-  padding: .15rem 0 .9rem;
+  padding: .25rem 0 1rem;
 }
-.st-key-pw-sidebar-brand h1,
-.st-key-pw-sidebar-brand h2,
-.st-key-pw-sidebar-brand h3 {
+.pw-brand-lockup {
+  align-items: center;
+  display: flex;
+  gap: .7rem;
+}
+.pw-brand-lockup > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.pw-brand-lockup strong {
   color: var(--pw-text);
-  font-size: 1rem;
-  letter-spacing: .01em;
-  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: -.02em;
 }
+.pw-brand-lockup small { color: var(--pw-text-subtle); font-size: .68rem; }
+.pw-brand-mark {
+  align-items: center;
+  background: linear-gradient(135deg, var(--pw-action-primary), var(--pw-accent-secondary));
+  border-radius: .72rem;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--pw-action-primary) 24%, transparent);
+  color: #071014;
+  display: flex;
+  height: 2.2rem;
+  justify-content: center;
+  transform: rotate(-2deg);
+  width: 2.2rem;
+}
+.pw-brand-mark svg { height: 1.55rem; width: 1.55rem; }
 .st-key-pw-sidebar-brand p,
 .st-key-pw-profile-context [data-testid="stCaptionContainer"] {
   color: var(--pw-text-subtle);
@@ -228,12 +299,14 @@ def application_shell_css() -> str:
   justify-content: flex-start;
   min-height: 2.25rem;
   padding: .4rem .55rem;
+  transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
 [class*="st-key-pw-route-row"] [data-testid="stButton"] button:hover,
 .st-key-pw-mobile-navigation [data-testid="stButton"] button:hover {
   background: var(--pw-surface-hover);
   border-color: var(--pw-border);
   color: var(--pw-text);
+  transform: translateX(2px);
 }
 [class*="st-key-pw-route-row"] [data-testid="stButton"] button:focus-visible,
 .st-key-pw-mobile-navigation [data-testid="stButton"] button:focus-visible {
@@ -242,8 +315,10 @@ def application_shell_css() -> str:
 }
 [class*="st-key-pw-route-row-active"] [data-testid="stButton"] button,
 [class*="st-key-pw-mobile-navigation-active"] [data-testid="stButton"] button {
-  background: color-mix(in srgb, var(--pw-state-info) 15%, transparent);
-  border-color: color-mix(in srgb, var(--pw-state-info) 48%, var(--pw-border));
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--pw-action-primary) 17%, transparent),
+    color-mix(in srgb, var(--pw-accent-secondary) 8%, transparent));
+  border-color: color-mix(in srgb, var(--pw-action-primary) 42%, var(--pw-border));
   color: var(--pw-text);
   font-weight: 600;
 }
@@ -252,11 +327,19 @@ def application_shell_css() -> str:
   color: var(--pw-state-info);
 }
 .st-key-pw-profile-context {
-  background: var(--pw-surface-raised);
+  background: linear-gradient(145deg, var(--pw-surface-raised), var(--pw-surface));
   border: 1px solid var(--pw-border);
   border-radius: var(--pw-radius-panel);
   margin-top: 1.25rem;
   padding: .7rem;
+  box-shadow: 0 12px 28px rgba(0,0,0,.09);
+}
+[data-testid="stStatusWidget"] {
+  background: linear-gradient(135deg, var(--pw-surface-raised),
+    color-mix(in srgb, var(--pw-action-primary) 8%, var(--pw-surface))) !important;
+  border-color: color-mix(in srgb, var(--pw-action-primary) 30%, var(--pw-border)) !important;
+  border-radius: var(--pw-radius-panel) !important;
+  box-shadow: 0 14px 34px rgba(0,0,0,.12);
 }
 .st-key-pw-profile-context [data-testid="stMarkdownContainer"] p {
   color: var(--pw-text);

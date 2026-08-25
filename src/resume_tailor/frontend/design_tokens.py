@@ -18,13 +18,16 @@ _DARK_TOKENS = {
     "--pw-text-subtle": "#7f959f",
     "--pw-action-primary": "#66d9b7",
     "--pw-action-primary-strong": "#40bc9a",
+    "--pw-accent-secondary": "#8aa8ff",
+    "--pw-accent-warm": "#f2c879",
+    "--pw-surface-glow": "rgba(102, 217, 183, .12)",
     "--pw-state-info": "#7cb7ff",
     "--pw-state-review": "#e4af55",
     "--pw-state-critical": "#ea6c75",
     "--pw-state-positive": "#66d9b7",
-    "--pw-radius-control": ".45rem",
-    "--pw-radius-panel": ".7rem",
-    "--pw-shadow-panel": "0 10px 24px rgba(0, 0, 0, .16)",
+    "--pw-radius-control": ".65rem",
+    "--pw-radius-panel": "1rem",
+    "--pw-shadow-panel": "0 18px 48px rgba(0, 0, 0, .22)",
 }
 
 _LIGHT_TOKENS = {
@@ -39,13 +42,16 @@ _LIGHT_TOKENS = {
     "--pw-text-subtle": "#6b838c",
     "--pw-action-primary": "#237d68",
     "--pw-action-primary-strong": "#176453",
+    "--pw-accent-secondary": "#456fd3",
+    "--pw-accent-warm": "#a66d0f",
+    "--pw-surface-glow": "rgba(35, 125, 104, .09)",
     "--pw-state-info": "#246cc3",
     "--pw-state-review": "#9a680b",
     "--pw-state-critical": "#b53a44",
     "--pw-state-positive": "#237d68",
-    "--pw-radius-control": ".45rem",
-    "--pw-radius-panel": ".7rem",
-    "--pw-shadow-panel": "0 8px 18px rgba(23, 37, 43, .08)",
+    "--pw-radius-control": ".65rem",
+    "--pw-radius-panel": "1rem",
+    "--pw-shadow-panel": "0 16px 40px rgba(23, 37, 43, .10)",
 }
 
 

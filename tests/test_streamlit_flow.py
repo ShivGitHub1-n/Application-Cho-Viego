@@ -86,7 +86,7 @@ def _create_resume_strategy(app: AppTest, title: str, description: str) -> AppTe
     app.pills(key="_resume_studio_stage_widget").set_value("Job context").run()
     app.text_input(key="_resume_studio_job_title_widget").input(title).run()
     app.text_area(key="_resume_studio_job_description_widget").input(description).run()
-    return app.button(key="resume-create-strategy").click().run()
+    return app.button(key="resume-create-strategy").click().run(timeout=60)
 
 
 def _workflow_state() -> dict[str, object]:
@@ -407,12 +407,6 @@ def test_streamlit_strategy_uses_reconciled_composition(monkeypatch, tmp_path) -
     )
 
     assert app.session_state["plan"].selected_claim_ids == ["streamlit-evidence-2"]
-    assert "resume" not in app.session_state
-    assert app.session_state["generated_content_reviewed"] is False
-
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run(timeout=10)
-
     assert app.session_state["resume"].experience_bullets["streamlit-entry"][0].text == (
         "Validated SPI hardware sensor interfaces."
     )
@@ -728,20 +722,30 @@ def test_streamlit_shows_collapsed_typed_composition_diagnostic(
     app_path = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
     app = AppTest.from_file(str(app_path)).run()
     _create_resume_strategy(app, posting["title"], posting["description"])
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run(timeout=10)
 
     diagnostic = app.session_state["resume"].composition_diagnostic
     assert diagnostic is not None
     assert diagnostic.selected_experience_ids
     assert diagnostic.termination_reason is not None
     artifact_fingerprint = app.session_state["generated_resume_artifact"].artifact_fingerprint
+    generation_timings = app.session_state["resume_generation_phase_timings"]
+    assert generation_timings["total_seconds"] >= 0
+    call_counts = service.telemetry.call_counts()
 
     _navigate(app, "jobs")
 
     assert (
         app.session_state["generated_resume_artifact"].artifact_fingerprint == artifact_fingerprint
     )
+    assert service.telemetry.call_counts() == call_counts
+
+    _navigate(app, "resume_studio")
+    app.pills(key="_resume_studio_stage_widget").set_value("Job context").run()
+    app.button(key="resume-create-strategy").click().run(timeout=60)
+    assert app.session_state["generated_resume_artifact"].artifact_fingerprint == (
+        artifact_fingerprint
+    )
+    assert service.telemetry.call_counts() == call_counts
 
     _create_resume_strategy(
         app,
@@ -749,4 +753,6 @@ def test_streamlit_shows_collapsed_typed_composition_diagnostic(
         posting["description"] + "\nChanged material requirement.",
     )
 
-    assert "generated_resume_artifact" not in app.session_state
+    assert app.session_state["generated_resume_artifact"].artifact_fingerprint != (
+        artifact_fingerprint
+    )

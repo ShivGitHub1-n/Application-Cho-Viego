@@ -13,6 +13,20 @@ from resume_tailor.frontend.shared_components import workspace_icon_markup
 APPLICATION_OPTIONS = tuple(route.value for route in ROUTE_OPTIONS)
 
 
+def _brand_markup() -> str:
+    return """
+    <div class="pw-brand-lockup">
+      <span class="pw-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 36 36" fill="none">
+          <path d="M7 7.5 15.4 28h5.2L29 7.5h-6.1L18 21.2 13.1 7.5H7Z" fill="currentColor"/>
+          <path d="M22.9 7.5H29L20.6 28h-5.2l2.6-6.8 4.9-13.7Z" fill="currentColor" opacity=".42"/>
+        </svg>
+      </span>
+      <span><strong>Viego</strong><small>Application workspace</small></span>
+    </div>
+    """
+
+
 def _consume_pending_route(state: MutableMapping[str, Any]) -> AppRoute | None:
     """Consume the current and legacy pending-route keys before controls render."""
 
@@ -109,8 +123,7 @@ def render_application_shell(
     with streamlit_module.container(key="pw-shell-root"):
         with streamlit_module.sidebar:
             with streamlit_module.container(key="pw-sidebar-brand"):
-                streamlit_module.markdown("### Viego")
-                streamlit_module.caption("Your application workspace")
+                streamlit_module.markdown(_brand_markup(), unsafe_allow_html=True)
             streamlit_module.caption("Workspace")
             for route in ROUTE_OPTIONS:
                 _render_route_control(streamlit_module, route, active_route, "sidebar")

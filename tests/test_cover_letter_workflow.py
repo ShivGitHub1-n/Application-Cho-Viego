@@ -437,12 +437,10 @@ def test_production_streamlit_accepts_grounded_synthetic_senior_role(
     app.text_area(key="_resume_studio_job_description_widget").input(
         f"Company: {synthetic_posting.company_name}\n{synthetic_posting.description}"
     ).run()
-    app.button(key="resume-create-strategy").click().run(timeout=30)
+    app.button(key="resume-create-strategy").click().run(timeout=60)
     posting_fingerprint = content_fingerprint(app.session_state["posting"])
     assert app.session_state["workflow_posting_fingerprint"] == posting_fingerprint
 
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run(timeout=60)
     _navigate(app, "cover_letters")
     next(button for button in app.button if button.label == "Generate cover letter").click().run(
         timeout=60
@@ -517,8 +515,6 @@ def test_streamlit_posting_only_cover_letter_survives_unavailable_pagination(
     assert app.session_state["workflow_posting_fingerprint"] == posting_fingerprint
     assert content_fingerprint(app.session_state["plan"].posting) == posting_fingerprint
 
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run(timeout=60)
     resume_artifact = app.session_state["generated_resume_artifact"]
     assert resume_artifact.fingerprint_inputs.normalized_posting_fingerprint == (
         posting_fingerprint

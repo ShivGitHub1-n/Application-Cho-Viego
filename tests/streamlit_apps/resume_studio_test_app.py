@@ -121,6 +121,19 @@ if st.session_state.pop("resume-test-apply-handoff", False):
             description="Build firmware from a selected reviewed Jobs posting.",
         ),
     )
+if st.session_state.pop("resume-test-apply-html-handoff", False):
+    apply_tailoring_handoff(
+        st.session_state,
+        SimpleNamespace(
+            profile_id="profile-completeness-fixture",
+            title="Embedded Systems Engineer",
+            company="Northstar Devices",
+            description=(
+                "&lt;div&gt;Build embedded controls.&lt;/div&gt;"
+                "&lt;ul&gt;&lt;li&gt;Validate firmware on hardware.&lt;/li&gt;&lt;/ul&gt;"
+            ),
+        ),
+    )
 if "profile" not in st.session_state:
     from resume_tailor.domain.models import MasterProfile
 
@@ -155,6 +168,7 @@ if (
         key="_resume_generated_skill_approval_widget_generated-skill-1",
         label_visibility="collapsed",
     )
+if st.session_state.get("resume_studio_stage") != "Resume review":
     st.checkbox(
         "Review confirmation harness state",
         key="_resume_studio_review_confirmed_widget",

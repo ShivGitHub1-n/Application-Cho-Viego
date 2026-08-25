@@ -14,6 +14,9 @@ from resume_tailor.application.job_discovery.experience import (
 )
 from resume_tailor.application.job_discovery.filtering import filter_recommendations
 from resume_tailor.application.job_discovery.handoff import TailoringHandoff
+from resume_tailor.application.job_discovery.presentation import (
+    normalize_job_description_for_display,
+)
 from resume_tailor.application.job_intake import normalize_job_description
 from resume_tailor.application.workflow_state import (
     invalidate_derived_workflow,
@@ -95,7 +98,8 @@ def apply_tailoring_handoff(
     state["job_title_input"] = handoff.title
     company = str(getattr(handoff, "company", "")).strip()
     state["job_company_input"] = company
-    state["job_description_input"] = handoff.description
+    display_description = normalize_job_description_for_display(handoff.description)
+    state["job_description_input"] = display_description
     state.pop("_resume_studio_job_title_widget", None)
     state.pop("_resume_studio_job_company_widget", None)
     state.pop("_resume_studio_job_description_widget", None)
@@ -107,7 +111,7 @@ def apply_tailoring_handoff(
         id=str(getattr(handoff, "posting_id", "jobs-handoff-posting")),
         title=handoff.title.strip(),
         company_name=company or None,
-        description=normalize_job_description(handoff.description),
+        description=normalize_job_description(display_description),
         source_url=str(getattr(handoff, "official_url", "")).strip() or None,
     )
     set_active_application_context(state, posting)

@@ -37,35 +37,29 @@ def test_manual_resume_studio_session_starts_with_a_blank_job_title() -> None:
     assert app.text_input(key="_resume_studio_job_title_widget").value == ""
 
 
-def test_resume_studio_starts_with_job_context_and_all_five_stages() -> None:
+def test_resume_studio_starts_with_simple_three_step_workflow() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
 
     assert app.exception == []
     assert any(item.value == "Resume Studio" for item in app.title)
     assert app.pills(key="_resume_studio_stage_widget").options == [
         "Job context",
-        "Strategy",
-        "Evidence selection",
         "Resume review",
         "Export",
     ]
     assert app.pills(key="_resume_studio_stage_widget").value == "Job context"
-    assert any("using reviewed profile" in item.value.lower() for item in app.caption)
+    assert any("reviewed career profile" in item.value.lower() for item in app.caption)
 
 
-def test_resume_studio_stage_actions_progress_without_mutating_the_pills_key() -> None:
+def test_one_generation_action_builds_plan_and_resume_then_reaches_review() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
 
     app.button(key="resume-create-strategy").click().run()
     assert app.exception == []
-    assert app.session_state["resume_studio_stage"] == "Strategy"
-    assert app.pills(key="_resume_studio_stage_widget").value == "Strategy"
-
-    app.button(key="resume-to-evidence").click().run()
-    assert app.session_state["resume_studio_stage"] == "Evidence selection"
-    app.checkbox(key="_resume_evidence_approval_widget_plan-claim-1").set_value(True).run()
-    app.button(key="resume-build-document").click().run()
     assert app.session_state["resume_studio_stage"] == "Resume review"
+    assert app.pills(key="_resume_studio_stage_widget").value == "Resume review"
+    assert app.session_state["resume-studio-service-calls"] == 1
+    assert app.session_state["resume-studio-build-calls"] == 1
 
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
@@ -77,8 +71,6 @@ def test_resume_studio_stage_actions_progress_without_mutating_the_pills_key() -
 def test_resume_studio_preserves_pasted_context_and_review_confirmation_across_stages() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
     app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run()
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
 
@@ -98,33 +90,25 @@ def test_resume_studio_preserves_pasted_context_and_review_confirmation_across_s
 
 def test_resume_approvals_survive_stage_revisits_until_explicitly_changed() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
-    app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
-    app.checkbox(key="_resume_evidence_approval_widget_plan-claim-1").set_value(True).run()
     app.session_state["resume-test-generated-pending"] = True
-    app.button(key="resume-build-document").click().run()
+    app.button(key="resume-create-strategy").click().run()
 
     app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
         True
-    ).run()
+    )
     app.checkbox(key="_resume_generated_skill_approval_widget_generated-skill-1").set_value(
         True
-    ).run()
+    )
+    app.button(key="resume-apply-suggestions").click().run()
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
     app.button(key="resume-verify-export").click().run()
 
-    assert app.session_state["resume_evidence_selection_ids"] == {"plan-claim-1"}
     assert app.session_state["resume_generated_approval_ids"] == {
         "generated-bullet-1",
         "generated-skill-1",
     }
     assert app.session_state["resume_studio_review_confirmed"] is True
-    assert "resume_export_status" in app.session_state
-
-    app.pills(key="_resume_studio_stage_widget").set_value("Evidence selection").run()
-    assert app.checkbox(key="_resume_evidence_approval_widget_plan-claim-1").value is True
-    assert "resume" in app.session_state
     assert "resume_export_status" in app.session_state
 
     app.pills(key="_resume_studio_stage_widget").set_value("Resume review").run()
@@ -141,24 +125,47 @@ def test_resume_approvals_survive_stage_revisits_until_explicitly_changed() -> N
 
     app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
         False
-    ).run()
+    )
+    app.button(key="resume-apply-suggestions").click().run()
     assert "resume_export_status" not in app.session_state
     assert "resume_studio_review_confirmed" not in app.session_state
 
 
 def test_omitted_entry_suggestion_names_its_canonical_parent_and_document_cost() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
-    app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
     app.session_state["resume-test-generated-pending"] = True
     app.session_state["resume-test-omitted-entry-suggestion"] = True
-    app.button(key="resume-build-document").click().run()
+    app.button(key="resume-create-strategy").click().run()
 
     assert app.exception == []
     assert any("Project · Automation Challenge" in item.value for item in app.markdown)
     action = app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1")
     assert action.label == "Add project or experience"
     assert any("canonical parent entry" in item.value for item in app.caption)
+
+
+def test_suggestion_choices_are_batched_into_one_document_rebuild() -> None:
+    app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
+    app.session_state["resume-test-generated-pending"] = True
+    app.button(key="resume-create-strategy").click().run()
+
+    assert app.session_state["resume-studio-build-calls"] == 1
+    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
+        True
+    )
+    app.checkbox(key="_resume_generated_skill_approval_widget_generated-skill-1").set_value(
+        True
+    )
+    assert app.session_state["resume-studio-build-calls"] == 1
+
+    app.button(key="resume-apply-suggestions").click().run()
+
+    assert app.exception == []
+    assert app.session_state["resume-studio-build-calls"] == 2
+    assert app.session_state["resume_generated_approval_ids"] == {
+        "generated-bullet-1",
+        "generated-skill-1",
+    }
 
 
 def test_jobs_handoff_context_is_the_first_resume_studio_context_and_survives_stages() -> None:
@@ -177,11 +184,21 @@ def test_jobs_handoff_context_is_the_first_resume_studio_context_and_survives_st
         "Build firmware from a selected reviewed Jobs posting."
     )
     app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
     assert app.session_state["job_title_input"] == "Handoff Firmware Engineer"
     assert app.session_state["job_description_input"] == (
         "Build firmware from a selected reviewed Jobs posting."
     )
+
+
+def test_jobs_handoff_decodes_html_before_resume_studio_display() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.session_state["resume-test-apply-html-handoff"] = True
+    app.run()
+
+    description = app.text_area(key="_resume_studio_job_description_widget").value
+    assert description == "Build embedded controls.\n- Validate firmware on hardware."
+    assert "&lt;" not in description
+    assert "<div" not in description
 
 
 def test_resume_studio_normalizes_a_stale_stage_before_rendering_widgets() -> None:
@@ -196,10 +213,8 @@ def test_resume_studio_normalizes_a_stale_stage_before_rendering_widgets() -> No
 
 def test_rebuilding_resume_with_changed_approvals_clears_stale_export_artifacts() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
+    app.session_state["resume-test-generated-pending"] = True
     app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
-    app.checkbox(key="_resume_evidence_approval_widget_plan-claim-1").set_value(True).run()
-    app.button(key="resume-build-document").click().run()
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
     app.button(key="resume-verify-export").click().run()
@@ -207,9 +222,11 @@ def test_rebuilding_resume_with_changed_approvals_clears_stale_export_artifacts(
     assert "resume_export_status" in app.session_state
     assert app.download_button(key="resume-download-docx").label == "Download DOCX"
 
-    app.pills(key="_resume_studio_stage_widget").set_value("Evidence selection").run()
-    app.checkbox(key="_resume_evidence_approval_widget_plan-claim-1").set_value(False).run()
-    app.button(key="resume-build-document").click().run()
+    app.pills(key="_resume_studio_stage_widget").set_value("Resume review").run()
+    app.checkbox(key="_resume_generated_bullet_approval_widget_generated-bullet-1").set_value(
+        True
+    )
+    app.button(key="resume-apply-suggestions").click().run()
 
     assert "resume_export_status" not in app.session_state
     assert "resume_export_docx" not in app.session_state
@@ -219,8 +236,6 @@ def test_rebuilding_resume_with_changed_approvals_clears_stale_export_artifacts(
 def test_resume_studio_reports_unavailable_exact_verification_without_export_success() -> None:
     app = _prepare_job_context(AppTest.from_file(str(HARNESS)).run())
     app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
-    app.button(key="resume-build-document").click().run()
     app.checkbox(key="_resume_studio_review_confirmed_widget").set_value(True).run()
     app.button(key="resume-to-export").click().run()
     app.session_state["resume-test-render-mode"] = "unavailable"

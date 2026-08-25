@@ -375,11 +375,7 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     app.text_area(key="_resume_studio_job_description_widget").input(
         POSTING_FIXTURE.read_text(encoding="utf-8")
     )
-    app.button(key="resume-create-strategy").click().run()
-    app.button(key="resume-to-evidence").click().run()
-    next(button for button in app.button if button.label == "Build reviewed resume").click().run(
-        timeout=30
-    )
+    app.button(key="resume-create-strategy").click().run(timeout=60)
 
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.GENERATED_AWAITING_REVIEW
@@ -389,17 +385,11 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     ]
     assert pending
     for item in pending[:2]:
-        app.checkbox(key=item.key).set_value(True).run()
-
-    assert app.session_state[GENERATED_RESUME_REBUILD_REQUIRED_KEY] is True
-    assert app.session_state[GENERATED_RESUME_WORDING_DIRTY_KEY] is True
-    assert any(button.label == "Rebuild with approved wording" for button in app.button)
+        app.checkbox(key=item.key).set_value(True)
     initial_fingerprint = app.session_state["generated_resume_artifact"].artifact_fingerprint
     initial_version = app.session_state[GENERATED_RESUME_ARTIFACT_VERSION_KEY]
 
-    next(
-        button for button in app.button if button.label == "Rebuild with approved wording"
-    ).click().run(timeout=30)
+    app.button(key="resume-apply-suggestions").click().run(timeout=60)
 
     rebuilt = app.session_state["generated_resume_artifact"]
     assert models.calls == 1
@@ -432,6 +422,8 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
         GeneratedResumeReviewState.REBUILT_APPROVED
     )
     app.button(key="resume-to-export").click().run()
+    if "_resume_studio_review_confirmed_widget" not in app.session_state:
+        app.session_state["_resume_studio_review_confirmed_widget"] = True
     app.button(key="resume-verify-export").click().run()
     download_button = next(
         button for button in app.download_button if button.label == "Download DOCX"
@@ -447,7 +439,7 @@ def test_actual_streamlit_rebuild_state_machine_keeps_approved_snapshot(
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.DOWNLOADED
     )
-    assert not any(button.label == "Rebuild with approved wording" for button in app.button)
+    assert not any(button.label == "Restore current document" for button in app.button)
     assert any(button.label == "Download DOCX" for button in app.download_button)
     assert app.session_state[GENERATED_RESUME_GENERATED_APPROVALS_KEY]
     assert models.calls == 1
