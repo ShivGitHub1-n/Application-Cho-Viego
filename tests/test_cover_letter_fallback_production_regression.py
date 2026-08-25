@@ -244,8 +244,9 @@ def test_titan_posting_only_fallback_survives_complete_service_validation() -> N
         title="Mechatronics Engineer Intern - Hardware",
         company_name="TITAN Haptics",
         description=(
-            ROOT / "tests" / "fixtures" / "titan_haptics_mechatronics_integration_engineer.txt"
-        ).read_text(encoding="utf-8"),
+            "The intern will work across mechanical, electrical, and embedded "
+            "hardware tasks."
+        ),
     )
 
     class RecordingComposer(DeterministicCoverLetterComposer):
@@ -309,16 +310,20 @@ def test_titan_posting_only_fallback_survives_complete_service_validation() -> N
 
     assert composer.first_output is not None
     opening = composer.first_output.paragraphs[0]
-    assert opening.source_bound_sentences
-    connection = opening.source_bound_sentences[0]
-    assert connection.candidate_evidence_ids
+    assert len(opening.source_bound_sentences) == 2
+    candidate_sentence, connection = opening.source_bound_sentences
+    assert candidate_sentence.candidate_evidence_ids
+    assert not candidate_sentence.posting_fact_ids
+    assert not connection.candidate_evidence_ids
     assert len(connection.posting_fact_ids) == 1
     facts_by_id = {fact.id: fact for fact in artifact.company_research.facts}
     attached_fact = facts_by_id[connection.posting_fact_ids[0]]
 
     assert artifact.company_research.status is CompanyResearchStatus.POSTING_ONLY
-    assert attached_fact.fact == "Integrate drivers, test real hardware, and iterate performance."
-    assert "drivers" in connection.text.casefold()
+    assert attached_fact.fact == (
+        "The intern will work across mechanical, electrical, and embedded hardware tasks."
+    )
+    assert "embedded hardware tasks" in connection.text.casefold()
     assert posting.company_name in connection.text
     assert posting.title in connection.text
     assert artifact.fingerprint_inputs.writing_policy_version == (
@@ -600,12 +605,14 @@ def test_posting_only_opening_records_candidate_and_specific_posting_authority()
         assert len(opening.company_research_ids) == 1
         posting_fact = facts_by_id[opening.company_research_ids[0]]
         assert posting_fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
-        assert all(
-            sentence.candidate_evidence_ids == ["opening-evidence-0"]
-            and sentence.posting_fact_ids == opening.company_research_ids
-            and not sentence.verified_company_fact_ids
-            for sentence in opening.source_bound_sentences
-        )
+        assert len(opening.source_bound_sentences) == 2
+        candidate_sentence, opportunity_sentence = opening.source_bound_sentences
+        assert candidate_sentence.candidate_evidence_ids == ["opening-evidence-0"]
+        assert not candidate_sentence.posting_fact_ids
+        assert not candidate_sentence.verified_company_fact_ids
+        assert not opportunity_sentence.candidate_evidence_ids
+        assert opportunity_sentence.posting_fact_ids == opening.company_research_ids
+        assert not opportunity_sentence.verified_company_fact_ids
         metadata_terms = CoverLetterValidator._content_terms(
             f"{posting.company_name} {posting.title}"
         )
@@ -653,10 +660,10 @@ def test_posting_only_opening_does_not_authorize_an_unsupported_company_claim() 
     paragraphs = list(output.paragraphs)
     opening = paragraphs[0]
     authorities = list(opening.source_bound_sentences)
-    authorities[0] = authorities[0].model_copy(
+    authorities[1] = authorities[1].model_copy(
         update={
             "text": (
-                authorities[0].text.rstrip(".")
+                authorities[1].text.rstrip(".")
                 + " Example Motion ships one million production devices annually."
             )
         }

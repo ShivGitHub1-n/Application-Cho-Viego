@@ -1381,7 +1381,13 @@ class CoverLetterValidator:
         posting: JobPosting,
     ) -> bool:
         source_texts = [fact.fact for fact in company_facts]
-        source_texts.extend([posting.title, posting.description])
+        source_texts.extend(
+            [
+                posting.company_name or "",
+                posting.title,
+                posting.description,
+            ]
+        )
         source_terms = cls._content_terms(" ".join(source_texts))
         sentence_terms = cls._content_terms(sentence)
         company_name_terms = cls._content_terms(posting.company_name or "")
@@ -2320,14 +2326,6 @@ class DeterministicCoverLetterComposer:
         opening_posting_fact_ids = (
             [opening_fact.id] if opening_fact is not None else posting_fact_ids
         )
-        posting_concepts = self._opening_posting_concepts(
-            (
-                self._posting_concepts(opening_fact.fact, posting)
-                if opening_fact is not None
-                else self._authority_concepts(research, posting)
-            ),
-            opening_record,
-        )
         if length_class is CoverLetterLengthClass.CONCISE:
             per_thread = 1
             story_thread_count = 2
@@ -2365,20 +2363,14 @@ class DeterministicCoverLetterComposer:
             CoverLetterParagraphPurpose.ROLE_FIT,
         )
         paragraphs = [
-            self._source_bound_paragraph(
-                purpose=CoverLetterParagraphPurpose.OPENING,
-                text=self._narrative_opening(
-                    connection_records,
-                    posting,
-                    posting_concepts,
+            self._source_bound_opening_paragraph(
+                record=opening_record,
+                posting=posting,
+                authority_fact=(
+                    opening_fact
+                    if opening_fact is not None
+                    else self._company_fact(research)
                 ),
-                evidence_ids=[item.id for item in connection_records],
-                posting_fact_ids=opening_posting_fact_ids,
-                metadata=[
-                    CoverLetterCanonicalMetadata.COMPANY_NAME,
-                    CoverLetterCanonicalMetadata.ROLE_TITLE,
-                ],
-                narrative_thread_id="thread-opening",
                 length_class=length_class,
             ),
             *[
@@ -2407,6 +2399,65 @@ class DeterministicCoverLetterComposer:
             ),
         ]
         return CoverLetterDraftOutput(paragraphs=paragraphs)
+
+    @classmethod
+    def _source_bound_opening_paragraph(
+        cls,
+        *,
+        record: CoverLetterEvidenceRecord,
+        posting: JobPosting,
+        authority_fact: CompanyResearchFact,
+        length_class: CoverLetterLengthClass,
+    ) -> CoverLetterDraftParagraph:
+        """Keep candidate and opportunity assertions within their own authority."""
+
+        candidate_sentence = cls._full_evidence_sentence(record, index=0)
+        company = (posting.company_name or "").strip()
+        destination = f" at {company}" if company else ""
+        authority_concepts = cls._opening_posting_concepts(
+            cls._posting_concepts(authority_fact.fact, posting),
+            record,
+        )
+        authority_focus = cls._joined(authority_concepts[:2])
+        source_frame = (
+            "the posting calls for"
+            if authority_fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+            else "the verified company information highlights"
+        )
+        opportunity_sentence = (
+            f"The {posting.title} role{destination} interests me because {source_frame} "
+            f"{authority_focus}."
+        )
+        metadata = [CoverLetterCanonicalMetadata.ROLE_TITLE]
+        if company:
+            metadata.insert(0, CoverLetterCanonicalMetadata.COMPANY_NAME)
+        if authority_fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY:
+            posting_fact_ids = [authority_fact.id]
+            verified_fact_ids: list[str] = []
+        else:
+            posting_fact_ids = []
+            verified_fact_ids = [authority_fact.id]
+        sentences = [
+            CoverLetterSentenceAuthority(
+                text=candidate_sentence,
+                candidate_evidence_ids=[record.id],
+            ),
+            CoverLetterSentenceAuthority(
+                text=opportunity_sentence,
+                posting_fact_ids=posting_fact_ids,
+                verified_company_fact_ids=verified_fact_ids,
+                canonical_metadata=metadata,
+            ),
+        ]
+        return CoverLetterDraftParagraph(
+            purpose=CoverLetterParagraphPurpose.OPENING,
+            text=" ".join(sentence.text for sentence in sentences),
+            candidate_evidence_ids=[record.id],
+            company_research_ids=[authority_fact.id],
+            narrative_thread_id="thread-opening",
+            length_class=length_class,
+            source_bound_sentences=sentences,
+        )
 
     @staticmethod
     def _opening_record(

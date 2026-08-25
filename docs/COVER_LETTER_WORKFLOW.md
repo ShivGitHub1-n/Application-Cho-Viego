@@ -128,10 +128,14 @@ rather than filler.
 
 In posting-only mode, the deterministic opening selects one substantive job-
 posting fact that is closest to its opening evidence and its strongest ordered
-retrieval relationships, names a compact focus derived from that fact, and
-records that exact `POSTING_AUTHORITY` fact ID on each opening sentence together
-with the candidate evidence ID. Broad secondary requirement matches cannot make
-every posting fact look equally aligned and reduce selection to sentence length.
+retrieval relationships, expresses a compact substantive concept from that
+supplied fact, and records its exact `POSTING_AUTHORITY` fact ID on the
+opportunity sentence. The candidate observation is a separate sentence carrying
+only its reviewed evidence ID. This sentence-level separation prevents a
+deterministic bridge from claiming more than either source while the paragraph
+still makes the candidate-to-role connection. Broad secondary requirement matches
+cannot make every posting fact look equally aligned and reduce selection to
+sentence length.
 Imperative posting verbs remain source-faithful grammatical phrases (for example,
 `maintain` becomes `maintaining`, not a semantically unrelated abstraction).
 Company and role metadata remain separate canonical authority. Attaching a

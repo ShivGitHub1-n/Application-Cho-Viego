@@ -358,8 +358,10 @@ def test_production_streamlit_posting_only_software_opening_carries_exact_author
 
     opening = artifact.letter.paragraphs[0]
     assert opening.sentence_authorities
-    connection = opening.sentence_authorities[0]
-    assert connection.candidate_evidence_ids
+    candidate_sentence, connection = opening.sentence_authorities
+    assert candidate_sentence.candidate_evidence_ids
+    assert not candidate_sentence.posting_fact_ids
+    assert not connection.candidate_evidence_ids
     assert connection.posting_fact_ids
     evidence_ids = {item.id for item in artifact.evidence_records}
     posting_facts = {
@@ -367,7 +369,7 @@ def test_production_streamlit_posting_only_software_opening_carries_exact_author
         for fact in artifact.company_research.facts
         if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
     }
-    assert set(connection.candidate_evidence_ids) <= evidence_ids
+    assert set(candidate_sentence.candidate_evidence_ids) <= evidence_ids
     assert set(connection.posting_fact_ids) <= posting_facts.keys()
     attached_fact_text = " ".join(
         posting_facts[fact_id].fact for fact_id in connection.posting_fact_ids

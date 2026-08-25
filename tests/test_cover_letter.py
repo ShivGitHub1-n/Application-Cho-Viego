@@ -70,7 +70,7 @@ def test_all_candidate_rejection_reports_validator_separation_and_stays_fatal() 
             )
             if paragraph.source_bound_sentences:
                 sentences = list(paragraph.source_bound_sentences)
-                sentences[0] = sentences[0].model_copy(update={"text": rejected_text})
+                sentences[-1] = sentences[-1].model_copy(update={"text": rejected_text})
                 paragraphs[0] = paragraph.model_copy(
                     update={
                         "text": " ".join(sentence.text for sentence in sentences),
