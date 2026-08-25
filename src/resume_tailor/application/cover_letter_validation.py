@@ -2445,15 +2445,7 @@ class DeterministicCoverLetterComposer:
     ) -> CompanyResearchFact:
         """Choose the posting fact that best supports the opening connection."""
 
-        evidence_terms = CoverLetterValidator._content_terms(
-            " ".join(
-                [
-                    record.writer_text or record.source_text,
-                    *record.technologies,
-                    *record.outcomes,
-                ]
-            )
-        )
+        evidence_terms = cls._opening_alignment_terms(record)
         metadata_terms = CoverLetterValidator._content_terms(
             f"{posting.company_name or ''} {posting.title}"
         )
@@ -2477,15 +2469,7 @@ class DeterministicCoverLetterComposer:
     ) -> list[str]:
         """Keep a compact, substantive posting focus adjacent to its authority fact."""
 
-        evidence_terms = CoverLetterValidator._content_terms(
-            " ".join(
-                [
-                    record.writer_text or record.source_text,
-                    *record.technologies,
-                    *record.outcomes,
-                ]
-            )
-        )
+        evidence_terms = cls._opening_alignment_terms(record)
         ranked = sorted(
             enumerate(concepts),
             key=lambda item: (
@@ -2507,6 +2491,25 @@ class DeterministicCoverLetterComposer:
             if len(selected_terms) >= 2 or len(selected) == 2:
                 break
         return selected
+
+    @staticmethod
+    def _opening_alignment_terms(record: CoverLetterEvidenceRecord) -> set[str]:
+        """Return only reviewed or retrieval-proven terms for posting-fact pairing."""
+
+        return CoverLetterValidator._content_terms(
+            " ".join(
+                [
+                    record.writer_text or record.source_text,
+                    *record.technologies,
+                    *record.outcomes,
+                    # Retrieval preserves its strongest requirement relationships
+                    # first.  The full tail can contain broad secondary matches that
+                    # make every posting fact appear equally aligned and reduce this
+                    # pairing to fact length.
+                    *record.matched_requirements[:4],
+                ]
+            )
+        )
 
     @classmethod
     def _opening_candidate_focus(cls, record: CoverLetterEvidenceRecord) -> str:
@@ -3180,7 +3183,7 @@ class DeterministicCoverLetterComposer:
             "inspect": "inspection of",
             "iterate": "iteration of",
             "lead": "leadership of",
-            "maintain": "maintenance of",
+            "maintain": "maintaining",
             "perform": "",
             "prototype": "prototyping",
             "run": "",

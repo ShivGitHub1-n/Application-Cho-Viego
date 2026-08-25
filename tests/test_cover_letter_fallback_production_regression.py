@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from resume_tailor.application.company_research import BoundedCompanyResearchService
 from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.application.cover_letter_evidence import CoverLetterEvidencePortfolio
+from resume_tailor.application.cover_letter_policy import (
+    COVER_LETTER_WRITING_POLICY_VERSION,
+)
 from resume_tailor.application.cover_letter_validation import (
     CoverLetterValidator,
     DeterministicCoverLetterComposer,
 )
+from resume_tailor.application.services import TailorResumeService
 from resume_tailor.domain.application_strategy import (
     ApplicationStrategyPlan,
     EvidencePriorityTier,
@@ -22,9 +28,11 @@ from resume_tailor.domain.company_research import (
 from resume_tailor.domain.cover_letter import (
     CoverLetterEvidenceKind,
     CoverLetterEvidenceRecord,
+    CoverLetterFallbackReason,
     CoverLetterParagraphPurpose,
     CoverLetterQualityGateStatus,
 )
+from resume_tailor.domain.llm_models import CoverLetterDraftResult, LlmOperation
 from resume_tailor.domain.models import (
     EntityKind,
     EvidenceItem,
@@ -34,8 +42,14 @@ from resume_tailor.domain.models import (
     TemplateConstraints,
 )
 from resume_tailor.frontend import cover_letter_view
-from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer
+from resume_tailor.infrastructure.optimization import (
+    DeterministicResumeOptimizer,
+    EvidenceBoundResumeWriter,
+)
 from tests.cover_letter_helpers import ControlledCoverLetterRenderer
+from tests.fakes import FakeResumeLanguageModel, metadata
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _profile() -> MasterProfile:
@@ -215,6 +229,115 @@ def _hardware_posting() -> JobPosting:
             "and troubleshoot mechanical and electrical hardware on the bench."
         ),
     )
+
+
+def test_titan_posting_only_fallback_survives_complete_service_validation() -> None:
+    """Reproduce the live no-plan Streamlit fallback through the application facade."""
+
+    profile = MasterProfile.model_validate_json(
+        (ROOT / "tests" / "fixtures" / "world_star_tech_production_profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    posting = JobPosting(
+        id="titan-posting-only-service-regression",
+        title="Mechatronics Engineer Intern - Hardware",
+        company_name="TITAN Haptics",
+        description=(
+            ROOT / "tests" / "fixtures" / "titan_haptics_mechatronics_integration_engineer.txt"
+        ).read_text(encoding="utf-8"),
+    )
+
+    class RecordingComposer(DeterministicCoverLetterComposer):
+        first_output = None
+
+        def variants(self, evidence, research, active_posting):
+            outputs = super().variants(evidence, research, active_posting)
+            self.first_output = outputs[0]
+            return outputs
+
+    preparation = CoverLetterService()
+    research = preparation._research.research(
+        preparation.default_research_request(posting)
+    )
+    evidence, _ = preparation._evidence.select(profile, posting, plan=None)
+    invalid_provider_output = DeterministicCoverLetterComposer().variants(
+        evidence,
+        research,
+        posting,
+    )[0]
+    provider_paragraphs = []
+    for index, paragraph in enumerate(invalid_provider_output.paragraphs):
+        provider_paragraphs.append(
+            paragraph.model_copy(
+                update={
+                    "text": (
+                        "TITAN Haptics operates an unsupported production fleet."
+                        if index == 0
+                        else paragraph.text
+                    ),
+                    "source_bound_sentences": [],
+                }
+            )
+        )
+    provider = FakeResumeLanguageModel(
+        draft_cover_letter=CoverLetterDraftResult(
+            metadata=metadata(LlmOperation.COVER_LETTER_DRAFT),
+            output=invalid_provider_output.model_copy(
+                update={"paragraphs": provider_paragraphs}
+            ),
+        )
+    )
+    composer = RecordingComposer()
+    cover_letter_service = CoverLetterService(
+        language_model=provider,
+        renderer=ControlledCoverLetterRenderer([0.82, 0.84, 0.86, 0.88]),
+        deterministic_composer=composer,
+    )
+    service = TailorResumeService(
+        DeterministicResumeOptimizer(),
+        EvidenceBoundResumeWriter(),
+        cover_letter_service=cover_letter_service,
+    )
+
+    artifact = service.generate_cover_letter_artifact(
+        profile,
+        posting,
+        plan=None,
+        research_request=service.default_cover_letter_research_request(posting),
+    )
+
+    assert composer.first_output is not None
+    opening = composer.first_output.paragraphs[0]
+    assert opening.source_bound_sentences
+    connection = opening.source_bound_sentences[0]
+    assert connection.candidate_evidence_ids
+    assert len(connection.posting_fact_ids) == 1
+    facts_by_id = {fact.id: fact for fact in artifact.company_research.facts}
+    attached_fact = facts_by_id[connection.posting_fact_ids[0]]
+
+    assert artifact.company_research.status is CompanyResearchStatus.POSTING_ONLY
+    assert attached_fact.fact == "Integrate drivers, test real hardware, and iterate performance."
+    assert "drivers" in connection.text.casefold()
+    assert posting.company_name in connection.text
+    assert posting.title in connection.text
+    assert artifact.fingerprint_inputs.writing_policy_version == (
+        COVER_LETTER_WRITING_POLICY_VERSION
+    )
+    assert artifact.call_counts.provider_calls == 1
+    assert artifact.provider_diagnostic.fallback_reason is (
+        CoverLetterFallbackReason.ALL_PARAGRAPHS_REJECTED
+    )
+    assert all(not diagnostic.rejection_codes for diagnostic in artifact.candidate_validations)
+
+
+def test_maintenance_posting_fragment_remains_source_faithful_without_numeric_wordplay() -> None:
+    normalized = DeterministicCoverLetterComposer._normalize_posting_fragment(
+        "Maintain schematics, BOMs, integration guides, and test reports."
+    )
+
+    assert normalized.startswith("maintaining schematics")
+    assert "maintenance" not in normalized
 
 
 def _posting_only_opening_case() -> tuple[

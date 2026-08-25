@@ -127,12 +127,16 @@ employer-facing prose. Sparse evidence produces a shorter diagnostic candidate
 rather than filler.
 
 In posting-only mode, the deterministic opening selects one substantive job-
-posting fact that is closest to its opening evidence, names a compact focus
-derived from that fact, and records that exact `POSTING_AUTHORITY` fact ID on
-each opening sentence together with the candidate evidence ID. Company and role
-metadata remain separate canonical authority. Attaching a general posting
-bundle without expressing a responsibility is insufficient; external company
-research is neither required nor implied.
+posting fact that is closest to its opening evidence and its strongest ordered
+retrieval relationships, names a compact focus derived from that fact, and
+records that exact `POSTING_AUTHORITY` fact ID on each opening sentence together
+with the candidate evidence ID. Broad secondary requirement matches cannot make
+every posting fact look equally aligned and reduce selection to sentence length.
+Imperative posting verbs remain source-faithful grammatical phrases (for example,
+`maintain` becomes `maintaining`, not a semantically unrelated abstraction).
+Company and role metadata remain separate canonical authority. Attaching a
+general posting bundle without expressing a responsibility is insufficient;
+external company research is neither required nor implied.
 
 One repair request is permitted only after a malformed typed response. A
 semantically invalid response does not cause provider retries and is never
