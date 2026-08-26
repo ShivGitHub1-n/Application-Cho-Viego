@@ -4,6 +4,7 @@ import inspect
 
 from resume_tailor.domain.job_discovery.models import EligibilityStatus, FitGrade
 from resume_tailor.frontend.job_feed_view import (
+    _unique_meaningful,
     eligibility_indicator_markup,
     fit_grade_meter_markup,
     recommendation_selection_key,
@@ -158,6 +159,10 @@ def test_recommendation_selection_keys_are_context_safe() -> None:
 
     assert len(keys) == 5
     assert all(key.startswith("jobs-card-action-") for key in keys)
+
+
+def test_job_detail_values_hide_placeholders_and_dedupe_unresolved_facts() -> None:
+    assert _unique_meaningful(["Unknown", "-", "UART", "uart", "UART"]) == ["UART"]
 
 
 def test_jobs_css_targets_the_visible_selected_card_container() -> None:

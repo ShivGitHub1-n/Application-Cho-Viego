@@ -61,7 +61,10 @@ if scenario == "No profile":
         st.session_state["profile-test-no-profile-initialized"] = True
     st.session_state.pop("profile_extraction_draft", None)
 elif scenario == "Seed extracted draft":
-    if "profile_extraction_draft" not in st.session_state:
+    if (
+        "profile_extraction_draft" not in st.session_state
+        and not st.session_state.get("profile-test-save-count")
+    ):
         draft_profile = st.session_state["profile-test-repository"].get("local-profile").model_copy(
             update={"id": "draft-profile", "display_name": "Draft Candidate"}
         )

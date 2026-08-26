@@ -921,10 +921,6 @@ def _render_editor_review(
     if view is None:
         return
     render = view.revision.render
-    if view.has_staged_changes:
-        streamlit_module.info(
-            "You have staged changes. Apply them to update the document preview."
-        )
     if render.page_count is not None and render.page_count > 1:
         streamlit_module.warning(
             "This revision exceeds one page. Nothing was removed automatically; revise or undo "
@@ -1196,7 +1192,8 @@ def render_resume_studio_page(
     render_page_header(
         streamlit_module,
         "Resume Studio",
-        "Build a résumé around the experience that matters most for this role.",
+        "Build a résumé around the experience that matters most for this role. "
+        "Your reviewed profile stays the source of truth across applications.",
         eyebrow="Documents",
     )
     selected = streamlit_module.pills(

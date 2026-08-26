@@ -255,16 +255,18 @@ def _render_detail(
 ) -> None:
     with streamlit_module.container(border=True, key="jobs-detail-panel"):
         streamlit_module.subheader(item.title)
-        streamlit_module.caption(item.company)
-        job_metadata = " · ".join(
-            (
-                item.location_label,
-                item.work_arrangement.value.title(),
-                item.posting_age_label,
-            )
+        if _meaningful_detail_value(item.company):
+            streamlit_module.caption(item.company)
+        job_metadata = _join_meaningful(
+            item.location_label,
+            item.work_arrangement.value.title(),
+            item.posting_age_label,
         )
-        streamlit_module.caption(job_metadata)
-        streamlit_module.caption(f"{item.first_seen_label} · {item.checked_label}")
+        if job_metadata:
+            streamlit_module.caption(job_metadata)
+        timing = _join_meaningful(item.first_seen_label, item.checked_label)
+        if timing:
+            streamlit_module.caption(timing)
         fit, status = streamlit_module.columns([1, 1], gap="medium")
         with fit:
             streamlit_module.markdown(fit_grade_meter_markup(item.grade), unsafe_allow_html=True)
@@ -272,23 +274,11 @@ def _render_detail(
             streamlit_module.markdown(
                 eligibility_indicator_markup(item.eligibility), unsafe_allow_html=True
             )
-            streamlit_module.caption(
-                f"Verification: {item.verification_status.value.replace('_', ' ').title()} · "
-                f"Freshness: {item.freshness_label}"
-            )
-            if item.provisional:
-                streamlit_module.caption("Provisional · needs review")
-        streamlit_module.caption(
-            f"Source: {item.source_company} · Confidence: "
-            f"{item.verification_confidence.value.title()}"
-        )
         with streamlit_module.container(key="jobs-action-row"):
             actions = streamlit_module.columns(4, gap="small")
             with actions[0]:
                 if item.official_url:
                     streamlit_module.link_button("Open posting", item.official_url, width="content")
-                else:
-                    streamlit_module.caption("Official posting link unavailable.")
             with actions[1]:
                 if (
                     streamlit_module.button(
@@ -319,6 +309,7 @@ def _render_detail(
                     on_cover_letter(item.job_id)
         streamlit_module.divider()
         _render_list(streamlit_module, "Why it fits", item.reasons)
+        _render_list(streamlit_module, "Skills to strengthen", item.gaps)
         if detail is not None:
             with streamlit_module.expander("Full job description", expanded=False):
                 streamlit_module.write(
@@ -326,18 +317,66 @@ def _render_detail(
                 )
         with streamlit_module.expander("Evidence behind this fit", expanded=False):
             _render_list(streamlit_module, "Supporting profile evidence", item.supporting_evidence)
-        if item.gaps:
-            streamlit_module.warning("Material gaps: " + " · ".join(item.gaps))
-        if item.unresolved_facts:
+        with streamlit_module.expander("Advanced fit details", expanded=False):
+            streamlit_module.caption(
+                f"Verification: {item.verification_status.value.replace('_', ' ').title()} · "
+                f"Freshness: {item.freshness_label}"
+            )
+            if item.provisional:
+                streamlit_module.caption(
+                    "Provisional result; important posting details need review."
+                )
+            source = _join_meaningful(
+                f"Source: {item.source_company}",
+                f"Confidence: {item.verification_confidence.value.title()}",
+            )
+            if source:
+                streamlit_module.caption(source)
             _render_list(streamlit_module, "Unresolved facts", item.unresolved_facts)
 
 
 def _render_list(streamlit_module: Any, title: str, values: Sequence[str]) -> None:
+    cleaned = _unique_meaningful(values)
+    if not cleaned:
+        return
     streamlit_module.markdown(f"#### {title}")
-    if values:
-        streamlit_module.markdown("\n".join(f"- {value}" for value in values))
-    else:
-        streamlit_module.caption("Unavailable.")
+    streamlit_module.markdown("\n".join(f"- {value}" for value in cleaned))
+
+
+def _join_meaningful(*values: str) -> str:
+    return " · ".join(value.strip() for value in values if _meaningful_detail_value(value))
+
+
+def _unique_meaningful(values: Sequence[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        normalized = " ".join(text.casefold().split())
+        if not _meaningful_detail_value(text) or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(text)
+    return result
+
+
+def _meaningful_detail_value(value: str) -> bool:
+    normalized = " ".join(str(value).strip().casefold().split())
+    return normalized not in {
+        "",
+        "-",
+        "unknown",
+        "unknown company",
+        "unknown location",
+        "unknown arrangement",
+        "unknown posting age",
+        "posting age unknown",
+        "first seen unknown",
+        "not checked recently",
+        "freshness unknown",
+        "unavailable",
+        "unavailable.",
+    }
 
 
 def _render_empty_feed(

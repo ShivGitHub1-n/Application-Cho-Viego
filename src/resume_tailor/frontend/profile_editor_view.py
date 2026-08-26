@@ -510,6 +510,13 @@ def render_profile_editor(
         "Evidence library": lambda: _render_evidence_library(streamlit_module, state),
     }
     renderer = renderers.get(section)
+    review_fields = streamlit_module.session_state.get("profile_extraction_review_fields", ())
+    if review_fields:
+        count = len(review_fields)
+        noun = "field" if count == 1 else "fields"
+        streamlit_module.info(
+            f"{count} {noun} need review before saving. Check the relevant section below."
+        )
     if renderer is not None:
         renderer()
     errors = streamlit_module.session_state.get("profile_editor_errors", [])
@@ -531,7 +538,8 @@ def render_profile_editor(
             if edited_profile.id != profile.id:
                 raise ValueError("Profile ID cannot be changed in the editor.")
             if on_save(edited_profile):
-                streamlit_module.success("Validated profile saved.")
+                streamlit_module.session_state["profile_pending_section"] = "Reviewed profile"
+                streamlit_module.rerun()
         except (ValidationError, ValueError, TypeError) as error:
             streamlit_module.session_state["profile_editor_errors"] = [str(error)]
             streamlit_module.error(f"Profile was not saved: {error}")

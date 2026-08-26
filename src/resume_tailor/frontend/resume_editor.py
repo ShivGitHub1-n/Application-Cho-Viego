@@ -190,6 +190,13 @@ def _render_editor_toolbar(
             streamlit_module.caption(
                 "Stage several changes, then update the document once."
             )
+            if dirty:
+                streamlit_module.info(
+                    "Changes pending · the preview shows the last applied revision. "
+                    "Apply changes to update it."
+                )
+            else:
+                streamlit_module.caption("Preview is current.")
         with streamlit_module.container(horizontal=True, vertical_alignment="center"):
             if streamlit_module.button(
                 "Discard staged",

@@ -29,6 +29,7 @@ def test_editor_stages_typing_and_reordering_before_one_render() -> None:
     ).input("Developed C++ STM32 control firmware for actuator feedback.")
     next(button for button in app.button if button.label == "Stage edit").click().run()
     assert app.session_state["editor-render-calls"] == 1
+    assert any("Changes pending" in item.value for item in app.info)
     edited_id = app.session_state["resume_editor_workspaces"][
         app.session_state["resume_editor_active_context"]
     ]["staged_resume"].experience_bullets["experience-controls"][0].id
@@ -38,6 +39,7 @@ def test_editor_stages_typing_and_reordering_before_one_render() -> None:
     assert app.session_state["editor-render-calls"] == 1
     app.button(key="resume-editor-apply").click().run()
     assert app.session_state["editor-render-calls"] == 2
+    assert not any("Changes pending" in item.value for item in app.info)
 
 
 def test_editor_reuses_unchanged_preview_on_navigation_rerun() -> None:

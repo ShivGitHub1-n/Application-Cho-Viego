@@ -80,6 +80,13 @@ def _profile_fingerprint(profile: MasterProfile) -> str:
     return profile.model_dump_json()
 
 
+def _humanize_profile_field(value: str) -> str:
+    """Turn extraction paths into concise labels suitable for the normal UI."""
+
+    label = value.replace("_", " ").replace(".", " ").replace("[", " ").replace("]", "")
+    return " ".join(label.split()).strip().capitalize()
+
+
 def _initialize_editor(
     streamlit_module: Any,
     profile: MasterProfile,
@@ -207,7 +214,10 @@ def _persist_profile(
     try:
         dependencies.profile_repository.save(profile)
     except (ProfileStoreError, ValueError) as error:
-        streamlit_module.session_state["profile_editor_errors"] = [f"Persistence failed: {error}"]
+        streamlit_module.session_state["profile_editor_errors"] = [
+            "Profile could not be saved safely. Check the fields and try again."
+        ]
+        streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
         return False
     if changed:
         dependencies.invalidate_tailoring()
@@ -223,6 +233,9 @@ def _persist_profile(
     streamlit_module.session_state.pop("profile_extraction_source", None)
     streamlit_module.session_state.pop("profile_source_import_open", None)
     streamlit_module.session_state.pop("profile_editor_errors", None)
+    streamlit_module.session_state.pop("profile_extraction_review_fields", None)
+    streamlit_module.session_state.pop("profile_extraction_diagnostic", None)
+    streamlit_module.session_state["profile_pending_section"] = "Reviewed profile"
     return True
 
 
@@ -308,6 +321,10 @@ def _render_import(
             )
             streamlit_module.session_state["profile_extraction_draft"] = result.output
             streamlit_module.session_state["profile_extraction_source"] = extracted
+            streamlit_module.session_state["profile_extraction_review_fields"] = tuple(
+                [*result.output.missing_fields, *result.output.uncertain_fields]
+            )
+            streamlit_module.session_state.pop("profile_extraction_diagnostic", None)
             profile = result.output.profile
             _initialize_editor(
                 streamlit_module,
@@ -315,21 +332,32 @@ def _render_import(
                 f"extracted:{profile.id}:{profile_change_fingerprint(profile)}",
             )
             streamlit_module.success(
-                "Draft profile extracted. Review and correct it before approval."
+                "Résumé analyzed. Review the extracted profile before saving it."
             )
         except (ResumeExtractionError, ValueError, LanguageModelError) as error:
-            streamlit_module.error(f"Résumé extraction failed: {error}")
+            streamlit_module.error(
+                "Résumé analysis could not be completed. Check the file and try again."
+            )
+            streamlit_module.session_state["profile_extraction_diagnostic"] = str(error)
     draft = streamlit_module.session_state.get("profile_extraction_draft")
     if draft:
-        streamlit_module.markdown("**Extracted-profile review**")
-        for label, values in (
-            ("Missing fields", draft.missing_fields),
-            ("Uncertain fields", draft.uncertain_fields),
-            ("Extraction notes", draft.extraction_notes),
-            ("Fidelity flags", draft.fidelity_flags),
-        ):
-            if values:
-                streamlit_module.warning(f"{label}: " + " ".join(values))
+        review_fields = [*draft.missing_fields, *draft.uncertain_fields]
+        review_count = len(review_fields) + len(draft.fidelity_flags)
+        if review_count:
+            noun = "field" if review_count == 1 else "fields"
+            streamlit_module.info(
+                f"{review_count} {noun} need review before saving. "
+                "Open Edit profile to check the affected areas."
+            )
+        else:
+            streamlit_module.success("Profile draft is ready for your review.")
+        if draft.fidelity_flags:
+            streamlit_module.warning(
+                "Some extracted details need correction before they can be trusted."
+            )
+        if review_fields:
+            labels = [_humanize_profile_field(value) for value in review_fields]
+            streamlit_module.caption("Review: " + ", ".join(labels))
     return profile
 
 
@@ -349,6 +377,22 @@ def _render_advanced(
     if storage_diagnostic:
         with streamlit_module.expander("Profile storage diagnostics", expanded=False):
             streamlit_module.code(str(storage_diagnostic))
+    extraction_diagnostic = streamlit_module.session_state.get("profile_extraction_diagnostic")
+    if extraction_diagnostic:
+        with streamlit_module.expander("Import diagnostics", expanded=False):
+            streamlit_module.code(str(extraction_diagnostic))
+    draft = streamlit_module.session_state.get("profile_extraction_draft")
+    if draft is not None:
+        with streamlit_module.expander("Extraction review details", expanded=False):
+            for label, values in (
+                ("Missing fields", draft.missing_fields),
+                ("Uncertain fields", draft.uncertain_fields),
+                ("Extraction notes", draft.extraction_notes),
+                ("Fidelity flags", draft.fidelity_flags),
+            ):
+                if values:
+                    streamlit_module.markdown(f"**{label}**")
+                    streamlit_module.code("\n".join(str(value) for value in values))
     if profile is None:
         streamlit_module.caption(
             "Create a reviewed profile from validated JSON when no saved profile is available."
@@ -632,9 +676,8 @@ def _render_source_resume(
         streamlit_module.caption(
             f"Current import review · {source.filename} · {source.source_format.upper()}"
         )
-        streamlit_module.warning(
-            "The original uploaded file is not persisted. The extracted text below is available "
-            "only during this review session and is not a visual copy of the source document."
+        streamlit_module.caption(
+            "Text from this import is available for verification during the review session."
         )
         with streamlit_module.expander("View extracted source text", expanded=False):
             streamlit_module.text(source.text)
@@ -752,7 +795,8 @@ def _render_overview_v2(
             color="green" if readiness == "Ready for tailoring" else "orange",
         )
     streamlit_module.caption(
-        "This is the reviewed source of truth used for job matching and document tailoring."
+        "This is the reviewed source of truth used for job matching and document tailoring. "
+        "Use one profile across software, embedded, robotics, and multidisciplinary roles."
     )
     options = (
         None

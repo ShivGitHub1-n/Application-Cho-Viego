@@ -349,7 +349,15 @@ def jobs_css() -> str:
   background: var(--jobs-surface) !important;
   border: 1px solid var(--jobs-border) !important;
   border-radius: 10px !important;
-  padding: .25rem;
+  padding: .65rem .8rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .08);
+}}
+.st-key-jobs-detail-panel .jobs-fit-meter {{
+  padding: .35rem 0;
+}}
+.st-key-jobs-detail-panel [data-testid="stExpander"] {{
+  border-color: color-mix(in srgb, var(--jobs-border) 82%, transparent) !important;
+  border-radius: 8px;
 }}
 .st-key-jobs-action-row,
 .st-key-jobs-saved-action-row {{

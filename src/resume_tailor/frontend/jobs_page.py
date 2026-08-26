@@ -174,7 +174,8 @@ def render_jobs_page(
                 streamlit_module.title("Jobs")
                 streamlit_module.caption(
                     "Evidence-backed job discovery from approved sources, with fit, "
-                    "eligibility, evidence, and freshness kept distinct."
+                    "eligibility, evidence, and freshness kept distinct. One reviewed "
+                    "profile can support different engineering directions."
                 )
             with action_col:
                 if streamlit_module is st and _refresh_is_running(
@@ -432,11 +433,16 @@ def _render_feed(
         if feed.status == "no_sources_configured":
             streamlit_module.warning("No approved job sources are configured")
         elif feed.status == "failed_all_sources":
-            streamlit_module.error(
-                "All approved job sources failed. Previously stored recommendations were preserved."
-            )
-    for warning in feed.source_warnings:
-        streamlit_module.warning(_human_source_warning(warning))
+            if feed.visible:
+                streamlit_module.warning(
+                    "Refresh did not complete. Previously stored recommendations remain available."
+                )
+            else:
+                streamlit_module.error(
+                    "All approved job sources failed. Previously stored recommendations "
+                    "were preserved."
+                )
+    _render_source_warning_summary(streamlit_module, feed)
 
     def toggle_excluded() -> list[Any] | None:
         expanded_now = not expanded
@@ -771,6 +777,26 @@ def _render_list_section(
         f'<ul class="{css_class}">{rendered}</ul></div>',
         unsafe_allow_html=True,
     )
+
+
+def _render_source_warning_summary(streamlit_module: Any, feed: FeedView) -> None:
+    """Keep partial-source failures visible without overwhelming a usable feed."""
+
+    if not feed.source_warnings:
+        return
+    count = len(feed.source_warnings)
+    noun = "source" if count == 1 else "sources"
+    if feed.visible:
+        streamlit_module.info(
+            f"{count} {noun} could not refresh; showing the latest usable results."
+        )
+    else:
+        streamlit_module.warning(
+            f"{count} {noun} could not refresh. Review the details and try again later."
+        )
+    with streamlit_module.expander("Refresh details", expanded=False):
+        for warning in feed.source_warnings:
+            streamlit_module.caption(_human_source_warning(warning))
 
 
 def _format_refresh(value: Any) -> str:

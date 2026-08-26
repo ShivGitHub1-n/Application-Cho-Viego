@@ -35,9 +35,9 @@ def test_offline_jobs_harness_renders_only_the_jobs_workspace() -> None:
     ]
     assert not any("profile-fit score" in item.value.lower() for item in app.markdown)
     assert any(expander.label == "Evidence behind this fit" for expander in app.expander)
-    assert any("Material gaps" in item.value for item in app.warning)
+    assert any("Skills to strengthen" in item.value for item in app.markdown)
     assert any("jobs-eligibility--unknown" in item.value for item in app.markdown)
-    assert any("Provisional" in item.value for item in app.caption)
+    assert any(item.label == "Advanced fit details" for item in app.expander)
 
 
 def test_jobs_header_uses_the_page_eleven_workspace_composition() -> None:
@@ -68,7 +68,7 @@ def test_offline_jobs_harness_selection_uses_contextual_keys_and_persists() -> N
     assert app.session_state["jobs_tailored_selected_job_id"] == "good-1"
     assert any(item.value == "Good Role" for item in app.subheader)
     assert any("jobs-eligibility--unknown" in item.value for item in app.markdown)
-    assert any("Provisional" in item.value for item in app.caption)
+    assert any(item.label == "Advanced fit details" for item in app.expander)
     app.button(key="jobs-card-action-tailored-profile-1-weak-1").click().run().run()
     assert app.session_state["jobs_tailored_selected_job_id"] == "weak-1"
     assert any(item.value == "Weak Role" for item in app.subheader)
@@ -191,8 +191,12 @@ def test_jobs_surfaces_sanitized_source_and_sector_no_match_diagnostics() -> Non
     scenario.set_value("partial-source-warning").run()
 
     assert any(
+        "1 source could not refresh" in item.value for item in app.info
+    )
+    assert any(item.label == "Refresh details" for item in app.expander)
+    assert any(
         item.value == "One approved source returned a partial response."
-        for item in app.warning
+        for item in app.caption
     )
 
     scenario = next(item for item in app.selectbox if item.label == "Offline scenario")

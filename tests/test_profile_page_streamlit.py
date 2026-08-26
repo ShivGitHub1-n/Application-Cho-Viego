@@ -240,8 +240,15 @@ def test_seeded_extracted_profile_draft_stays_local_until_explicit_save() -> Non
     assert app.session_state["profile"].id == "profile-completeness-fixture"
     assert app.session_state["profile_extraction_draft"].profile.id == "draft-profile"
     assert app.session_state["profile-test-save-count"] == 0
-    assert any("original uploaded file is not persisted" in item.value for item in app.warning)
+    assert any(
+        "available for verification during the review session" in item.value
+        for item in app.caption
+    )
     assert any("review-source.docx" in item.value for item in app.caption)
+    assert not any("Formatting was not preserved" in item.value for item in app.warning)
+    assert not any("Formatting was not preserved" in item.value for item in app.info)
+    app.pills(key="profile-active-section").set_value("Advanced").run()
+    assert any(item.label == "Extraction review details" for item in app.expander)
 
     app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
@@ -253,6 +260,7 @@ def test_seeded_extracted_profile_draft_stays_local_until_explicit_save() -> Non
     assert app.session_state["profile"].id == "draft-profile"
     assert app.session_state["profile"].display_name == "Reviewed Draft Candidate"
     assert "profile_extraction_draft" not in app.session_state
+    assert app.pills(key="profile-active-section").value == "Reviewed profile"
 
 
 def _first_labeled_widget(app: AppTest, label: str):
