@@ -6,6 +6,11 @@ from resume_tailor.application.decision_trace import (
     ResumeDecisionTrace,
     build_resume_decision_trace,
 )
+from resume_tailor.application.demo_mode import (
+    build_demo_resume_plan,
+    is_demo_application,
+    validate_demo_plan,
+)
 from resume_tailor.application.generated_artifact import (
     ResumeGenerationConfiguration,
     artifact_fingerprint,
@@ -104,6 +109,10 @@ class TailorResumeService:
         posting: JobPosting,
         constraints: TemplateConstraints,
     ) -> TailoringPlan:
+        # TEMPORARY DEMO OVERRIDE — remove after demo recording.
+        if is_demo_application(posting):
+            base_plan = self._optimizer.create_plan(profile, posting, constraints)
+            return build_demo_resume_plan(profile, posting, constraints, base_plan)
         with self._telemetry.measure(GenerationStage.EVIDENCE_RETRIEVAL):
             self._telemetry.increment("evidence_retrievals")
             retrieval = self._evidence_retriever.retrieve(profile, posting)
@@ -153,7 +162,10 @@ class TailorResumeService:
     ) -> StructuredResume:
         with self._telemetry.measure(GenerationStage.PLAN_VALIDATION):
             self._telemetry.increment("claim_validations")
-            self._plan_validator.validate(plan, profile)
+            if is_demo_application(plan.posting):
+                validate_demo_plan(plan, profile)
+            else:
+                self._plan_validator.validate(plan, profile)
         with self._telemetry.measure(GenerationStage.EVIDENCE_RETRIEVAL):
             self._telemetry.increment("evidence_retrievals")
             retrieval = self._evidence_retriever.retrieve(profile, plan.posting)
@@ -186,10 +198,15 @@ class TailorResumeService:
             return final_without_composition
         writing_enabled = (
             self._hybrid_services is not None and self._hybrid_services.writing_enabled
+        ) and not is_demo_application(plan.posting)
+        composition_profile = (
+            profile.model_copy(update={"technical_skills": plan.technical_skills})
+            if is_demo_application(plan.posting)
+            else profile
         )
         source_composed = self._resume_composer.compose(
             resume,
-            profile,
+            composition_profile,
             plan.posting,
             plan.constraints,
             attempt_exact_final=not writing_enabled,
@@ -202,7 +219,7 @@ class TailorResumeService:
                 plan.constraints,
                 approved_claim_ids,
             )
-            if self._hybrid_services is not None
+            if writing_enabled and self._hybrid_services is not None
             else source_composed
         )
         final = (

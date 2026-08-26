@@ -27,6 +27,12 @@ from resume_tailor.application.cover_letter_validation import (
     CoverLetterValidator,
     DeterministicCoverLetterComposer,
 )
+from resume_tailor.application.demo_mode import (
+    build_demo_cover_letter_evidence,
+    build_demo_cover_letter_output,
+    is_demo_application,
+    is_demo_details,
+)
 from resume_tailor.application.generated_artifact import content_fingerprint
 from resume_tailor.domain.company_research import (
     CompanyFactConfidence,
@@ -187,13 +193,29 @@ class CoverLetterService:
         timings.append(self._timing(GenerationStage.COMPANY_RESEARCH, started))
 
         started = self._clock()
-        evidence, evidence_diagnostic = self._evidence.select(
-            profile,
-            posting,
-            plan,
-            final_resume=final_resume,
-            explicit_motivation=explicit_motivation,
-        )
+        if is_demo_application(posting):
+            resume_evidence_ids = {
+                evidence_id
+                for bullets in (
+                    list(final_resume.experience_bullets.values())
+                    + list(final_resume.project_bullets.values())
+                )
+                for bullet in bullets
+                for evidence_id in bullet.evidence_ids
+            } if final_resume is not None else None
+            evidence, evidence_diagnostic = build_demo_cover_letter_evidence(
+                profile,
+                posting,
+                final_resume_evidence_ids=resume_evidence_ids,
+            )
+        else:
+            evidence, evidence_diagnostic = self._evidence.select(
+                profile,
+                posting,
+                plan,
+                final_resume=final_resume,
+                explicit_motivation=explicit_motivation,
+            )
         timings.append(self._timing(GenerationStage.COVER_LETTER_EVIDENCE_SELECTION, started))
         if not evidence:
             raise CoverLetterValidationError("No reviewed evidence is available for a cover letter")
@@ -482,13 +504,16 @@ class CoverLetterService:
     ) -> CoverLetterDraftRequest:
         self._validate_inputs(profile, posting, plan)
         research = self._research.research(self._bind_research_request(posting, research_request))
-        evidence, _ = self._evidence.select(
-            profile,
-            posting,
-            plan,
-            final_resume=final_resume,
-            explicit_motivation=explicit_motivation,
-        )
+        if is_demo_application(posting):
+            evidence, _ = build_demo_cover_letter_evidence(profile, posting)
+        else:
+            evidence, _ = self._evidence.select(
+                profile,
+                posting,
+                plan,
+                final_resume=final_resume,
+                explicit_motivation=explicit_motivation,
+            )
         narrative_plan = self._narrative_planner.create(posting, evidence, research)
         return self._create_request(posting, evidence, research, narrative_plan)
 
@@ -676,6 +701,24 @@ class CoverLetterService:
         request: CoverLetterDraftRequest,
     ) -> tuple[CoverLetterDraftResult | None, CoverLetterProviderDiagnostic]:
         started = self._clock()
+        if is_demo_details(request.company_name, request.job_title):
+            return None, CoverLetterProviderDiagnostic(
+                provider="demo-deterministic",
+                model="none",
+                status=CoverLetterProviderStatus.DISABLED,
+                request_count=0,
+                repair_count=0,
+                cache_hit_count=0,
+                elapsed_seconds=max(0.0, self._clock() - started),
+                fallback_reason=CoverLetterFallbackReason.PROVIDER_DISABLED,
+                failure_stage=CoverLetterProviderFailureStage.REQUEST,
+                failure_code="temporary_demo_override",
+                structured_parsing_succeeded=False,
+                safe_detail=(
+                    "Temporary Anduril demo override uses deterministic reviewed evidence; "
+                    "no Gemini request was made."
+                ),
+            )
         key = self._provider_cache_key(request)
         cached = self._provider_cache.get(key)
         if cached is not None:
@@ -781,6 +824,11 @@ class CoverLetterService:
         list[CoverLetterResumeConsistencyFinding],
     ]:
         deterministic = self._fallback.variants(evidence, research, posting)
+        if is_demo_application(posting):
+            deterministic.insert(
+                0,
+                build_demo_cover_letter_output(evidence, research, posting),
+            )
         rejected: list[CoverLetterClaimDiagnostic] = []
         review_required: list[CoverLetterClaimDiagnostic] = []
         consistency: list[CoverLetterResumeConsistencyFinding] = []
