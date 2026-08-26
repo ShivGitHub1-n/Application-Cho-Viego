@@ -6,12 +6,16 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from PIL import Image
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen.canvas import Canvas
 
 from resume_tailor.application.resume_editor import (
     ResumeEditorApprovalError,
     ResumeEditorError,
     ResumeEditorGroundingError,
     ResumeEditorService,
+    omitted_reviewed_entries,
     resume_editor_application_fingerprint,
 )
 from resume_tailor.domain.hybrid_resume import BulletVariantRecord
@@ -28,9 +32,17 @@ from resume_tailor.domain.models import (
     TechnicalSkillCategory,
 )
 from resume_tailor.domain.resume_editor import ResumeEditorFitStatus, ResumeEditorRender
-from resume_tailor.frontend.resume_editor import suggestion_presentation
+from resume_tailor.frontend.resume_editor import (
+    exact_preview_pdf_bytes,
+    suggestion_presentation,
+)
 from resume_tailor.infrastructure.resume_editor_rendering import (
     TemplateV1ResumeEditorRenderer,
+    render_pdf_preview_pages,
+)
+
+FRONTEND_PATH = (
+    Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "resume_editor.py"
 )
 
 
@@ -356,6 +368,94 @@ def test_omitted_experience_suggestion_adds_canonical_experience_parent() -> Non
     assert edited.experience_bullets[omitted.id][0].id == "suggestion-lab"
 
 
+def test_explicit_reviewed_entries_are_canonical_staged_and_parent_bound() -> None:
+    renderer = _Renderer()
+    service = ResumeEditorService(renderer)
+    profile = _profile()
+    resume = _resume(profile)
+    assert [item.id for item in omitted_reviewed_entries(
+        profile, resume, EntityKind.PROJECT
+    )] == ["project-arm"]
+    assert omitted_reviewed_entries(profile, resume, EntityKind.EXPERIENCE) == []
+
+    staged = service.add_reviewed_entry(
+        resume,
+        profile,
+        entry_id="project-arm",
+        evidence_ids=["e-arm-cad", "e-arm-test"],
+        expected_kind=EntityKind.PROJECT,
+    )
+    assert renderer.calls == 0
+    assert staged.projects[-1].title == "Long Reach Manipulator"
+    assert [item.evidence_ids for item in staged.project_bullets["project-arm"]] == [
+        ["e-arm-cad"],
+        ["e-arm-test"],
+    ]
+    assert omitted_reviewed_entries(profile, staged, EntityKind.PROJECT) == []
+
+    service.create_revision(
+        staged,
+        profile,
+        application_fingerprint="application-explicit-entry",
+        baseline_artifact_fingerprint="artifact-explicit-entry",
+        revision_number=1,
+    )
+    assert renderer.calls == 1
+
+    with pytest.raises(ResumeEditorError, match="already"):
+        service.add_reviewed_entry(
+            staged,
+            profile,
+            entry_id="project-arm",
+            evidence_ids=["e-arm-cad"],
+            expected_kind=EntityKind.PROJECT,
+        )
+    with pytest.raises(ResumeEditorError, match="canonical profile parent"):
+        service.add_reviewed_entry(
+            resume,
+            profile,
+            entry_id="unreviewed-project",
+            evidence_ids=["e-arm-cad"],
+            expected_kind=EntityKind.PROJECT,
+        )
+    with pytest.raises(ResumeEditorError, match="does not belong"):
+        service.add_reviewed_entry(
+            resume,
+            profile,
+            entry_id="project-arm",
+            evidence_ids=["e-fw"],
+            expected_kind=EntityKind.PROJECT,
+        )
+
+
+def test_explicit_reviewed_experience_addition_uses_experience_section() -> None:
+    profile = _profile()
+    omitted = ResumeItem(
+        id="exp-lab-explicit",
+        title="Prototype Lab Assistant",
+        kind=EntityKind.EXPERIENCE,
+        organization="Northstar Lab",
+    )
+    profile.experiences.append(omitted)
+    profile.evidence.append(
+        EvidenceItem(
+            id="e-lab-explicit",
+            entity_id=omitted.id,
+            source_text="Soldered and inspected prototype control boards.",
+        )
+    )
+    edited = ResumeEditorService(_Renderer()).add_reviewed_entry(
+        _resume(profile),
+        profile,
+        entry_id=omitted.id,
+        evidence_ids=["e-lab-explicit"],
+        expected_kind=EntityKind.EXPERIENCE,
+    )
+    assert edited.experiences[-1].id == omitted.id
+    assert omitted.id in edited.experience_bullets
+    assert omitted.id not in edited.project_bullets
+
+
 def test_reviewed_skill_add_remove_and_unsupported_skill_rejection() -> None:
     service = ResumeEditorService(_Renderer())
     profile = _profile()
@@ -441,6 +541,42 @@ def test_application_fingerprint_isolates_job_a_and_job_b_editor_state() -> None
     assert context_b not in workspaces
 
 
+def _sanitized_pdf(page_count: int) -> bytes:
+    output = BytesIO()
+    canvas = Canvas(output, pagesize=letter)
+    for page_number in range(1, page_count + 1):
+        canvas.drawString(72, 720, f"Sanitized resume page {page_number}")
+        canvas.showPage()
+    canvas.save()
+    return output.getvalue()
+
+
+@pytest.mark.parametrize("page_count", [1, 2])
+def test_exact_pdf_pages_become_complete_aspect_preserving_png_preview(
+    page_count: int,
+) -> None:
+    pages = render_pdf_preview_pages(_sanitized_pdf(page_count), zoom=1.0)
+    assert len(pages) == page_count
+    for page_png in pages:
+        with Image.open(BytesIO(page_png)) as image:
+            assert image.format == "PNG"
+            assert image.width / image.height == pytest.approx(letter[0] / letter[1], rel=0.01)
+
+
+def test_preview_frontend_has_no_data_pdf_iframe_and_download_uses_exact_bytes() -> None:
+    source = FRONTEND_PATH.read_text(encoding="utf-8")
+    assert "data:application/pdf;base64" not in source
+    assert "streamlit_module.iframe(" not in source
+    revision = ResumeEditorService(_Renderer()).create_revision(
+        _resume(),
+        _profile(),
+        application_fingerprint="application-preview",
+        baseline_artifact_fingerprint="artifact-preview",
+        revision_number=1,
+    )
+    assert exact_preview_pdf_bytes(revision) is revision.render.pdf_bytes
+
+
 def test_editor_preview_is_converted_from_the_rendered_docx_without_trimming() -> None:
     class _PdfConverter:
         def convert(self, docx_path: Path, pdf_path: Path) -> str:
@@ -457,6 +593,7 @@ def test_editor_preview_is_converted_from_the_rendered_docx_without_trimming() -
     assert result.exact_pagination
     assert result.page_count == 1
     assert result.pdf_bytes and result.pdf_bytes.startswith(b"%PDF")
+    assert len(result.preview_page_pngs) == 1
     assert result.docx_bytes.startswith(b"PK")
     assert result.pagination_provider == "sanitized test converter page tree"
 

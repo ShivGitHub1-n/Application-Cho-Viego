@@ -8,6 +8,7 @@ from resume_tailor.application.generated_artifact import content_fingerprint
 from resume_tailor.application.llm_validation import GroundingValidationError, validate_rewrites
 from resume_tailor.application.resume_suggestions import (
     ResumeSuggestionParentError,
+    canonical_entry_for_evidence,
     canonical_suggestion_parent,
 )
 from resume_tailor.domain.hybrid_resume import BulletLengthClass
@@ -23,6 +24,7 @@ from resume_tailor.domain.models import (
     EntityKind,
     JobPosting,
     MasterProfile,
+    ResumeItem,
     ReviewedTechnicalSkill,
     StructuredBullet,
     StructuredResume,
@@ -70,6 +72,23 @@ def resume_revision_fingerprint(
     return sha256(
         f"{application_fingerprint}\0{resume.model_dump_json()}".encode()
     ).hexdigest()
+
+
+def omitted_reviewed_entries(
+    profile: MasterProfile,
+    resume: StructuredResume,
+    kind: EntityKind,
+) -> list[ResumeItem]:
+    """Return omitted canonical entries that have confirmed selectable evidence."""
+
+    present = {item.id for item in [*resume.experiences, *resume.projects]}
+    evidenced = {item.entity_id for item in profile.evidence if item.confirmed}
+    source = profile.experiences if kind is EntityKind.EXPERIENCE else profile.projects
+    return [
+        item.model_copy(deep=True)
+        for item in source
+        if item.id not in present and item.id in evidenced
+    ]
 
 
 class ResumeEditorService:
@@ -262,6 +281,61 @@ class ResumeEditorService:
                 "review_required_claim_ids": [
                     item for item in resume.review_required_claim_ids if item != suggestion.id
                 ],
+            },
+        )
+
+    def add_reviewed_entry(
+        self,
+        resume: StructuredResume,
+        profile: MasterProfile,
+        *,
+        entry_id: str,
+        evidence_ids: list[str],
+        expected_kind: EntityKind,
+    ) -> StructuredResume:
+        """Stage an omitted canonical parent with selected reviewed source bullets."""
+
+        if entry_id in {item.id for item in [*resume.experiences, *resume.projects]}:
+            raise ResumeEditorError("That Career Profile entry is already in this resume.")
+        try:
+            parent = canonical_entry_for_evidence(profile, entry_id, evidence_ids)
+        except ResumeSuggestionParentError as error:
+            raise ResumeEditorError(str(error)) from error
+        if parent.entry.kind is not expected_kind:
+            raise ResumeEditorError("The selected entry belongs to a different resume section.")
+        evidence = {item.id: item for item in profile.evidence if item.confirmed}
+        bullets = [
+            StructuredBullet(
+                id=(
+                    "editor-source:"
+                    + sha256(f"{entry_id}\0{evidence_id}".encode()).hexdigest()[:16]
+                ),
+                text=evidence[evidence_id].source_text,
+                evidence_ids=[evidence_id],
+                support=ClaimSupport.DIRECT,
+            )
+            for evidence_id in parent.confirmed_evidence_ids
+        ]
+        experiences = list(resume.experiences)
+        projects = list(resume.projects)
+        experience_bullets = dict(resume.experience_bullets)
+        project_bullets = dict(resume.project_bullets)
+        if expected_kind is EntityKind.EXPERIENCE:
+            experiences.append(parent.entry.model_copy(deep=True))
+            experience_bullets[entry_id] = bullets
+        else:
+            projects.append(parent.entry.model_copy(deep=True))
+            project_bullets[entry_id] = bullets
+        entity_titles = dict(resume.entity_titles)
+        entity_titles[entry_id] = parent.entry.title
+        return resume.model_copy(
+            deep=True,
+            update={
+                "experiences": experiences,
+                "projects": projects,
+                "experience_bullets": experience_bullets,
+                "project_bullets": project_bullets,
+                "entity_titles": entity_titles,
             },
         )
 
@@ -460,6 +534,7 @@ __all__ = [
     "ResumeEditorError",
     "ResumeEditorGroundingError",
     "ResumeEditorService",
+    "omitted_reviewed_entries",
     "resume_editor_application_fingerprint",
     "resume_revision_fingerprint",
 ]

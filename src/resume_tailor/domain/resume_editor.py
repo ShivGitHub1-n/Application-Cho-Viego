@@ -20,6 +20,7 @@ class ResumeEditorRender(BaseModel):
     document_fingerprint: str
     docx_bytes: bytes
     pdf_bytes: bytes | None = None
+    preview_page_pngs: list[bytes] = Field(default_factory=list)
     page_count: int | None = Field(default=None, ge=1)
     exact_pagination: bool = False
     pagination_provider: str

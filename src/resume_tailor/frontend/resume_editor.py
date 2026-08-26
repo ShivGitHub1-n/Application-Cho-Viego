@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from html import escape
 from typing import Any
@@ -9,6 +8,7 @@ from resume_tailor.application.generated_artifact import content_fingerprint
 from resume_tailor.application.resume_editor import (
     ResumeEditorError,
     ResumeEditorService,
+    omitted_reviewed_entries,
     resume_editor_application_fingerprint,
 )
 from resume_tailor.application.resume_suggestions import (
@@ -29,6 +29,7 @@ from resume_tailor.domain.resume_editor import (
 _WORKSPACES_KEY = "resume_editor_workspaces"
 _ACTIVE_CONTEXT_KEY = "resume_editor_active_context"
 _EDITING_BULLET_KEY = "resume_editor_editing_bullet"
+_EDITOR_SECTIONS = ("education", "skills", "experience", "projects", "suggestions")
 
 
 @dataclass(frozen=True)
@@ -150,7 +151,13 @@ def render_resume_editor(
     )
     control_column, preview_column = streamlit_module.columns((1.05, 1.6), gap="large")
     with control_column:
-        _render_structured_controls(streamlit_module, service, workspace, profile)
+        _render_structured_controls(
+            streamlit_module,
+            service,
+            workspace,
+            profile,
+            context=context,
+        )
     with preview_column:
         _render_preview(streamlit_module, revision)
     revision = workspace["applied_revision"]
@@ -288,34 +295,69 @@ def _render_structured_controls(
     service: ResumeEditorService,
     workspace: dict[str, Any],
     profile: MasterProfile,
+    *,
+    context: str,
 ) -> None:
     staged = workspace["staged_resume"]
-    streamlit_module.markdown("#### Education")
-    for record in staged.education:
-        with streamlit_module.container(border=True, gap=None):
-            streamlit_module.markdown(f"**{record.school}**")
-            streamlit_module.caption(record.program)
-
-    _render_skill_editor(streamlit_module, service, workspace, profile)
-    _render_entry_section(
-        streamlit_module,
-        service,
-        workspace,
-        profile,
-        title="Experience",
-        records=staged.experiences,
-        bullets=staged.experience_bullets,
+    section_labels = {
+        "education": f"Education · {len(staged.education)}",
+        "skills": f"Technical skills · {_visible_skill_count(staged)} visible",
+        "experience": f"Experience · {len(staged.experiences)} entries",
+        "projects": f"Projects · {len(staged.projects)} entries",
+        "suggestions": f"Suggestions · {len(staged.review_pending_bullets)} available",
+    }
+    section = streamlit_module.segmented_control(
+        "Editor section",
+        options=_EDITOR_SECTIONS,
+        default=None,
+        format_func=lambda value: section_labels[value],
+        key=f"resume-editor-section-{context[:12]}",
+        width="stretch",
     )
-    _render_entry_section(
-        streamlit_module,
-        service,
-        workspace,
-        profile,
-        title="Projects",
-        records=staged.projects,
-        bullets=staged.project_bullets,
-    )
-    _render_editor_suggestions(streamlit_module, service, workspace, profile)
+    if section is None:
+        streamlit_module.caption("Choose one section to edit. Your document stays in view.")
+    elif section == "education":
+        streamlit_module.markdown("#### Education")
+        if not staged.education:
+            streamlit_module.caption("No education records are visible in this résumé.")
+        for record in staged.education:
+            with streamlit_module.container(border=True, gap=None):
+                streamlit_module.markdown(f"**{record.school}**")
+                streamlit_module.caption(record.program)
+    elif section == "skills":
+        _render_skill_editor(streamlit_module, service, workspace, profile)
+    elif section == "experience":
+        _render_entry_section(
+            streamlit_module,
+            service,
+            workspace,
+            profile,
+            title="Experience",
+            kind=EntityKind.EXPERIENCE,
+            records=staged.experiences,
+            bullets=staged.experience_bullets,
+            context=context,
+        )
+    elif section == "projects":
+        _render_entry_section(
+            streamlit_module,
+            service,
+            workspace,
+            profile,
+            title="Projects",
+            kind=EntityKind.PROJECT,
+            records=staged.projects,
+            bullets=staged.project_bullets,
+            context=context,
+        )
+    elif section == "suggestions":
+        _render_editor_suggestions(
+            streamlit_module,
+            service,
+            workspace,
+            profile,
+            context=context,
+        )
 
 
 def _render_skill_editor(
@@ -371,68 +413,167 @@ def _render_entry_section(
     profile: MasterProfile,
     *,
     title: str,
+    kind: EntityKind,
     records: list[Any],
     bullets: dict[str, list[Any]],
+    context: str,
 ) -> None:
     streamlit_module.markdown(f"#### {title}")
-    for entry_index, entry in enumerate(records):
-        with streamlit_module.container(border=True, key=f"resume-editor-entry-{entry.id}"):
-            with streamlit_module.container(
-                horizontal=True,
-                horizontal_alignment="distribute",
-                vertical_alignment="center",
-            ):
-                with streamlit_module.container(gap=None):
-                    streamlit_module.markdown(f"**{entry.title}**")
-                    metadata = " · ".join(
-                        value for value in (entry.organization, entry.location) if value
+    omitted = omitted_reviewed_entries(profile, workspace["staged_resume"], kind)
+    with streamlit_module.container(horizontal=True, vertical_alignment="center"):
+        streamlit_module.caption(
+            "Open one entry at a time. Changes remain staged until you update the preview."
+        )
+        if streamlit_module.button(
+            f"Add {_entry_kind_label(kind)}",
+            icon=":material/add:",
+            disabled=not omitted,
+            key=f"resume-editor-add-{kind.value}-{context[:12]}",
+        ):
+            workspace["adding_entry_kind"] = (
+                None if workspace.get("adding_entry_kind") == kind.value else kind.value
+            )
+            streamlit_module.rerun()
+    if workspace.get("adding_entry_kind") == kind.value:
+        _render_add_reviewed_entry(
+            streamlit_module,
+            service,
+            workspace,
+            profile,
+            kind=kind,
+            omitted=omitted,
+            context=context,
+        )
+    if not records:
+        streamlit_module.caption(f"No {title.casefold()} entries are currently visible.")
+        return
+    by_id = {entry.id: entry for entry in records}
+    selected_id = streamlit_module.selectbox(
+        f"Choose {_entry_kind_label(kind)}",
+        options=list(by_id),
+        format_func=lambda value: by_id[value].title,
+        key=f"resume-editor-entry-choice-{kind.value}-{context[:12]}",
+    )
+    entry = by_id[selected_id]
+    entry_index = next(index for index, item in enumerate(records) if item.id == entry.id)
+    with streamlit_module.container(border=True, key=f"resume-editor-entry-{entry.id}"):
+        with streamlit_module.container(
+            horizontal=True,
+            horizontal_alignment="distribute",
+            vertical_alignment="center",
+        ):
+            with streamlit_module.container(gap=None):
+                streamlit_module.markdown(f"**{entry.title}**")
+                if metadata := _entry_metadata(entry):
+                    streamlit_module.caption(metadata)
+            with streamlit_module.container(horizontal=True):
+                if streamlit_module.button(
+                    ":material/arrow_upward:",
+                    help="Move entry up",
+                    disabled=entry_index == 0,
+                    key=f"resume-editor-entry-up-{entry.id}",
+                ):
+                    workspace["staged_resume"] = service.move_entry(
+                        workspace["staged_resume"], entry_id=entry.id, offset=-1
                     )
-                    if metadata:
-                        streamlit_module.caption(metadata)
-                with streamlit_module.container(horizontal=True):
-                    if streamlit_module.button(
-                        ":material/arrow_upward:",
-                        help="Move entry up",
-                        disabled=entry_index == 0,
-                        key=f"resume-editor-entry-up-{entry.id}",
-                    ):
-                        workspace["staged_resume"] = service.move_entry(
-                            workspace["staged_resume"], entry_id=entry.id, offset=-1
-                        )
-                        _mark_staged(workspace, streamlit_module)
-                        streamlit_module.rerun()
-                    if streamlit_module.button(
-                        ":material/arrow_downward:",
-                        help="Move entry down",
-                        disabled=entry_index == len(records) - 1,
-                        key=f"resume-editor-entry-down-{entry.id}",
-                    ):
-                        workspace["staged_resume"] = service.move_entry(
-                            workspace["staged_resume"], entry_id=entry.id, offset=1
-                        )
-                        _mark_staged(workspace, streamlit_module)
-                        streamlit_module.rerun()
-                    if streamlit_module.button(
-                        ":material/delete:",
-                        help="Remove entry",
-                        key=f"resume-editor-entry-remove-{entry.id}",
-                    ):
-                        workspace["staged_resume"] = service.remove_entry(
-                            workspace["staged_resume"], entry_id=entry.id
-                        )
-                        _mark_staged(workspace, streamlit_module)
-                        streamlit_module.rerun()
-            for bullet_index, bullet in enumerate(bullets.get(entry.id, [])):
-                _render_bullet_row(
-                    streamlit_module,
-                    service,
-                    workspace,
+                    _mark_staged(workspace, streamlit_module)
+                    streamlit_module.rerun()
+                if streamlit_module.button(
+                    ":material/arrow_downward:",
+                    help="Move entry down",
+                    disabled=entry_index == len(records) - 1,
+                    key=f"resume-editor-entry-down-{entry.id}",
+                ):
+                    workspace["staged_resume"] = service.move_entry(
+                        workspace["staged_resume"], entry_id=entry.id, offset=1
+                    )
+                    _mark_staged(workspace, streamlit_module)
+                    streamlit_module.rerun()
+                if streamlit_module.button(
+                    ":material/delete:",
+                    help="Remove entry",
+                    key=f"resume-editor-entry-remove-{entry.id}",
+                ):
+                    workspace["staged_resume"] = service.remove_entry(
+                        workspace["staged_resume"], entry_id=entry.id
+                    )
+                    _mark_staged(workspace, streamlit_module)
+                    streamlit_module.rerun()
+        for bullet_index, bullet in enumerate(bullets.get(entry.id, [])):
+            _render_bullet_row(
+                streamlit_module,
+                service,
+                workspace,
+                profile,
+                entry.id,
+                bullet,
+                bullet_index,
+                len(bullets.get(entry.id, [])),
+            )
+
+
+def _render_add_reviewed_entry(
+    streamlit_module: Any,
+    service: ResumeEditorService,
+    workspace: dict[str, Any],
+    profile: MasterProfile,
+    *,
+    kind: EntityKind,
+    omitted: list[Any],
+    context: str,
+) -> None:
+    if not omitted:
+        streamlit_module.info("Every reviewed entry in this section is already visible.")
+        return
+    by_id = {entry.id: entry for entry in omitted}
+    selected_id = streamlit_module.selectbox(
+        f"Reviewed {_entry_kind_label(kind)}",
+        options=list(by_id),
+        format_func=lambda value: by_id[value].title,
+        key=f"resume-editor-omitted-choice-{kind.value}-{context[:12]}",
+    )
+    entry = by_id[selected_id]
+    if metadata := _entry_metadata(entry):
+        streamlit_module.caption(metadata)
+    evidence = [
+        item for item in profile.evidence if item.confirmed and item.entity_id == entry.id
+    ]
+    evidence_by_id = {item.id: item for item in evidence}
+    selected_evidence = streamlit_module.multiselect(
+        "Reviewed bullets to add",
+        options=list(evidence_by_id),
+        format_func=lambda value: evidence_by_id[value].source_text,
+        key=f"resume-editor-omitted-evidence-{kind.value}-{entry.id}-{context[:12]}",
+        help="Only confirmed evidence owned by this Career Profile entry is available.",
+    )
+    with streamlit_module.container(horizontal=True):
+        if streamlit_module.button(
+            f"Stage {_entry_kind_label(kind)}",
+            type="primary",
+            icon=":material/add:",
+            disabled=not selected_evidence,
+            key=f"resume-editor-stage-entry-{kind.value}-{entry.id}",
+        ):
+            try:
+                workspace["staged_resume"] = service.add_reviewed_entry(
+                    workspace["staged_resume"],
                     profile,
-                    entry.id,
-                    bullet,
-                    bullet_index,
-                    len(bullets.get(entry.id, [])),
+                    entry_id=entry.id,
+                    evidence_ids=list(selected_evidence),
+                    expected_kind=kind,
                 )
+                workspace["adding_entry_kind"] = None
+                _mark_staged(workspace, streamlit_module)
+                streamlit_module.rerun()
+            except ResumeEditorError as error:
+                streamlit_module.error(str(error))
+        if streamlit_module.button(
+            "Cancel",
+            icon=":material/close:",
+            key=f"resume-editor-cancel-entry-{kind.value}-{context[:12]}",
+        ):
+            workspace["adding_entry_kind"] = None
+            streamlit_module.rerun()
 
 
 def _render_bullet_row(
@@ -538,6 +679,8 @@ def _render_editor_suggestions(
     service: ResumeEditorService,
     workspace: dict[str, Any],
     profile: MasterProfile,
+    *,
+    context: str,
 ) -> None:
     staged = workspace["staged_resume"]
     if not staged.review_pending_bullets:
@@ -545,62 +688,72 @@ def _render_editor_suggestions(
     streamlit_module.markdown("#### Suggestions")
     streamlit_module.caption("Stage supported wording changes, then update the preview once.")
     evidence = {item.id: item for item in profile.evidence if item.confirmed}
+    candidates: dict[str, tuple[Any, Any]] = {}
     for suggestion in staged.review_pending_bullets:
         try:
             parent = canonical_suggestion_parent(profile, suggestion)
         except ResumeSuggestionParentError:
             continue
-        current = [
-            *staged.experience_bullets.get(parent.entry.id, []),
-            *staged.project_bullets.get(parent.entry.id, []),
-        ]
-        source_ids = set(suggestion.evidence_ids)
-        presentation = suggestion_presentation(staged, suggestion, parent.entry.id)
-        with streamlit_module.container(
-            border=True, key=f"resume-editor-suggestion-{suggestion.id}"
-        ):
-            streamlit_module.caption(
-                f"{'Experience' if parent.entry.kind is EntityKind.EXPERIENCE else 'Project'}"
-            )
-            streamlit_module.markdown(f"**{parent.entry.title}**")
-            if presentation.mode == "replacement":
-                streamlit_module.markdown(
-                    '<div class="pw-current-copy"><strong>Current bullet</strong><br>'
-                    + escape(presentation.current_bullet or "")
-                    + "</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                streamlit_module.caption(
-                    f"Based on {len(source_ids)} reviewed fact(s)"
-                )
+        candidates[suggestion.id] = (suggestion, parent)
+    if not candidates:
+        streamlit_module.caption("No valid suggestions are available for this revision.")
+        return
+    selected_id = streamlit_module.selectbox(
+        "Choose suggestion",
+        options=list(candidates),
+        format_func=lambda value: candidates[value][1].entry.title,
+        key=f"resume-editor-suggestion-choice-{context[:12]}",
+    )
+    suggestion, parent = candidates[selected_id]
+    current = [
+        *staged.experience_bullets.get(parent.entry.id, []),
+        *staged.project_bullets.get(parent.entry.id, []),
+    ]
+    source_ids = set(suggestion.evidence_ids)
+    presentation = suggestion_presentation(staged, suggestion, parent.entry.id)
+    with streamlit_module.container(
+        border=True, key=f"resume-editor-suggestion-{suggestion.id}"
+    ):
+        streamlit_module.caption(
+            f"{'Experience' if parent.entry.kind is EntityKind.EXPERIENCE else 'Project'}"
+        )
+        streamlit_module.markdown(f"**{parent.entry.title}**")
+        if presentation.mode == "replacement":
             streamlit_module.markdown(
-                '<div class="pw-suggested-copy"><strong>Suggested bullet</strong><br>'
-                + escape(suggestion.text)
+                '<div class="pw-current-copy"><strong>Current bullet</strong><br>'
+                + escape(presentation.current_bullet or "")
                 + "</div>",
                 unsafe_allow_html=True,
             )
-            if presentation.mode != "replacement":
-                with streamlit_module.expander("Reviewed facts", expanded=False):
-                    for evidence_id in suggestion.evidence_ids:
-                        item = evidence.get(evidence_id)
-                        if item is not None:
-                            streamlit_module.write(item.source_text)
-            omitted = not current
-            label = "Add entry and suggestion" if omitted else "Stage suggestion"
-            if streamlit_module.button(
-                label,
-                icon=":material/add:" if omitted else ":material/check:",
-                key=f"resume-editor-use-suggestion-{suggestion.id}",
-            ):
-                try:
-                    workspace["staged_resume"] = service.apply_suggestion(
-                        staged, profile, suggestion
-                    )
-                    _mark_staged(workspace, streamlit_module)
-                    streamlit_module.rerun()
-                except ResumeEditorError as error:
-                    streamlit_module.error(str(error))
+        else:
+            streamlit_module.caption(f"Based on {len(source_ids)} reviewed fact(s)")
+        streamlit_module.markdown(
+            '<div class="pw-suggested-copy"><strong>Suggested bullet</strong><br>'
+            + escape(suggestion.text)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+        if presentation.mode != "replacement":
+            with streamlit_module.expander("Reviewed facts", expanded=False):
+                for evidence_id in suggestion.evidence_ids:
+                    item = evidence.get(evidence_id)
+                    if item is not None:
+                        streamlit_module.write(item.source_text)
+        omitted = not current
+        label = "Add entry and suggestion" if omitted else "Stage suggestion"
+        if streamlit_module.button(
+            label,
+            icon=":material/add:" if omitted else ":material/check:",
+            key=f"resume-editor-use-suggestion-{suggestion.id}",
+        ):
+            try:
+                workspace["staged_resume"] = service.apply_suggestion(
+                    staged, profile, suggestion
+                )
+                _mark_staged(workspace, streamlit_module)
+                streamlit_module.rerun()
+            except ResumeEditorError as error:
+                streamlit_module.error(str(error))
 
 
 def _render_preview(streamlit_module: Any, revision: ResumeEditorRevision) -> None:
@@ -626,18 +779,34 @@ def _render_preview(streamlit_module: Any, revision: ResumeEditorRevision) -> No
                 streamlit_module.badge(
                     "Preview unavailable", icon=":material/error:", color="orange"
                 )
-        if render.pdf_bytes:
-            payload = base64.b64encode(render.pdf_bytes).decode("ascii")
-            streamlit_module.iframe(
-                f"data:application/pdf;base64,{payload}",
-                height=940,
-                width="stretch",
+        if render.preview_page_pngs:
+            for page_number, page_png in enumerate(render.preview_page_pngs, start=1):
+                streamlit_module.image(
+                    page_png,
+                    caption=f"Page {page_number} of {len(render.preview_page_pngs)}",
+                    width="stretch",
+                )
+        elif render.pdf_bytes:
+            streamlit_module.info(
+                "The exact PDF is ready, but inline page images could not be created. "
+                "Use the PDF preview download below.",
+                icon=":material/picture_as_pdf:",
             )
         else:
             streamlit_module.info(
                 "The DOCX is preserved, but this environment could not create the visual "
                 "preview.",
                 icon=":material/description:",
+            )
+        if pdf_bytes := exact_preview_pdf_bytes(revision):
+            streamlit_module.download_button(
+                "Download PDF preview",
+                data=pdf_bytes,
+                file_name=f"resume-preview-revision-{revision.revision_number}.pdf",
+                mime="application/pdf",
+                icon=":material/open_in_new:",
+                on_click="ignore",
+                key=f"resume-editor-preview-pdf-{revision.revision_fingerprint[:12]}",
             )
         with streamlit_module.expander("Preview details", expanded=False):
             streamlit_module.write(
@@ -653,6 +822,12 @@ def _render_preview(streamlit_module: Any, revision: ResumeEditorRevision) -> No
                     "failure": render.failure_reason,
                 }
             )
+
+
+def exact_preview_pdf_bytes(revision: ResumeEditorRevision) -> bytes | None:
+    """Return the exact current PDF bytes used to derive the inline preview pages."""
+
+    return revision.render.pdf_bytes
 
 
 def suggestion_presentation(
@@ -684,6 +859,21 @@ def _skill_category_values(category: Any) -> list[str]:
     return [skill.value for skill in category.skills] if category.skills else list(category.values)
 
 
+def _visible_skill_count(resume: StructuredResume) -> int:
+    return sum(len(_skill_category_values(category)) for category in resume.technical_skills)
+
+
+def _entry_kind_label(kind: EntityKind) -> str:
+    return "experience" if kind is EntityKind.EXPERIENCE else "project"
+
+
+def _entry_metadata(entry: Any) -> str:
+    dates = " – ".join(value for value in (entry.start_date, entry.end_date) if value)
+    return " · ".join(
+        value for value in (entry.organization, entry.location, dates) if value
+    )
+
+
 def _mark_staged(workspace: dict[str, Any], streamlit_module: Any) -> None:
     workspace["approved_revision_fingerprint"] = None
     streamlit_module.session_state["resume_studio_review_confirmed"] = False
@@ -707,6 +897,7 @@ __all__ = [
     "ResumeSuggestionPresentation",
     "active_editor_view",
     "approved_editor_revision_fingerprint",
+    "exact_preview_pdf_bytes",
     "render_resume_editor",
     "set_editor_revision_approved",
     "suggestion_presentation",

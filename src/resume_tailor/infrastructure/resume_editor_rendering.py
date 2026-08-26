@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pymupdf
 from pypdf import PdfReader
 
 from resume_tailor.domain.models import StructuredResume
@@ -23,6 +24,28 @@ from resume_tailor.infrastructure.template_v1 import load_template_v1_layout_pro
 
 class ResumePreviewConversionError(ValueError):
     pass
+
+
+class ResumePreviewRenderingError(ValueError):
+    pass
+
+
+def render_pdf_preview_pages(pdf_bytes: bytes, *, zoom: float = 1.6) -> list[bytes]:
+    """Rasterize every authoritative PDF page without changing document geometry."""
+
+    if not pdf_bytes:
+        raise ResumePreviewRenderingError("The resume preview PDF is empty.")
+    try:
+        with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
+            matrix = pymupdf.Matrix(zoom, zoom)
+            return [
+                page.get_pixmap(matrix=matrix, alpha=False).tobytes("png")
+                for page in document
+            ]
+    except (RuntimeError, ValueError) as error:
+        raise ResumePreviewRenderingError(
+            "The exact PDF could not be rendered as browser-safe preview pages."
+        ) from error
 
 
 class ExactDocxPdfConverter:
@@ -182,6 +205,12 @@ class TemplateV1ResumeEditorRenderer:
                 provider = self._converter.convert(docx_path, pdf_path)
                 pdf_bytes = pdf_path.read_bytes()
                 page_count = len(PdfReader(str(pdf_path)).pages)
+                try:
+                    preview_pages = render_pdf_preview_pages(pdf_bytes)
+                    preview_failure = None
+                except ResumePreviewRenderingError as preview_error:
+                    preview_pages = []
+                    preview_failure = str(preview_error)
                 measurement = PageCountMeasurement(
                     page_count=page_count,
                     provider=f"{provider} page tree",
@@ -197,6 +226,7 @@ class TemplateV1ResumeEditorRenderer:
                     document_fingerprint=document_fingerprint,
                     docx_bytes=docx_bytes,
                     pdf_bytes=pdf_bytes,
+                    preview_page_pngs=preview_pages,
                     page_count=page_count,
                     exact_pagination=True,
                     pagination_provider=measurement.provider,
@@ -206,6 +236,7 @@ class TemplateV1ResumeEditorRenderer:
                         if page_count == 1
                         else ResumeEditorFitStatus.EXCEEDS_ONE_PAGE
                     ),
+                    failure_reason=preview_failure,
                 )
             except (ResumePreviewConversionError, OSError, ValueError) as error:
                 try:
@@ -268,5 +299,7 @@ if (
 __all__ = [
     "ExactDocxPdfConverter",
     "ResumePreviewConversionError",
+    "ResumePreviewRenderingError",
     "TemplateV1ResumeEditorRenderer",
+    "render_pdf_preview_pages",
 ]

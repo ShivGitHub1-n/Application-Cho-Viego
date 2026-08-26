@@ -380,6 +380,18 @@ def test_actual_streamlit_editor_keeps_generated_baseline_and_exports_approved_r
     assert app.session_state[GENERATED_RESUME_REVIEW_STATE_KEY] == (
         GeneratedResumeReviewState.GENERATED_AWAITING_REVIEW
     )
+    suggestion_choice = next(
+        item
+        for item in app.segmented_control
+        if item.key and item.key.startswith("resume-editor-section-")
+    )
+    suggestion_choice.set_value("suggestions").run()
+    suggestion_selector = next(
+        item
+        for item in app.selectbox
+        if item.key and item.key.startswith("resume-editor-suggestion-choice-")
+    )
+    suggestion_selector_value = suggestion_selector.value
     suggestions = [
         item
         for item in app.button
@@ -394,6 +406,8 @@ def test_actual_streamlit_editor_keeps_generated_baseline_and_exports_approved_r
     ]
 
     suggestions[0].click().run()
+    if suggestion_selector.key not in app.session_state:
+        app.session_state[suggestion_selector.key] = suggestion_selector_value
     app.button(key="resume-editor-apply").click().run(timeout=60)
 
     rebuilt = app.session_state["generated_resume_artifact"]
@@ -417,6 +431,8 @@ def test_actual_streamlit_editor_keeps_generated_baseline_and_exports_approved_r
         GeneratedResumeReviewState.REBUILT_APPROVED
     )
     app.button(key="resume-to-export").click().run()
+    if suggestion_choice.key not in app.session_state:
+        app.session_state[suggestion_choice.key] = "suggestions"
     if "_resume_studio_review_confirmed_widget" not in app.session_state:
         app.session_state["_resume_studio_review_confirmed_widget"] = True
     if "resume-editor-visible-skills" not in app.session_state:

@@ -28,19 +28,28 @@ Template V1 DOCX render
       ↓
 Word/LibreOffice DOCX-to-PDF preview + exact page count
       ↓
+PDF page rasterization for browser-safe inline review
+      ↓
 immutable editor revision
       ↓  explicit review of this fingerprint
 stored-byte DOCX export
 ```
 
 Typing and individual staging actions do not render. Multiple changes are rendered once on
-Apply. An unchanged applied revision reuses its stored DOCX/PDF preview bytes. A stale render is
-discarded if its application fingerprint no longer matches the active application.
+Apply. An unchanged applied revision reuses its stored DOCX, exact PDF, and PNG page-preview
+bytes. A stale render is discarded if its application fingerprint no longer matches the active
+application.
 
 The PDF preview is converted from the same rendered DOCX; it is not a separately styled HTML or
-ReportLab résumé. The exact PDF page tree supplies the editor page count. A two-page revision is
-retained exactly as edited and is not semantically recomposed or automatically trimmed. It is
-not exportable until the user restores a verified one-page revision.
+ReportLab résumé. Every PDF page is rasterized at its original aspect ratio for Chrome-safe
+inline display, and the exact PDF bytes remain available as a download fallback. The exact PDF
+page tree supplies the editor page count. A two-page revision is retained exactly as edited and
+all of its pages remain visible; it is not semantically recomposed or automatically trimmed. It
+is not exportable until the user restores a verified one-page revision.
+
+The control rail uses one section selector and one active entry at a time. Skills, experiences,
+projects, and suggestions remain collapsed until selected so the rendered document remains the
+visual focus.
 
 ## Suggestions and omitted entries
 
@@ -52,6 +61,12 @@ When a suggestion belongs to an omitted experience or project, the shared canoni
 resolver validates every evidence ID against the reviewed profile. Applying it adds the real
 parent metadata and bullet together. The heading, metadata, spacing, and bullet therefore all
 participate in the next exact render. Child content can never attach to another entry.
+
+The user may also explicitly add an omitted reviewed experience or project. The editor offers
+only canonical Career Profile entries that are absent from the staged application resume, then
+offers only confirmed evidence owned by that selected parent. The chosen parent and source-faithful
+bullets are staged together and incur their complete heading, metadata, spacing, and bullet cost
+on the next single Apply operation. Resume Studio cannot create an arbitrary Career Profile entry.
 
 ## Skills and formatting
 
