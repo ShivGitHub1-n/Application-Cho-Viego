@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from threading import Lock
+from time import sleep
 
 from pydantic import AnyHttpUrl
 
@@ -183,6 +185,35 @@ def test_retrieval_keeps_successful_source_when_another_source_fails() -> None:
     assert statuses == {"a-good": "success", "b-bad": "failed"}
     failed = next(item for item in outcome.source_outcomes if item.source_id == "b-bad")
     assert failed.errors[0].code == "source_failure"
+
+
+def test_retrieval_fetches_independent_sources_concurrently() -> None:
+    lock = Lock()
+    active = 0
+    max_active = 0
+
+    class ConcurrentConnector(FakeConnector):
+        def fetch_page(self, source, query, cursor, *, fetched_at):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            sleep(0.08)
+            with lock:
+                active -= 1
+            return JobSourcePage(source=source, records=[_record(source.source_id)])
+
+    sources = [_source(f"source-{index}") for index in range(4)]
+    connector = ConcurrentConnector([])
+
+    outcome = RetrievalService(
+        sources=sources,
+        connectors={ConnectorType.GREENHOUSE: connector},
+        max_workers=4,
+    ).retrieve(TailoredJobQuery(preferences=_preferences()), fetched_at=WHEN)
+
+    assert outcome.accepted_count == 4
+    assert max_active == 4
 
 
 def test_provider_warning_text_is_replaced_by_safe_structured_diagnostics() -> None:

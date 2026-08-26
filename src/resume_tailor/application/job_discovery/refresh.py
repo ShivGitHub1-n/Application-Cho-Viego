@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import cast
+from time import perf_counter
 
 from resume_tailor.application.job_discovery.feed_services import FeedAssemblyService
 from resume_tailor.application.job_discovery.preferences import ProfileNotFoundError
@@ -93,9 +93,10 @@ class RefreshJobDiscoveryService:
         self._discovered_jobs = discovered_jobs
         self._recommendations = recommendations
         self._runs = runs
-        self._normalizer = normalizer or JobNormalizer()
-        self._deduplicator = deduplicator or JobDeduplicator()
         self._requirement_extractor = requirement_extractor or RequirementExtractor()
+        self._normalizer = normalizer or JobNormalizer(self._requirement_extractor)
+        self._reconcile_normalized_requirements = normalizer is not None
+        self._deduplicator = deduplicator or JobDeduplicator()
         self._capability_index_builder = capability_index_builder or ProfileCapabilityIndexBuilder()
         self._eligibility_evaluator = eligibility_evaluator or EligibilityEvaluator()
         self._scoring_policy = scoring_policy or ScoringPolicy()
@@ -108,6 +109,13 @@ class RefreshJobDiscoveryService:
         self._atomic_persistence = atomic_persistence
         self._aliases = aliases
         self._last_evaluations: list[JobEvaluation] = []
+        self._last_phase_timings_seconds: dict[str, float] = {}
+
+    @property
+    def last_phase_timings_seconds(self) -> dict[str, float]:
+        """Return non-persisted runtime timings for the most recent refresh."""
+
+        return dict(self._last_phase_timings_seconds)
 
     def refresh(
         self,
@@ -267,9 +275,12 @@ class RefreshJobDiscoveryService:
         started_at: datetime,
         retrieval_override: RetrievalOutcome | None = None,
     ) -> DiscoveryRun:
+        phase_timings: dict[str, float] = {}
+        phase_started = perf_counter()
         profile = self._load_owned_profile(user_id, profile_id)
         if preferences.user_id != user_id or preferences.profile_id != profile_id:
             raise ValueError("Job-search preferences do not belong to the requested user/profile.")
+        phase_timings["profile_and_query"] = perf_counter() - phase_started
 
         identifier = run_id(
             user_id,
@@ -312,9 +323,11 @@ class RefreshJobDiscoveryService:
                 completed_at=started_at,
             )
 
+        phase_started = perf_counter()
         retrieval = retrieval_override or RetrievalService(
             sources=sources, connectors=self._connectors
         ).retrieve(query, fetched_at=started_at)
+        phase_timings["source_retrieval_and_parsing"] = perf_counter() - phase_started
         raw_records = [(item.source, item.record) for item in retrieval.records]
         warnings = self._retrieval_warnings(retrieval.source_outcomes)
         errors = self._retrieval_errors(retrieval.source_outcomes)
@@ -342,13 +355,40 @@ class RefreshJobDiscoveryService:
                 completed_at=started_at,
             )
 
-        normalized = [
-            self._normalize(cast(SupportedJobSource, source), record, fetched_at=started_at)
-            for source, record in raw_records
-        ]
+        phase_started = perf_counter()
+        normalized = self._normalize_records(raw_records, fetched_at=started_at)
+        phase_timings["normalization"] = perf_counter() - phase_started
+        phase_started = perf_counter()
+        retained_jobs = self._retained_jobs_for_failed_sources(
+            user_id,
+            profile_id,
+            feed_kind,
+            failed_sources=set(failed_sources),
+            explore_sector=(
+                query.sectors[0]
+                if isinstance(query, ExploreJobQuery) and len(query.sectors) == 1
+                else None
+            ),
+        )
+        normalized.extend(retained_jobs)
+        if retained_jobs:
+            company_by_source = {source.source_id: source.company_name for source in sources}
+            retained_sources = sorted({job.source.source_id for job in retained_jobs})
+            warnings.extend(
+                f"{company_by_source.get(source_id, source_id)} could not refresh — "
+                "showing previous results."
+                for source_id in retained_sources
+            )
+            warnings.sort()
+        phase_timings["cached_source_recovery"] = perf_counter() - phase_started
+        phase_started = perf_counter()
         deduplicated = self._deduplicator.resolve(normalized)
+        phase_timings["deduplication"] = perf_counter() - phase_started
+        phase_started = perf_counter()
         profile_index = self._capability_index_builder.build(profile)
+        phase_timings["profile_capability_index"] = perf_counter() - phase_started
 
+        phase_started = perf_counter()
         assessed: list[tuple[DiscoveredJob, JobEvaluation]] = []
         for job in deduplicated.jobs:
             evaluation = self._job_evaluator.evaluate(
@@ -360,11 +400,13 @@ class RefreshJobDiscoveryService:
             )
             assessed.append((job, evaluation))
         self._last_evaluations = [evaluation for _job, evaluation in assessed]
+        phase_timings["evaluation_and_scoring"] = perf_counter() - phase_started
 
         if self._atomic_persistence is None:
             for job in deduplicated.jobs:
                 self._discovered_jobs.upsert(job)
 
+        phase_started = perf_counter()
         assembly = self._feed_assembly.build_recommendations(
             identifier,
             profile=profile,
@@ -378,6 +420,7 @@ class RefreshJobDiscoveryService:
                 else None
             ),
         )
+        phase_timings["feed_assembly"] = perf_counter() - phase_started
         recommendations = assembly.recommendations
         aliases = [_identity_alias(job, started_at) for job in deduplicated.jobs]
         status = (
@@ -414,13 +457,17 @@ class RefreshJobDiscoveryService:
             }
         )
         if self._atomic_persistence is not None:
+            phase_started = perf_counter()
             self._atomic_persistence.persist_refresh(
                 complete, deduplicated.jobs, recommendations, aliases
             )
+            phase_timings["persistence"] = perf_counter() - phase_started
+            self._last_phase_timings_seconds = dict(phase_timings)
             return complete
+        phase_started = perf_counter()
         self._recommendations.replace_for_run(identifier, recommendations)
         self._persist_aliases(aliases)
-        return self._finish(
+        result = self._finish(
             running,
             **complete.model_dump(
                 exclude={
@@ -433,6 +480,57 @@ class RefreshJobDiscoveryService:
                 }
             ),
         )
+        phase_timings["persistence"] = perf_counter() - phase_started
+        self._last_phase_timings_seconds = dict(phase_timings)
+        return result
+
+    def _retained_jobs_for_failed_sources(
+        self,
+        user_id: str,
+        profile_id: str,
+        feed_kind: FeedKind,
+        *,
+        failed_sources: set[str],
+        explore_sector: str | None,
+    ) -> list[DiscoveredJob]:
+        if not failed_sources:
+            return []
+        prior = [
+            item
+            for item in self._recommendations.list_for_feed(
+                user_id, feed_kind.value, include_excluded=True
+            )
+            if item.profile_id == profile_id
+            and (feed_kind is not FeedKind.EXPLORE or item.explore_sector == explore_sector)
+        ]
+        if not prior:
+            return []
+        latest_created_at = max(item.created_at for item in prior)
+        latest_run_id = max(
+            item.run_id for item in prior if item.created_at == latest_created_at
+        )
+        recommendations = [
+            item for item in prior if item.run_id == latest_run_id
+        ]
+        get_many = getattr(self._discovered_jobs, "get_many", None)
+        if callable(get_many):
+            jobs = get_many(
+                [item.job_id for item in recommendations],
+                source_ids=failed_sources,
+            )
+            jobs_by_id = {job.id: job for job in jobs}
+        else:
+            jobs_by_id = {
+                item.job_id: job
+                for item in recommendations
+                if (job := self._discovered_jobs.get(item.job_id)) is not None
+            }
+        retained: list[DiscoveredJob] = []
+        for recommendation in recommendations:
+            job = jobs_by_id.get(recommendation.job_id)
+            if job is not None and job.source.source_id in failed_sources:
+                retained.append(job)
+        return retained
 
     def _load_owned_profile(self, user_id: str, profile_id: str) -> MasterProfile:
         profile = self._profiles.get(profile_id)
@@ -486,6 +584,8 @@ class RefreshJobDiscoveryService:
         fetched_at: datetime,
     ) -> DiscoveredJob:
         job = self._normalizer.normalize(record, source, fetched_at=fetched_at)
+        if not self._reconcile_normalized_requirements:
+            return job
         requirements = self._requirement_extractor.extract(
             job.title,
             job.description,
@@ -493,6 +593,17 @@ class RefreshJobDiscoveryService:
             job.work_arrangement,
         )
         return job.model_copy(update={"requirements": requirements})
+
+    def _normalize_records(
+        self,
+        raw_records: list[tuple[SourceDefinition, SourceJobRecord]],
+        *,
+        fetched_at: datetime,
+    ) -> list[DiscoveredJob]:
+        return [
+            self._normalize(source, record, fetched_at=fetched_at)
+            for source, record in raw_records
+        ]
 
     @staticmethod
     def _source_error(source: SupportedJobSource, error: Exception) -> str:

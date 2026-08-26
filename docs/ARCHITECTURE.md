@@ -627,6 +627,21 @@ saved jobs and may correctly show an empty feed until a refresh has persisted
 recommendations. Both paths are required acceptance surfaces; neither replaces
 the other.
 
+Interactive refresh is asynchronous only at the delivery boundary. A session-scoped
+`BackgroundJobsRefreshCoordinator` owns one daemon operation per
+profile/feed/sector key and exposes immutable snapshots; it does not write Streamlit
+state. The existing application refresh service still owns retrieval, normalization,
+scoring, and persistence. Retrieval fans independent approved sources through a bounded
+thread pool, then restores deterministic source ordering before downstream processing.
+On partial provider failure, the refresh service may carry forward only jobs belonging to
+failed sources from the immediately preceding matching feed; successful sources always
+use their fresh records. Semantic ranking and classification contracts are unchanged.
+The refresh path batch-loads only failed-source candidates instead of issuing one SQLite
+read per recommendation. Static requirement and role-signal regular expressions are
+compiled once, and the default normalizer passes its already-computed role classification
+into requirement extraction rather than recomputing it. These are execution optimizations;
+the requirement, role-family, scoring, and ordering policies are unchanged.
+
 The frontend preserves backend-owned Tailored and Explore ordering and does not
 re-evaluate eligibility, fit, or sort order. The normal UI renders semantic
 grades, evidence, gaps, unresolved facts, verification, freshness, eligibility,

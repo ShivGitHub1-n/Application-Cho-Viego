@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import cache
 from typing import Final
 
 from pydantic import BaseModel, Field
@@ -191,6 +192,7 @@ class RoleSignalClassification(BaseModel):
     reason: str | None = None
 
 
+@cache
 def _phrase_pattern(phrase: str) -> re.Pattern[str]:
     escaped = re.escape(phrase.casefold())
     escaped = escaped.replace(r"\ ", r"\s+")

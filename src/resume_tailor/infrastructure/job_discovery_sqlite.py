@@ -202,6 +202,45 @@ class SQLiteDiscoveredJobRepository(_SQLiteJobDiscoveryRepository, DiscoveredJob
             )
         return job
 
+    def get_many(
+        self, job_ids: list[str], *, source_ids: set[str] | None = None
+    ) -> list[DiscoveredJob]:
+        ordered_ids = list(dict.fromkeys(job_ids))
+        source_filter = sorted(source_ids or set())
+        if not ordered_ids or (source_ids is not None and not source_filter):
+            return []
+        found: dict[str, DiscoveredJob] = {}
+        with self._connect() as connection:
+            chunk_size = max(1, 500 - len(source_filter))
+            for offset in range(0, len(ordered_ids), chunk_size):
+                chunk = ordered_ids[offset : offset + chunk_size]
+                job_placeholders = ", ".join("?" for _item in chunk)
+                source_clause = ""
+                parameters = [*chunk]
+                if source_filter:
+                    source_placeholders = ", ".join("?" for _item in source_filter)
+                    source_clause = f" AND source_id IN ({source_placeholders})"
+                    parameters.extend(source_filter)
+                rows = connection.execute(
+                    "SELECT job_id, payload_json, schema_version "
+                    f"FROM discovered_jobs WHERE job_id IN ({job_placeholders})"
+                    f"{source_clause}",
+                    parameters,
+                ).fetchall()
+                for stored_id, payload_json, schema_version in rows:
+                    job = _load_versioned_model(
+                        DiscoveredJob,
+                        payload_json,
+                        schema_version,
+                        f"discovered job {stored_id!r}",
+                    )
+                    if job.id != stored_id:
+                        raise CorruptStoredJobDiscoveryError(
+                            "Stored discovered job does not match indexed identity"
+                        )
+                    found[stored_id] = job
+        return [found[job_id] for job_id in ordered_ids if job_id in found]
+
 
 class SQLiteDiscoveryRunRepository(_SQLiteJobDiscoveryRepository, DiscoveryRunRepository):
     def create(self, run: DiscoveryRun) -> None:

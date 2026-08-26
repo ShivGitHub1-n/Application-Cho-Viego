@@ -16,6 +16,7 @@ from resume_tailor.domain.job_discovery.models import (
 )
 from resume_tailor.domain.job_discovery.role_signals import (
     ROLE_SIGNAL_CATALOG,
+    RoleSignalClassification,
     classify_role_signals,
 )
 
@@ -165,6 +166,12 @@ def _pattern(phrase: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){escaped}(?!\w)", re.IGNORECASE)
 
 
+_STATIC_TERM_PATTERNS = {
+    entry.canonical: tuple((alias, _pattern(alias)) for alias in entry.aliases)
+    for entry in JOB_REQUIREMENT_TERM_CATALOG
+}
+
+
 def _sentence_at(text: str, start: int, end: int) -> str:
     left = max(
         text.rfind(".", 0, start),
@@ -301,6 +308,8 @@ class RequirementExtractor:
         location_raw: str | None,
         work_arrangement: WorkArrangement,
         profile_index: ProfileCapabilityIndex | None = None,
+        *,
+        role_classification: RoleSignalClassification | None = None,
     ) -> JobRequirementSignals:
         profile_index = profile_index if profile_index is not None else self._profile_index
         source = title.strip()
@@ -319,8 +328,11 @@ class RequirementExtractor:
 
         matches: list[JobRequirement] = []
         for entry in entries.values():
-            for alias in entry.aliases:
-                for match in _pattern(alias).finditer(source):
+            patterns = _STATIC_TERM_PATTERNS.get(entry.canonical)
+            if patterns is None:
+                patterns = tuple((alias, _pattern(alias)) for alias in entry.aliases)
+            for _alias, pattern in patterns:
+                for match in pattern.finditer(source):
                     sentence = _sentence_at(source, match.start(), match.end())
                     if _is_marketing_only(sentence):
                         continue
@@ -436,7 +448,7 @@ class RequirementExtractor:
                 and not _is_marketing_only(sentence)
             ]
         )
-        role_result = classify_role_signals(title, description)
+        role_result = role_classification or classify_role_signals(title, description)
         material_gaps = [
             f"No reviewed profile evidence or skill was found for required {term}."
             for term in required

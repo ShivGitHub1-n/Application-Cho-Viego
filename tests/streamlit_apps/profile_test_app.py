@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import streamlit as st
 
 from resume_tailor.frontend.profile_page import ProfilePageDependencies, render_profile_page
+from resume_tailor.infrastructure.resume_extraction import ExtractedResumeText
 
 
 class InMemoryProfileRepository:
@@ -71,9 +72,18 @@ elif scenario == "Seed extracted draft":
             extraction_notes=("Review extracted dates before saving.",),
             fidelity_flags=("Formatting was not preserved in extraction.",),
         )
+        st.session_state["profile_extraction_source"] = ExtractedResumeText(
+            filename="review-source.docx",
+            source_format="docx",
+            text=(
+                "Example Candidate\nEmbedded Systems Intern — Example Robotics\n"
+                "Built and tested an embedded sensor interface."
+            ),
+        )
 else:
     st.session_state.pop("profile-test-no-profile-initialized", None)
     st.session_state.pop("profile_extraction_draft", None)
+    st.session_state.pop("profile_extraction_source", None)
 
 render_profile_page(
     st,

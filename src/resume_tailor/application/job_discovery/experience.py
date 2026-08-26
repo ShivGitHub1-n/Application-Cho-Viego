@@ -6,6 +6,11 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from resume_tailor.application.job_discovery.background_refresh import (
+    BackgroundJobsRefreshCoordinator,
+    BackgroundRefreshSnapshot,
+    refresh_context_key,
+)
 from resume_tailor.application.job_discovery.confirmation import (
     ConfirmJobSearchPreferencesService,
 )
@@ -162,12 +167,14 @@ class JobsExperienceService:
         jobs: DiscoveredJobPort,
         handoff: HandoffPort,
         now: Callable[[], datetime] | None = None,
+        refresh_coordinator: BackgroundJobsRefreshCoordinator | None = None,
     ) -> None:
         self._profiles = ReviewedProfileQueryService(profiles)
         self._services = services
         self._jobs = jobs
         self._handoff = handoff
         self._now = now or (lambda: datetime.now(UTC))
+        self._refresh_coordinator = refresh_coordinator or BackgroundJobsRefreshCoordinator()
 
     def list_reviewed_profiles(self) -> ReviewedProfileQueryResult:
         return self._profiles.list_reviewed_profiles()
@@ -264,6 +271,29 @@ class JobsExperienceService:
         )
         return FeedRefreshView(
             feed=self.load_feed(profile_id, FeedKind.EXPLORE, sector=sector), run=run
+        )
+
+    def start_tailored_refresh(self, profile_id: str) -> BackgroundRefreshSnapshot:
+        key = refresh_context_key(profile_id, FeedKind.TAILORED.value)
+        return self._refresh_coordinator.start(key, lambda: self.refresh_tailored(profile_id))
+
+    def start_explore_refresh(
+        self, profile_id: str, sector: str
+    ) -> BackgroundRefreshSnapshot:
+        key = refresh_context_key(profile_id, FeedKind.EXPLORE.value, sector=sector)
+        return self._refresh_coordinator.start(
+            key, lambda: self.refresh_explore(profile_id, sector)
+        )
+
+    def refresh_state(
+        self,
+        profile_id: str,
+        feed_kind: FeedKind,
+        *,
+        sector: str | None = None,
+    ) -> BackgroundRefreshSnapshot | None:
+        return self._refresh_coordinator.get(
+            refresh_context_key(profile_id, feed_kind.value, sector=sector)
         )
 
     def get_job_detail(

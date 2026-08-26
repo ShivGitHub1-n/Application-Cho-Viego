@@ -283,6 +283,19 @@ def test_discovered_job_upsert_and_read_round_trip(tmp_path) -> None:
     assert repository.get("job-1").description == "Updated description."
 
 
+def test_discovered_job_batch_read_preserves_requested_order_and_ignores_missing(
+    tmp_path,
+) -> None:
+    repository = SQLiteDiscoveredJobRepository(tmp_path / "discovery.sqlite3")
+    repository.upsert(_job("job-1"))
+    repository.upsert(_job("job-2"))
+
+    jobs = repository.get_many(["job-2", "missing", "job-1", "job-2"])
+
+    assert [job.id for job in jobs] == ["job-2", "job-1"]
+    assert repository.get_many(["job-1"], source_ids={"other-source"}) == []
+
+
 def test_discovery_run_create_complete_and_read_preserve_identity(tmp_path) -> None:
     repository = SQLiteDiscoveryRunRepository(tmp_path / "discovery.sqlite3")
     running = _run("run-1")

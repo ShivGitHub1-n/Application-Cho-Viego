@@ -87,6 +87,10 @@ class DiscoveredJobRepository(Protocol):
 
     def get(self, job_id: str) -> DiscoveredJob | None: ...
 
+    def get_many(
+        self, job_ids: list[str], *, source_ids: set[str] | None = None
+    ) -> list[DiscoveredJob]: ...
+
 
 class JobRecommendationRepository(Protocol):
     def replace_for_run(self, run_id: str, recommendations: list[JobRecommendation]) -> None: ...

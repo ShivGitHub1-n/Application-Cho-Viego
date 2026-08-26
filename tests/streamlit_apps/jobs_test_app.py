@@ -5,6 +5,11 @@ from datetime import UTC, datetime
 
 import streamlit as st
 
+from resume_tailor.application.job_discovery.background_refresh import (
+    BackgroundRefreshSnapshot,
+    BackgroundRefreshStatus,
+    refresh_context_key,
+)
 from resume_tailor.application.job_discovery.filtering import BrowseSeniority
 from resume_tailor.domain.job_discovery.models import (
     EligibilityStatus,
@@ -289,6 +294,49 @@ class OfflineJobsExperience:
     def refresh_explore(self, profile_id: str, sector: str) -> OfflineRefresh:
         feed = self.load_feed(profile_id, FeedKind.EXPLORE)
         return OfflineRefresh(feed, OfflineRun(feed.status))
+
+    def start_tailored_refresh(self, profile_id: str) -> BackgroundRefreshSnapshot:
+        return self._complete_background_refresh(
+            refresh_context_key(profile_id, FeedKind.TAILORED.value),
+            self.refresh_tailored(profile_id),
+        )
+
+    def start_explore_refresh(
+        self, profile_id: str, sector: str
+    ) -> BackgroundRefreshSnapshot:
+        return self._complete_background_refresh(
+            refresh_context_key(profile_id, FeedKind.EXPLORE.value, sector=sector),
+            self.refresh_explore(profile_id, sector),
+        )
+
+    def refresh_state(
+        self,
+        profile_id: str,
+        feed_kind: FeedKind,
+        *,
+        sector: str | None = None,
+    ) -> BackgroundRefreshSnapshot | None:
+        key = refresh_context_key(profile_id, feed_kind.value, sector=sector)
+        return st.session_state.setdefault("offline-refresh-snapshots", {}).get(key)
+
+    @staticmethod
+    def _complete_background_refresh(
+        key: str, result: OfflineRefresh
+    ) -> BackgroundRefreshSnapshot:
+        counter = int(st.session_state.get("offline-refresh-counter", 0)) + 1
+        st.session_state["offline-refresh-counter"] = counter
+        snapshot = BackgroundRefreshSnapshot(
+            key=key,
+            token=f"offline-{counter}",
+            status=BackgroundRefreshStatus.SUCCEEDED,
+            started_at=datetime(2026, 7, 28, tzinfo=UTC),
+            completed_at=datetime(2026, 7, 28, tzinfo=UTC),
+            elapsed_seconds=0.01,
+            result=result,
+            started_new=True,
+        )
+        st.session_state.setdefault("offline-refresh-snapshots", {})[key] = snapshot
+        return snapshot
 
     def get_job_detail(
         self, profile_id: str, feed_kind: FeedKind, job_id: str, *, sector: str | None = None

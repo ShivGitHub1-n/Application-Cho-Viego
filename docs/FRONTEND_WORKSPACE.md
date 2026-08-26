@@ -21,6 +21,34 @@ when the user returns to the same context. The Jobs service graph is session-reu
 ordinary filter, selection, and navigation reruns do not rebuild HTTP clients and
 repositories.
 
+## Career Profile workspace
+
+Career Profile is read-first. The default reviewed-profile canvas presents the complete
+canonical education, categorized skills, experiences, projects, and reviewed evidence in
+a document hierarchy. Structured forms are entered deliberately through **Edit profile**;
+raw JSON and provenance stay under **Advanced**. The current repository does not persist
+the uploaded source document, so **Source résumé** never fabricates an original preview.
+It shows extracted source text only during an active import review and labels that boundary
+explicitly.
+
+## Jobs refresh behavior
+
+User-triggered tailored and Explore refreshes run in a session-owned background
+coordinator, keyed by profile/feed/sector. The coordinator starts at most one operation for
+the same key, never mutates Streamlit session state from its worker thread, and publishes a
+typed terminal snapshot for a small polling fragment. Existing recommendations remain
+rendered and navigation remains available while refresh is running.
+
+Independent approved sources are retrieved concurrently with a bounded worker pool. Each
+connector retains its configured network timeout and pagination boundary. Source failures
+remain isolated: successful fresh records are persisted, while recommendations from a
+failed source in the immediately preceding matching feed are retained when available. A
+failed source cannot erase the usable feed, and a completion for one context cannot mutate
+the selected page, job, or another profile's refresh state. The refresh service exposes
+non-persisted runtime timings for profile/query preparation, retrieval/parsing,
+normalization, failed-source cache recovery,
+deduplication, capability indexing, evaluation/scoring, feed assembly, and persistence.
+
 ## Deployment ownership boundary
 
 The current local persistence layer is **not an authenticated multi-user boundary**.

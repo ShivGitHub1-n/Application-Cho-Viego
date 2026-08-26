@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -57,8 +58,9 @@ class RetrievalService:
         connectors: ConnectorCollection,
         max_pages: int = 20,
         max_records_per_source: int = 1000,
+        max_workers: int = 4,
     ) -> None:
-        if max_pages <= 0 or max_records_per_source <= 0:
+        if max_pages <= 0 or max_records_per_source <= 0 or max_workers <= 0:
             raise ValueError("retrieval limits must be positive")
         self._sources = tuple(
             sorted(sources, key=lambda item: (item.source_id, item.connector_type.value))
@@ -66,14 +68,39 @@ class RetrievalService:
         self._connectors = connectors
         self._max_pages = max_pages
         self._max_records_per_source = max_records_per_source
+        self._max_workers = max_workers
 
     def retrieve(self, query: Query, *, fetched_at: datetime) -> RetrievalOutcome:
         records: list[RetrievedSourceRecord] = []
         outcomes: list[SourceOutcome] = []
-        for source in self._sources:
-            if query.source_restrictions and source.source_id not in query.source_restrictions:
-                continue
-            outcome, accepted = self._retrieve_source(source, query, fetched_at=fetched_at)
+        selected = [
+            source
+            for source in self._sources
+            if not query.source_restrictions or source.source_id in query.source_restrictions
+        ]
+        if len(selected) <= 1:
+            retrieved = [
+                self._retrieve_source(source, query, fetched_at=fetched_at)
+                for source in selected
+            ]
+        else:
+            retrieved = []
+            with ThreadPoolExecutor(
+                max_workers=min(self._max_workers, len(selected)),
+                thread_name_prefix="job-source",
+            ) as executor:
+                futures = {
+                    executor.submit(
+                        self._retrieve_source,
+                        source,
+                        query,
+                        fetched_at=fetched_at,
+                    ): source
+                    for source in selected
+                }
+                for future in as_completed(futures):
+                    retrieved.append(future.result())
+        for outcome, accepted in retrieved:
             outcomes.append(outcome)
             records.extend(accepted)
         outcomes.sort(key=lambda item: (item.source_id, item.connector_type.value))

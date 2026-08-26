@@ -81,6 +81,9 @@ def _description_hash(description: str) -> str:
 
 
 class JobNormalizer:
+    def __init__(self, requirement_extractor: RequirementExtractor | None = None) -> None:
+        self._requirement_extractor = requirement_extractor or RequirementExtractor()
+
     def normalize(
         self,
         record: SourceJobRecord | DiscoveredJob,
@@ -97,13 +100,14 @@ class JobNormalizer:
         description = _normalized_space(record.description)
         location = parse_location(record.location_raw)
         url = _canonical_url(str(record.official_url), source)
-        requirement_signals = RequirementExtractor().extract(
+        role_classification = classify_role_signals(title, description)
+        requirement_signals = self._requirement_extractor.extract(
             title,
             description,
             record.location_raw,
             record.work_arrangement,
+            role_classification=role_classification,
         )
-        role_classification = classify_role_signals(title, description)
         completeness: list[str] = []
         if not external_job_id:
             completeness.append("missing_external_job_id")

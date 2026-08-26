@@ -14,31 +14,69 @@ HARNESS = Path(__file__).parent / "streamlit_apps" / "profile_test_app.py"
 APP = Path(__file__).parents[1] / "src" / "resume_tailor" / "frontend" / "app.py"
 
 
-def test_career_profile_defaults_to_overview_without_persisting_edits() -> None:
+def test_career_profile_defaults_to_reviewed_document_without_persisting_edits() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
 
     assert app.exception == []
     assert any(item.value == "Career Profile" for item in app.title)
-    assert app.pills(key="profile-active-section").value == "Overview"
+    assert app.pills(key="profile-active-section").value == "Reviewed profile"
     assert app.session_state["profile-test-save-count"] == 0
     assert any("reviewed source of truth" in item.value.lower() for item in app.caption)
     assert app.session_state["profile_load_status"] != "Profile not loaded."
+    page = "\n".join(item.value for item in app.markdown)
+    assert "Example Institute" in page
+    assert "Embedded Systems Intern" in page
+    assert "Software Engineering Intern" in page
+    assert "Research Assistant" in page
+    assert "Engineering Assistant" in page
+    assert "Sensor Platform" in page
+    assert "Automation Challenge" in page
+    assert "Digital Monitor" in page
+    assert "Python, C++" in page
+    assert "evidence-one" not in page
+    assert app.text_area == []
+
+
+def test_source_resume_surface_is_truthful_when_original_bytes_are_not_retained() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    saved_before = app.session_state["profile-test-save-count"]
+
+    app.pills(key="profile-active-section").set_value("Source résumé").run()
+
+    assert app.exception == []
+    assert any("original uploaded résumé file was not retained" in item.value for item in app.info)
+    assert any("stores the validated profile record" in item.value for item in app.caption)
+    assert not any("original résumé preview" in item.value.lower() for item in app.markdown)
+    assert app.session_state["profile-test-save-count"] == saved_before
+
+
+def test_switching_profile_surfaces_does_not_mutate_the_reviewed_profile() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    before = app.session_state["profile"].model_dump(mode="json")
+
+    app.pills(key="profile-active-section").set_value("Source résumé").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
+    app.pills(key="profile-active-section").set_value("Reviewed profile").run()
+
+    assert app.exception == []
+    assert app.session_state["profile"].model_dump(mode="json") == before
+    assert app.session_state["profile-test-save-count"] == 0
 
 
 def test_career_profile_uses_reviewed_profile_selector_and_structured_subsections() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
 
-    assert app.pills(key="profile-active-section").value == "Overview"
+    assert app.pills(key="profile-active-section").value == "Reviewed profile"
     assert app.selectbox(key="profile-reviewed-selector").value == "profile-completeness-fixture"
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
 
     assert app.pills(key="profile-data-section").value == "Personal"
-    assert app.pills(key="profile-active-section").value == "Profile data"
+    assert app.pills(key="profile-active-section").value == "Edit profile"
 
 
 def test_career_profile_edits_are_saved_only_after_explicit_confirmation() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
     name_key = candidate_name_widget_key(app.session_state["profile_editor_source_key"])
     app.text_input(key=name_key).set_value("Avery Updated").run()
@@ -53,7 +91,7 @@ def test_career_profile_edits_are_saved_only_after_explicit_confirmation() -> No
 
 def test_career_profile_discard_restores_the_last_saved_profile() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
     name_key = candidate_name_widget_key(app.session_state["profile_editor_source_key"])
     app.text_input(key=name_key).set_value("Temporary edit").run()
@@ -71,8 +109,8 @@ def test_career_profile_normalizes_a_stale_section_before_rendering_widgets() ->
     app.run()
 
     assert app.exception == []
-    assert app.pills(key="profile-active-section").value == "Overview"
-    assert app.session_state["profile-active-section"] == "Overview"
+    assert app.pills(key="profile-active-section").value == "Reviewed profile"
+    assert app.session_state["profile-active-section"] == "Reviewed profile"
 
 
 def test_production_router_defaults_to_career_profile() -> None:
@@ -160,14 +198,14 @@ def test_career_profile_honors_jobs_selected_profile_identity() -> None:
 def test_candidate_name_widget_is_scoped_to_the_loaded_profile_source() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
     first_key = candidate_name_widget_key(app.session_state["profile_editor_source_key"])
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
     app.text_input(key=first_key).set_value("Unsaved Profile A").run()
 
-    app.pills(key="profile-active-section").set_value("Overview").run()
+    app.pills(key="profile-active-section").set_value("Reviewed profile").run()
     app.selectbox(key="profile-reviewed-selector").set_value("profile-existing").run()
     app.button(key="profile-reviewed-load").click().run()
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
     second_key = candidate_name_widget_key(app.session_state["profile_editor_source_key"])
 
@@ -178,15 +216,16 @@ def test_candidate_name_widget_is_scoped_to_the_loaded_profile_source() -> None:
 def test_seeded_extracted_profile_draft_stays_local_until_explicit_save() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
     app.selectbox(key="profile-test-scenario").set_value("Seed extracted draft").run()
-    app.pills(key="profile-active-section").set_value("Import résumé").run()
+    app.pills(key="profile-active-section").set_value("Source résumé").run()
 
     assert app.exception == []
     assert app.session_state["profile"].id == "profile-completeness-fixture"
     assert app.session_state["profile_extraction_draft"].profile.id == "draft-profile"
     assert app.session_state["profile-test-save-count"] == 0
-    assert any("Fidelity flags" in item.value for item in app.warning)
+    assert any("original uploaded file is not persisted" in item.value for item in app.warning)
+    assert any("review-source.docx" in item.value for item in app.caption)
 
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Personal").run()
     draft_name_key = candidate_name_widget_key(app.session_state["profile_editor_source_key"])
     app.text_input(key=draft_name_key).set_value("Reviewed Draft Candidate").run()
@@ -208,18 +247,18 @@ def _first_labeled_widget(app: AppTest, label: str):
 
 def test_structured_profile_editor_round_trips_supported_optional_fields() -> None:
     app = AppTest.from_file(str(HARNESS)).run()
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Education").run()
     _first_labeled_widget(app, "Minor or specialization").set_value("Computer engineering").run()
     _first_labeled_widget(app, "Relevant coursework").set_value("Controls, Signals").run()
 
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Experiences").run()
     _first_labeled_widget(app, "Subtitle").set_value("Platform team").run()
     _first_labeled_widget(app, "Technology label").set_value("Embedded platform").run()
     _first_labeled_widget(app, "Award or placement").set_value("Dean's list").run()
 
-    app.pills(key="profile-active-section").set_value("Profile data").run()
+    app.pills(key="profile-active-section").set_value("Edit profile").run()
     app.pills(key="profile-data-section").set_value("Skills").run()
     _first_labeled_widget(app, "Top-level coursework").set_value("Controls, Signals").run()
     _first_labeled_widget(app, "Category source reference").set_value("profile://skills").run()

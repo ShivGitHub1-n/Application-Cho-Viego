@@ -19,6 +19,7 @@ from resume_tailor.domain.job_discovery.requirements import (
     JOB_REQUIREMENT_TERM_CATALOG,
     RequirementExtractor,
 )
+from resume_tailor.domain.job_discovery.role_signals import classify_role_signals
 from resume_tailor.domain.models import MasterProfile
 
 
@@ -44,6 +45,28 @@ def test_required_term_absent_from_profile_is_extracted_without_profile():
         "No reviewed profile evidence or skill was found for required cuda.",
         "No reviewed profile evidence or skill was found for required python.",
     ]
+
+
+def test_precomputed_role_classification_preserves_requirement_output() -> None:
+    title = "Embedded Systems Engineer"
+    description = "Develop firmware and test motor control for a robotic actuator."
+    extractor = RequirementExtractor()
+
+    direct = extractor.extract(
+        title,
+        description,
+        "Toronto, ON",
+        WorkArrangement.HYBRID,
+    )
+    reused = extractor.extract(
+        title,
+        description,
+        "Toronto, ON",
+        WorkArrangement.HYBRID,
+        role_classification=classify_role_signals(title, description),
+    )
+
+    assert reused == direct
 
 
 def test_profile_expansion_is_additive_and_does_not_hide_catalog_terms():

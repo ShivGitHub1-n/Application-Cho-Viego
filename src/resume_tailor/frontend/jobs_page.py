@@ -8,6 +8,10 @@ from typing import Any, Protocol
 
 import streamlit as st
 
+from resume_tailor.application.job_discovery.background_refresh import (
+    BackgroundRefreshSnapshot,
+    BackgroundRefreshStatus,
+)
 from resume_tailor.application.job_discovery.experience import (
     FeedView,
     JobsExperienceService,
@@ -44,6 +48,17 @@ class JobsPageExperience(Protocol):
     ) -> Any: ...
     def refresh_tailored(self, profile_id: str) -> Any: ...
     def refresh_explore(self, profile_id: str, sector: str) -> Any: ...
+    def start_tailored_refresh(self, profile_id: str) -> BackgroundRefreshSnapshot: ...
+    def start_explore_refresh(
+        self, profile_id: str, sector: str
+    ) -> BackgroundRefreshSnapshot: ...
+    def refresh_state(
+        self,
+        profile_id: str,
+        feed_kind: FeedKind,
+        *,
+        sector: str | None = None,
+    ) -> BackgroundRefreshSnapshot | None: ...
     def get_job_detail(
         self,
         profile_id: str,
@@ -161,17 +176,21 @@ def render_jobs_page(
                     "eligibility, evidence, and freshness kept distinct."
                 )
             with action_col:
-                if streamlit_module.button(
-                    "Refresh recommendations",
-                    key="jobs-refresh-tailored",
-                    type="primary",
-                    width="stretch",
-                    disabled=preferences is None,
+                if streamlit_module is st and _refresh_is_running(
+                    experience, selected_profile, FeedKind.TAILORED
                 ):
-                    _refresh_tailored(experience, selected_profile, streamlit_module)
-                last_refresh = streamlit_module.session_state.get("jobs_last_tailored_refresh")
-                if last_refresh is not None:
-                    streamlit_module.caption(_refresh_copy(last_refresh))
+                    _tailored_refresh_fragment(
+                        experience,
+                        selected_profile,
+                        disabled=preferences is None,
+                    )
+                else:
+                    _render_tailored_refresh_control(
+                        experience,
+                        selected_profile,
+                        streamlit_module,
+                        disabled=preferences is None,
+                    )
 
         with streamlit_module.container(key="jobs-section-nav"):
             section_options = [
@@ -275,33 +294,14 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
             streamlit_module.empty()
         with action_col:
             with streamlit_module.container(key="jobs-explore-action"):
-                if streamlit_module.button(
-                    "Refresh Explore roles",
-                    key="jobs-refresh-explore",
-                    type="primary",
-                    width="content",
+                if streamlit_module is st and _refresh_is_running(
+                    experience, profile_id, FeedKind.EXPLORE, sector=sector
                 ):
-                    try:
-                        result = experience.refresh_explore(profile_id, sector)
-                        streamlit_module.session_state["jobs_last_explore_refresh"] = (
-                            _refresh_timestamp(result)
-                        )
-                        streamlit_module.session_state["jobs_last_explore_status"] = (
-                            _refresh_status(result)
-                        )
-                        streamlit_module.session_state["jobs_explore_excluded_expanded"] = False
-                    except Exception:
-                        streamlit_module.error(
-                            "Explore roles could not be refreshed. Previously stored results "
-                            "were preserved."
-                        )
-                last_refresh = streamlit_module.session_state.get(
-                    "jobs_last_explore_refresh"
-                )
-                streamlit_module.markdown(
-                    f'<div class="jobs-header-status">{_refresh_copy(last_refresh)}</div>',
-                    unsafe_allow_html=True,
-                )
+                    _explore_refresh_fragment(experience, profile_id, sector)
+                else:
+                    _render_explore_refresh_control(
+                        experience, profile_id, sector, streamlit_module
+                    )
     previous_sector = streamlit_module.session_state.get("jobs_selected_explore_sector")
     if previous_sector != sector:
         streamlit_module.session_state.pop("jobs_explore_selected_job_id", None)
@@ -431,7 +431,7 @@ def _render_feed(
                 "All approved job sources failed. Previously stored recommendations were preserved."
             )
     for warning in feed.source_warnings:
-        streamlit_module.warning(warning)
+        streamlit_module.warning(_human_source_warning(warning))
 
     def toggle_excluded() -> list[Any] | None:
         expanded_now = not expanded
@@ -500,6 +500,180 @@ def _create_cover_letter(
     streamlit_module.success("Application context prepared. Cover Letters is ready.")
     if hasattr(streamlit_module, "rerun"):
         streamlit_module.rerun()
+
+
+@st.fragment(run_every=1.0)
+def _tailored_refresh_fragment(
+    experience: JobsPageExperience,
+    profile_id: str,
+    *,
+    disabled: bool,
+) -> None:
+    _render_tailored_refresh_control(
+        experience,
+        profile_id,
+        st,
+        disabled=disabled,
+    )
+
+
+@st.fragment(run_every=1.0)
+def _explore_refresh_fragment(
+    experience: JobsPageExperience,
+    profile_id: str,
+    sector: str,
+) -> None:
+    _render_explore_refresh_control(experience, profile_id, sector, st)
+
+
+def _render_tailored_refresh_control(
+    experience: JobsPageExperience,
+    profile_id: str,
+    streamlit_module: Any,
+    *,
+    disabled: bool,
+) -> None:
+    snapshot = _background_refresh_state(
+        experience, profile_id, FeedKind.TAILORED
+    )
+    running = snapshot is not None and snapshot.status is BackgroundRefreshStatus.RUNNING
+    if streamlit_module.button(
+        "Refresh recommendations",
+        key="jobs-refresh-tailored",
+        type="primary",
+        width="stretch",
+        disabled=disabled or running,
+    ):
+        starter = getattr(experience, "start_tailored_refresh", None)
+        if callable(starter):
+            snapshot = starter(profile_id)
+            streamlit_module.rerun()
+        else:
+            _refresh_tailored(experience, profile_id, streamlit_module)
+    _render_refresh_snapshot(
+        streamlit_module,
+        snapshot,
+        timestamp_key="jobs_last_tailored_refresh",
+        status_key="jobs_last_tailored_status",
+        excluded_key="jobs_tailored_excluded_expanded",
+    )
+
+
+def _render_explore_refresh_control(
+    experience: JobsPageExperience,
+    profile_id: str,
+    sector: str,
+    streamlit_module: Any,
+) -> None:
+    snapshot = _background_refresh_state(
+        experience, profile_id, FeedKind.EXPLORE, sector=sector
+    )
+    running = snapshot is not None and snapshot.status is BackgroundRefreshStatus.RUNNING
+    if streamlit_module.button(
+        "Refresh Explore roles",
+        key="jobs-refresh-explore",
+        type="primary",
+        width="content",
+        disabled=running,
+    ):
+        starter = getattr(experience, "start_explore_refresh", None)
+        if callable(starter):
+            snapshot = starter(profile_id, sector)
+            streamlit_module.rerun()
+        else:
+            try:
+                result = experience.refresh_explore(profile_id, sector)
+                streamlit_module.session_state["jobs_last_explore_refresh"] = (
+                    _refresh_timestamp(result)
+                )
+                streamlit_module.session_state["jobs_last_explore_status"] = (
+                    _refresh_status(result)
+                )
+                streamlit_module.session_state["jobs_explore_excluded_expanded"] = False
+            except Exception:
+                streamlit_module.error(
+                    "Explore roles could not be refreshed. Previously stored results "
+                    "were preserved."
+                )
+    _render_refresh_snapshot(
+        streamlit_module,
+        snapshot,
+        timestamp_key="jobs_last_explore_refresh",
+        status_key="jobs_last_explore_status",
+        excluded_key="jobs_explore_excluded_expanded",
+    )
+
+
+def _background_refresh_state(
+    experience: JobsPageExperience,
+    profile_id: str,
+    feed_kind: FeedKind,
+    *,
+    sector: str | None = None,
+) -> BackgroundRefreshSnapshot | None:
+    getter = getattr(experience, "refresh_state", None)
+    if not callable(getter):
+        return None
+    return getter(profile_id, feed_kind, sector=sector)
+
+
+def _refresh_is_running(
+    experience: JobsPageExperience,
+    profile_id: str,
+    feed_kind: FeedKind,
+    *,
+    sector: str | None = None,
+) -> bool:
+    snapshot = _background_refresh_state(
+        experience, profile_id, feed_kind, sector=sector
+    )
+    return snapshot is not None and snapshot.status is BackgroundRefreshStatus.RUNNING
+
+
+def _render_refresh_snapshot(
+    streamlit_module: Any,
+    snapshot: BackgroundRefreshSnapshot | None,
+    *,
+    timestamp_key: str,
+    status_key: str,
+    excluded_key: str,
+) -> None:
+    if snapshot is None:
+        last_refresh = streamlit_module.session_state.get(timestamp_key)
+        if last_refresh is not None:
+            streamlit_module.caption(_refresh_copy(last_refresh))
+        return
+    if snapshot.status is BackgroundRefreshStatus.RUNNING:
+        streamlit_module.caption("Refreshing jobs... Existing recommendations remain available.")
+        return
+    handled = streamlit_module.session_state.setdefault("jobs_refresh_handled_tokens", {})
+    if handled.get(snapshot.key) != snapshot.token:
+        handled[snapshot.key] = snapshot.token
+        if snapshot.status is BackgroundRefreshStatus.SUCCEEDED:
+            streamlit_module.session_state[timestamp_key] = _refresh_timestamp(snapshot.result)
+            streamlit_module.session_state[status_key] = _refresh_status(snapshot.result)
+            streamlit_module.session_state[excluded_key] = False
+            run = getattr(snapshot.result, "run", None)
+            run_status = getattr(getattr(run, "status", None), "value", "")
+            if run_status == "failed_all_sources":
+                streamlit_module.session_state[status_key] = "Refresh failed"
+            else:
+                streamlit_module.toast(
+                    "Job recommendations refreshed.", icon=":material/check:"
+                )
+        else:
+            streamlit_module.session_state[status_key] = "Refresh failed"
+        streamlit_module.rerun()
+    if snapshot.status is BackgroundRefreshStatus.FAILED:
+        streamlit_module.warning(snapshot.error_message or "Job refresh failed.")
+        return
+    if streamlit_module.session_state.get(status_key) == "Refresh failed":
+        streamlit_module.warning(
+            "Job sources could not be refreshed. Previously stored recommendations "
+            "remain available."
+        )
+        return
+    streamlit_module.caption(_refresh_copy(streamlit_module.session_state.get(timestamp_key)))
 
 
 def _refresh_tailored(
@@ -612,6 +786,21 @@ def _human_status(value: Any) -> str:
     if isinstance(value, str):
         return value.replace("_", " ").capitalize()
     return "Completed"
+
+
+def _human_source_warning(value: Any) -> str:
+    text = str(value).strip()
+    if " could not refresh — showing previous results." in text:
+        return text
+    if "|" in text:
+        parts = text.split("|", 3)
+        source = parts[0].replace("-", " ").strip().title() or "One source"
+        message = parts[-1].strip().rstrip(".")
+        return f"{source} reported an issue — {message}."
+    if ": Provider" in text or ": Source" in text:
+        source = text.split(":", 1)[0].replace("-", " ").strip().title()
+        return f"{source} could not refresh — showing previous results where available."
+    return text
 
 
 def _clear_profile_state(state: MutableMapping[str, object]) -> None:

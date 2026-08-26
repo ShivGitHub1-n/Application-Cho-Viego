@@ -17,7 +17,7 @@ Store atomic evidence rather than only polished resume bullets:
 - technologies, outcomes, metrics, demonstrated capabilities, and dates when known
 - confirmation state and user notes
 
-Parsed uploads create a draft profile. The user confirms and corrects it before the profile becomes eligible for tailoring. Preserve original documents separately from normalized profile records.
+Parsed uploads create a draft profile. The user confirms and corrects it before the profile becomes eligible for tailoring. The current local persistence implementation stores the normalized `MasterProfile` JSON only; it does not retain the uploaded DOCX/PDF bytes. During the active import-review session, extracted source text and filename remain available for comparison, but that text is explicitly not presented as a visual copy of the original document. Durable source-document preservation remains a separate persistence capability rather than something reconstructed from normalized profile data.
 
 Store declared skills separately from demonstrated capabilities. Verified declared skills can support a skills section and provide limited fit signal, but do not establish evidence for a role-relevant experience or project claim without confirmed supporting evidence.
 
@@ -46,6 +46,8 @@ Manual reviewed fixtures should be maintained from the factual master resume, wi
 Every profile belongs to a user ID, may have many master-resume versions, and is immutable once referenced by a generated resume. This supports future authentication and reproducibility without schema redesign.
 
 ## Structured review editor
+
+Career Profile opens in a document-first **Reviewed profile** view. It renders the complete reviewed education, categorized skills, experience evidence, and project evidence without exposing evidence IDs or raw JSON. **Source résumé** truthfully reports the persistence boundary above and hosts the existing import flow. **Edit profile** retains the structured editor and explicit save/discard behavior; merely moving among view, source, edit, and advanced surfaces never persists or mutates the canonical profile.
 
 The Streamlit extraction-review workflow uses a detached structured editor state for contact information, education, experiences, projects, evidence statements, and categorized technical skills. A successful upload extraction populates these visible controls. Conversion back to `MasterProfile` is deterministic and runs the existing Pydantic validation before persistence. Existing entry and evidence IDs are preserved; new IDs are generated deterministically. The SQLite `MasterProfileRepository` remains the only save pathway. Resume and cover-letter derived state is invalidated only when the canonical saved profile changes. An explicitly labeled, collapsed raw JSON fallback uses the same validation and repository pathway, refuses unsupported top-level fields, rejects empty input with a normal validation message, and sanitizes JSON syntax errors to line/column guidance.
 

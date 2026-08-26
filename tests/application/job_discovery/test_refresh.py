@@ -155,12 +155,29 @@ class FakeSourceRepository:
 class FakeJobRepository:
     def __init__(self) -> None:
         self.jobs = {}
+        self.get_calls = 0
+        self.get_many_calls = 0
 
     def upsert(self, job) -> None:
         self.jobs[job.id] = job
 
     def get(self, job_id: str):
+        self.get_calls += 1
         return self.jobs.get(job_id)
+
+    def get_many(
+        self, job_ids: list[str], *, source_ids: set[str] | None = None
+    ) -> list:
+        self.get_many_calls += 1
+        return [
+            self.jobs[job_id]
+            for job_id in job_ids
+            if job_id in self.jobs
+            and (
+                source_ids is None
+                or self.jobs[job_id].source.source_id in source_ids
+            )
+        ]
 
 
 class FakeRecommendationRepository:
@@ -172,6 +189,18 @@ class FakeRecommendationRepository:
 
     def list_for_run(self, run_id: str) -> list:
         return list(self.by_run.get(run_id, []))
+
+    def list_for_feed(
+        self, user_id: str, feed_kind: str, *, include_excluded: bool = False
+    ) -> list:
+        return [
+            item
+            for recommendations in self.by_run.values()
+            for item in recommendations
+            if item.user_id == user_id
+            and item.feed_kind.value == feed_kind
+            and (include_excluded or item.visibility is RecommendationVisibility.VISIBLE)
+        ]
 
 
 class FakeRunRepository:
@@ -375,6 +404,65 @@ def test_partial_source_failure_keeps_valid_results_and_sorts_warnings() -> None
         "good|missing_title|2|Provider record was missing a title.",
     ]
     assert "secret token" not in " ".join(run.error_messages)
+
+
+def test_partial_refresh_retains_cached_jobs_from_failed_source() -> None:
+    first_source = _source("first")
+    second_source = _source("second")
+    first = FakeConnector(
+        JobSourceFetchResult(
+            records=[_record("first-old", company="First Systems")], warnings=[]
+        )
+    )
+    second = FakeConnector(
+        JobSourceFetchResult(
+            records=[_record("second-old", company="Second Systems")], warnings=[]
+        )
+    )
+    service, _, recommendations, jobs = _service(
+        [first_source, second_source], {"greenhouse": first}
+    )
+    service._connectors = {
+        ConnectorType.GREENHOUSE: {"first": first, "second": second}
+    }
+    service.refresh("u1", "p1", _preferences(), started_at=WHEN)
+
+    first.error = JobSourceTransportError("temporary outage")
+    second.result = JobSourceFetchResult(
+        records=[_record("second-new", company="Second Systems")], warnings=[]
+    )
+    refreshed = service.refresh("u1", "p1", _preferences(), started_at=WHEN)
+
+    current = recommendations.list_for_run(refreshed.id)
+    current_sources = {jobs.get(item.job_id).source.source_id for item in current}
+    assert current_sources == {"first", "second"}
+    assert any("first could not refresh" in warning for warning in refreshed.source_warnings)
+    assert refreshed.normalized_count == 2
+    assert jobs.get_many_calls == 1
+
+
+def test_refresh_reports_meaningful_phase_timings() -> None:
+    source = _source()
+    connector = FakeConnector(JobSourceFetchResult(records=[_record("1")], warnings=[]))
+    service, runs, _, _ = _service([source], {"greenhouse": connector})
+
+    run = service.refresh("u1", "p1", _preferences(), started_at=WHEN)
+
+    expected = {
+        "profile_and_query",
+        "source_retrieval_and_parsing",
+        "normalization",
+        "cached_source_recovery",
+        "deduplication",
+        "profile_capability_index",
+        "evaluation_and_scoring",
+        "feed_assembly",
+        "persistence",
+    }
+    timings = service.last_phase_timings_seconds
+    assert expected <= timings.keys()
+    assert all(value >= 0 for value in timings.values())
+    assert runs.completed[-1] == run
 
 
 @pytest.mark.parametrize(
