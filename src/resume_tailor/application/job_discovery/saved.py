@@ -71,6 +71,16 @@ class SaveJobService:
     def list(self, user_id: str) -> list[SavedJob]:
         return [saved.model_copy(deep=True) for saved in self._saved_jobs.list(user_id)]
 
+    def remove(self, user_id: str, saved_id: str) -> SavedJob:
+        """Remove one immutable snapshot without crossing the user boundary."""
+
+        saved = self._saved_jobs.get(user_id, saved_id)
+        if saved is None:
+            raise SavedJobNotFoundError(f"Saved job {saved_id!r} was not found.")
+        if not self._saved_jobs.delete(user_id, saved_id):
+            raise SavedJobNotFoundError(f"Saved job {saved_id!r} was not found.")
+        return saved.model_copy(deep=True)
+
 
 class CheckSavedJobAvailabilityService:
     def __init__(

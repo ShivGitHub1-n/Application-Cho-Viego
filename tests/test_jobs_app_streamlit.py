@@ -259,6 +259,18 @@ def test_saved_uses_same_card_detail_and_grouped_action_structure() -> None:
     assert not any(item.key == "jobs-select-saved-saved-1" for item in app.button)
     assert any(item.label == "Check availability" for item in app.button)
     assert any(item.label == "Tailor resume from snapshot" for item in app.button)
+    assert app.button(key="jobs-remove-saved-saved-1").label == "Confirm removal"
+
+
+def test_saved_job_can_be_removed_from_saved_workspace() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="offline-scenario-selector").set_value("saved-available").run()
+    app.pills(key="jobs-active-section").set_value("Saved").run()
+
+    app.button(key="jobs-remove-saved-saved-1").click().run()
+
+    assert app.exception == []
+    assert any(item.value == "No saved jobs yet" for item in app.subheader)
 
 
 def test_offline_saved_handoff_defers_navigation_until_the_next_run() -> None:
@@ -302,6 +314,40 @@ def test_jobs_search_state_is_independent_between_tailored_and_explore() -> None
     app.pills(key="jobs-active-section").set_value("Tailored for you").run()
     assert app.text_input(key="jobs-search-tailored").value == "Good"
     assert any(item.value == "Good Role" for item in app.subheader)
+
+
+def test_jobs_empty_state_distinguishes_not_loaded_from_successful_zero_results() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="offline-scenario-selector").set_value("not-loaded").run()
+
+    assert any(
+        item.value == "Recommendations have not been loaded" for item in app.subheader
+    )
+
+    app.selectbox(key="offline-scenario-selector").set_value("zero-results").run()
+
+    assert any(item.value == "No recommendations found" for item in app.subheader)
+    assert not any(
+        item.value == "Recommendations have not been loaded" for item in app.subheader
+    )
+
+
+def test_explore_feed_read_failure_stays_a_recoverable_product_state() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+    app.selectbox(key="offline-scenario-selector").set_value("feed-read-failure").run()
+    app.pills(key="jobs-active-section").set_value("Explore sectors").run()
+
+    assert app.exception == []
+    assert any(item.value == "Explore feed could not be read" for item in app.subheader)
+    normal_copy = "\n".join(
+        [item.value for item in app.markdown]
+        + [item.value for item in app.caption]
+        + [item.value for item in app.info]
+        + [item.value for item in app.warning]
+        + [item.value for item in app.error]
+    )
+    assert "sanitized repository failure" not in normal_copy
+    assert any(item.label == "Advanced details" for item in app.expander)
 
 
 def test_jobs_expanded_filter_panel_exposes_grouped_controls_and_reset() -> None:

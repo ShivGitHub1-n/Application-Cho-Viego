@@ -119,6 +119,8 @@ class SavedJobRepository(Protocol):
 
     def list(self, user_id: str) -> list[SavedJob]: ...
 
+    def delete(self, user_id: str, saved_id: str) -> bool: ...
+
     def update_availability(
         self,
         saved_id: str,

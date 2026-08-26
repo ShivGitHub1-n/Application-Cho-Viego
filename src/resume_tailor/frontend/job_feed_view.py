@@ -97,7 +97,7 @@ def render_feed(
     if not visible:
         _render_empty_feed(
             streamlit_module,
-            feed.excluded_count,
+            feed,
             no_match=base_visible_count is not None and base_visible_count > 0,
         )
         _render_excluded_results(
@@ -113,24 +113,29 @@ def render_feed(
     left, right = streamlit_module.columns([0.38, 0.62], gap="large")
     with left:
         streamlit_module.subheader("Recommendations")
-        streamlit_module.caption("Fit is visible before opening a job.")
-        for item in visible:
-            if _render_card(
-                item,
-                selected=item.job_id == selected_job_id,
-                selection_scope=selection_scope,
-                streamlit_module=streamlit_module,
-                on_select=on_select,
-            ):
-                selected_job_id = item.job_id
-        _render_excluded_results(
-            feed.excluded_count,
-            expanded_excluded,
-            excluded,
-            selected_key,
-            streamlit_module,
-            on_toggle_excluded,
-        )
+        streamlit_module.caption("Choose a role; its details stay visible beside the list.")
+        with streamlit_module.container(
+            height=680,
+            border=False,
+            key=f"jobs-results-scroll-{_safe_key(selection_scope)}",
+        ):
+            for item in visible:
+                if _render_card(
+                    item,
+                    selected=item.job_id == selected_job_id,
+                    selection_scope=selection_scope,
+                    streamlit_module=streamlit_module,
+                    on_select=on_select,
+                ):
+                    selected_job_id = item.job_id
+            _render_excluded_results(
+                feed.excluded_count,
+                expanded_excluded,
+                excluded,
+                selected_key,
+                streamlit_module,
+                on_toggle_excluded,
+            )
 
     with right:
         selected = next((item for item in visible if item.job_id == selected_job_id), None)
@@ -295,7 +300,8 @@ def _render_detail(
                     and not item.saved
                 ):
                     on_save(item.job_id)
-                    streamlit_module.success("Saved immutable posting snapshot.")
+                    streamlit_module.toast("Saved to your jobs.", icon=":material/bookmark_added:")
+                    streamlit_module.rerun()
             with actions[2]:
                 if streamlit_module.button(
                     "Tailor resume",
@@ -312,13 +318,12 @@ def _render_detail(
                 ):
                     on_cover_letter(item.job_id)
         streamlit_module.divider()
-        if detail is not None:
-            _render_list(
-                streamlit_module,
-                "Job description",
-                [normalize_job_description_for_display(detail.description)],
-            )
         _render_list(streamlit_module, "Why it fits", item.reasons)
+        if detail is not None:
+            with streamlit_module.expander("Full job description", expanded=False):
+                streamlit_module.write(
+                    normalize_job_description_for_display(detail.description)
+                )
         with streamlit_module.expander("Evidence behind this fit", expanded=False):
             _render_list(streamlit_module, "Supporting profile evidence", item.supporting_evidence)
         if item.gaps:
@@ -336,22 +341,33 @@ def _render_list(streamlit_module: Any, title: str, values: Sequence[str]) -> No
 
 
 def _render_empty_feed(
-    streamlit_module: Any, excluded_count: int, *, no_match: bool = False
+    streamlit_module: Any, feed: FeedView, *, no_match: bool = False
 ) -> None:
+    excluded_count = feed.excluded_count
+    never_loaded = feed.status is None and feed.last_refresh_at is None
+    refresh_failed = feed.status in {"failed", "failed_all_sources"}
     with streamlit_module.container(border=True, key="jobs-feed-empty-state"):
         streamlit_module.subheader(
             "No jobs match your search and filters."
             if no_match
             else "All retrieved jobs were excluded"
             if excluded_count
-            else "No jobs available yet"
+            else "Recommendations have not been loaded"
+            if never_loaded
+            else "Recommendations could not be refreshed"
+            if refresh_failed
+            else "No recommendations found"
         )
         streamlit_module.write(
             "Use Clear all or adjust the search and filters."
             if no_match
             else "Expand excluded results when you want to review them."
             if excluded_count
-            else "Refresh approved sources to retrieve recommendations for this feed."
+            else "Refresh this feed to retrieve recommendations from approved sources."
+            if never_loaded
+            else "Previously stored recommendations remain safe. Try refreshing again later."
+            if refresh_failed
+            else "The latest successful refresh returned no matching roles."
         )
 
 

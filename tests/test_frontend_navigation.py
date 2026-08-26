@@ -148,6 +148,26 @@ def test_job_search_services_initialize_only_on_job_search_page(
     assert calls == 1
 
 
+def test_resume_rendering_services_are_reused_across_navigation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_app_dependencies(monkeypatch, tmp_path)
+    app = AppTest.from_file(str(_app_path())).run()
+
+    _navigate(app, AppRoute.RESUME_STUDIO)
+    renderer = app.session_state["_managed_resume_renderer"]
+    editor_service = app.session_state["_resume_editor_service"]
+    _navigate(app, AppRoute.CAREER_PROFILE)
+    _navigate(app, AppRoute.RESUME_STUDIO)
+
+    assert app.session_state["_managed_resume_renderer"] is renderer
+    assert app.session_state["_resume_editor_service"] is editor_service
+    assert not app.exception
+
+
+
+
 def test_default_startup_needs_no_gemini_credentials(
     monkeypatch,
     tmp_path: Path,

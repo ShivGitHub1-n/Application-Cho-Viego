@@ -73,6 +73,7 @@ class ProfilePageDependencies:
     profile_repository: Any
     tailor_service: Any
     invalidate_tailoring: Callable[[], None]
+    reviewed_profile_options: tuple[tuple[str, str], ...] | None = None
 
 
 def _profile_fingerprint(profile: MasterProfile) -> str:
@@ -127,8 +128,9 @@ def _load_profile(
         profile = dependencies.profile_repository.get(requested_id or "local-profile")
     except (ProfileStoreError, CorruptStoredProfileError) as error:
         streamlit_module.session_state["profile_load_status"] = (
-            f"Saved profile unavailable: {error}"
+            "Saved profile data is temporarily unavailable."
         )
+        streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
         return None
     if profile is None:
         current_status = str(streamlit_module.session_state.get("profile_load_status", ""))
@@ -141,6 +143,7 @@ def _load_profile(
     streamlit_module.session_state.pop("profile_extraction_draft", None)
     streamlit_module.session_state.pop("profile_extraction_source", None)
     streamlit_module.session_state["profile_load_status"] = "Loaded from persistent storage."
+    streamlit_module.session_state.pop("profile_storage_diagnostic", None)
     _initialize_editor(
         streamlit_module, profile, f"saved:{profile.id}:{profile_change_fingerprint(profile)}"
     )
@@ -158,13 +161,15 @@ def _load_existing_profile(
         profile = dependencies.profile_repository.get(requested_id)
     except CorruptStoredProfileError as error:
         streamlit_module.session_state["profile_load_status"] = (
-            f"Profile {requested_id} is corrupt and could not be loaded: {error}"
+            f"Profile {requested_id} needs repair before it can be loaded."
         )
+        streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
         return None
     except ProfileStoreError as error:
         streamlit_module.session_state["profile_load_status"] = (
-            f"Profile {requested_id} could not be loaded: {error}"
+            f"Profile {requested_id} could not be loaded safely."
         )
+        streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
         return None
     if profile is None:
         streamlit_module.session_state["profile_load_status"] = (
@@ -183,6 +188,7 @@ def _load_existing_profile(
     streamlit_module.session_state.pop("profile_extraction_draft", None)
     streamlit_module.session_state.pop("profile_extraction_source", None)
     streamlit_module.session_state["profile_load_status"] = f"Loaded profile {profile.id}."
+    streamlit_module.session_state.pop("profile_storage_diagnostic", None)
     _initialize_editor(
         streamlit_module, profile, f"saved:{profile.id}:{profile_change_fingerprint(profile)}"
     )
@@ -209,6 +215,7 @@ def _persist_profile(
     streamlit_module.session_state["profile_id"] = profile.id
     streamlit_module.session_state["jobs_profile_id"] = profile.id
     streamlit_module.session_state["profile_load_status"] = "Profile saved successfully."
+    streamlit_module.session_state.pop("profile_storage_diagnostic", None)
     _initialize_editor(
         streamlit_module, profile, f"saved:{profile.id}:{profile_change_fingerprint(profile)}"
     )
@@ -266,8 +273,11 @@ def _render_import(
     streamlit_module: Any,
     dependencies: ProfilePageDependencies,
     profile: MasterProfile | None,
+    *,
+    show_heading: bool = True,
 ) -> MasterProfile | None:
-    streamlit_module.subheader("Résumé import")
+    if show_heading:
+        streamlit_module.subheader("Résumé import")
     streamlit_module.caption(
         "Extracted content is a draft until you review and explicitly save it."
     )
@@ -330,6 +340,15 @@ def _render_advanced(
 ) -> MasterProfile | None:
     streamlit_module.subheader("Advanced tools")
     streamlit_module.caption("Raw JSON is for schema fields not represented in the focused editor.")
+    with streamlit_module.expander("Source file storage", expanded=False):
+        streamlit_module.write(
+            "Viego currently persists the reviewed Career Profile, not the original uploaded "
+            "DOCX or PDF. A source preview is available only during the import review session."
+        )
+    storage_diagnostic = streamlit_module.session_state.get("profile_storage_diagnostic")
+    if storage_diagnostic:
+        with streamlit_module.expander("Profile storage diagnostics", expanded=False):
+            streamlit_module.code(str(storage_diagnostic))
     if profile is None:
         streamlit_module.caption(
             "Create a reviewed profile from validated JSON when no saved profile is available."
@@ -390,16 +409,24 @@ def _render_advanced(
 def _render_reviewed_profile_selector(
     streamlit_module: Any, dependencies: ProfilePageDependencies, profile: MasterProfile | None
 ) -> None:
-    try:
-        profiles = list(dependencies.profile_repository.list_all())
-    except (AttributeError, ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
-        streamlit_module.error(f"Reviewed profiles could not be listed: {error}")
-        return
-    if not profiles:
+    options = (
+        None
+        if dependencies.reviewed_profile_options is None
+        else list(dependencies.reviewed_profile_options)
+    )
+    if options is None:
+        try:
+            profiles = list(dependencies.profile_repository.list_all())
+        except (AttributeError, ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
+            streamlit_module.error("Reviewed profiles are temporarily unavailable.")
+            streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
+            return
+        options = [(item.id, item.display_name) for item in profiles]
+    if not options:
         streamlit_module.info("No reviewed profiles are available yet.")
         return
-    ids = [item.id for item in profiles]
-    labels = {item.id: item.display_name for item in profiles}
+    ids = [profile_id for profile_id, _ in options]
+    labels = dict(options)
     active_id = getattr(profile, "id", None) or streamlit_module.session_state.get("profile_id")
     selected = streamlit_module.selectbox(
         "Reviewed profile",
@@ -599,9 +626,9 @@ def _render_source_resume(
     dependencies: ProfilePageDependencies,
     profile: MasterProfile | None,
 ) -> MasterProfile | None:
-    streamlit_module.subheader("Source résumé")
     source = streamlit_module.session_state.get("profile_extraction_source")
     if source is not None:
+        streamlit_module.subheader("Source résumé")
         streamlit_module.caption(
             f"Current import review · {source.filename} · {source.source_format.upper()}"
         )
@@ -612,15 +639,12 @@ def _render_source_resume(
         with streamlit_module.expander("View extracted source text", expanded=False):
             streamlit_module.text(source.text)
     else:
-        streamlit_module.info(
-            "The reviewed Career Profile is available, but the original uploaded résumé "
-            "file was not retained by the current persistence model."
-        )
+        streamlit_module.subheader("Import or replace résumé")
         streamlit_module.caption(
-            "Viego stores the validated profile record, not the source DOCX/PDF bytes. "
-            "Import a newer résumé to start a new review."
+            "Upload a DOCX or PDF to create a new reviewed draft. Your current Career "
+            "Profile stays unchanged until you review and save it."
         )
-    import_open = profile is None or bool(
+    import_open = source is None or profile is None or bool(
         streamlit_module.session_state.get("profile_source_import_open", False)
     )
     if not import_open and streamlit_module.button(
@@ -631,7 +655,12 @@ def _render_source_resume(
         streamlit_module.session_state["profile_source_import_open"] = True
         streamlit_module.rerun()
     if import_open:
-        profile = _render_import(streamlit_module, dependencies, profile)
+        profile = _render_import(
+            streamlit_module,
+            dependencies,
+            profile,
+            show_heading=source is not None,
+        )
         if streamlit_module.session_state.get("profile_extraction_draft") is not None:
             if streamlit_module.button(
                 "Review extracted profile",
@@ -725,14 +754,22 @@ def _render_overview_v2(
     streamlit_module.caption(
         "This is the reviewed source of truth used for job matching and document tailoring."
     )
-    try:
-        profiles = list(dependencies.profile_repository.list_all())
-    except (ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
-        streamlit_module.error(f"Reviewed profiles could not be listed: {error}")
-        profiles = []
-    if len(profiles) > 1:
-        ids = [item.id for item in profiles]
-        labels = {item.id: item.display_name for item in profiles}
+    options = (
+        None
+        if dependencies.reviewed_profile_options is None
+        else list(dependencies.reviewed_profile_options)
+    )
+    if options is None:
+        try:
+            profiles = list(dependencies.profile_repository.list_all())
+        except (ProfileStoreError, CorruptStoredProfileError, ValueError) as error:
+            streamlit_module.error("Reviewed profiles are temporarily unavailable.")
+            streamlit_module.session_state["profile_storage_diagnostic"] = str(error)
+            profiles = []
+        options = [(item.id, item.display_name) for item in profiles]
+    if len(options) > 1:
+        ids = [profile_id for profile_id, _ in options]
+        labels = dict(options)
         with streamlit_module.expander("Switch reviewed profile", expanded=False):
             selected = streamlit_module.selectbox(
                 "Reviewed profile",
@@ -746,19 +783,24 @@ def _render_overview_v2(
             ):
                 _load_existing_profile(streamlit_module, dependencies, selected)
                 streamlit_module.rerun()
-    elif not profiles:
+    elif not options:
         streamlit_module.info("No reviewed profiles are available yet.")
     with streamlit_module.container(horizontal=True):
         if streamlit_module.button("Edit profile", key="profile-edit-action", type="primary"):
             streamlit_module.session_state["profile_pending_section"] = "Edit profile"
             streamlit_module.session_state["profile_data_pending_section"] = "Personal"
             streamlit_module.rerun()
+        source_available = (
+            streamlit_module.session_state.get("profile_extraction_source") is not None
+        )
         if streamlit_module.button(
-            "View source résumé",
-            icon=":material/description:",
+            "View source résumé" if source_available else "Import or replace résumé",
+            icon=":material/description:" if source_available else ":material/upload_file:",
             key="profile-source-action",
         ):
             streamlit_module.session_state["profile_pending_section"] = "Source résumé"
+            if not source_available:
+                streamlit_module.session_state["profile_source_import_open"] = True
             streamlit_module.rerun()
     _render_reviewed_profile_canvas(streamlit_module, profile)
     return profile
@@ -843,7 +885,7 @@ def _render_profile_page_v2(streamlit_module: Any, dependencies: ProfilePageDepe
     profile_status = str(streamlit_module.session_state.get("profile_load_status", ""))
     if any(
         signal in profile_status.casefold()
-        for signal in ("unavailable", "could not", "not found", "not saved", "repair")
+        for signal in ("unavailable", "could not", "not saved", "repair")
     ):
         streamlit_module.warning(profile_status)
 

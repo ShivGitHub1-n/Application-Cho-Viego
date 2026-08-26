@@ -156,7 +156,11 @@ def render_cover_letter_view(
         )
 
     _render_status(artifact, artifact_current)
-    _render_letter(artifact)
+    if artifact.ready_for_review:
+        _render_letter(artifact)
+    else:
+        with st.expander("View diagnostic draft", expanded=False):
+            _render_letter(artifact)
     _render_diagnostics(artifact)
     artifact = _render_approval(service, artifact, artifact_current)
     _render_download(service, artifact, artifact_current)
@@ -378,8 +382,8 @@ def _render_approval(
             )
         else:
             st.error(
-                "This diagnostic candidate did not pass production eligibility. Approval and "
-                "all DOCX downloads are unavailable; review the diagnostics and generate again."
+                "This draft is diagnostic only. Approval and download stay unavailable until "
+                "a new letter passes every production check."
             )
         return artifact
     if artifact_current:
@@ -460,10 +464,7 @@ def _render_download(
         icon=":material/download:",
         on_click=mark_downloaded,
     )
-    st.caption(
-        f"Prepared in {download.elapsed_seconds:.3f}s from exact stored bytes; zero "
-        "generation, research, validation, rendering, or pagination calls."
-    )
+    st.caption("This download matches the exact approved document shown above.")
 
 
 __all__ = ["render_cover_letter_view"]

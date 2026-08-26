@@ -44,6 +44,9 @@ SCENARIOS = (
     "no-reviewed-profile",
     "no-confirmed-preferences",
     "no-visible-results",
+    "not-loaded",
+    "zero-results",
+    "feed-read-failure",
     "saved-available",
     "saved-unavailable",
     "preference-suggestion",
@@ -106,8 +109,8 @@ class OfflineFeed:
     visible: list[OfflineRecommendation]
     excluded_count: int
     source_warnings: list[str]
-    status: str
-    last_refresh_at: datetime
+    status: str | None
+    last_refresh_at: datetime | None
     retrieved_count: int = 0
 
 
@@ -244,6 +247,8 @@ class OfflineJobsExperience:
     def load_feed(
         self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
     ) -> OfflineFeed:
+        if self.scenario == "feed-read-failure":
+            raise RuntimeError("sanitized repository failure")
         warnings = (
             ["One approved source returned a partial response."]
             if self.scenario == "partial-source-warning"
@@ -267,6 +272,18 @@ class OfflineJobsExperience:
                 "completed",
                 datetime(2026, 7, 28, tzinfo=UTC),
                 retrieved_count=12,
+            )
+        if self.scenario == "not-loaded":
+            return OfflineFeed(feed_kind, [], 0, warnings, None, None)
+        if self.scenario == "zero-results":
+            return OfflineFeed(
+                feed_kind,
+                [],
+                0,
+                warnings,
+                "completed",
+                datetime(2026, 7, 28, tzinfo=UTC),
+                retrieved_count=0,
             )
         if feed_kind is FeedKind.EXPLORE:
             visible = [self.visible[1 if sector == "Software Engineering" else 2]]
@@ -359,6 +376,8 @@ class OfflineJobsExperience:
 
     def list_saved_jobs(self, profile_id: str) -> list[OfflineSaved]:
         del profile_id
+        if st.session_state.get("offline-saved-removed"):
+            return []
         if self.scenario not in {
             "saved-available",
             "saved-unavailable",
@@ -385,6 +404,13 @@ class OfflineJobsExperience:
                 BrowseSeniority.MID_LEVEL,
             )
         ]
+
+    def remove_saved_job(self, saved_id: str, profile_id: str) -> OfflineSaved:
+        saved = self.list_saved_jobs(profile_id)
+        if not saved or saved[0].saved_id != saved_id:
+            raise LookupError("Saved job was not found.")
+        st.session_state["offline-saved-removed"] = True
+        return saved[0]
 
     def check_saved_job_availability(
         self, saved_id: str, profile_id: str

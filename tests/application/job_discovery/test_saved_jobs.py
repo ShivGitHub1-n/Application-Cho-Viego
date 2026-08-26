@@ -73,6 +73,13 @@ class FakeSavedJobRepository:
     def list(self, user_id: str):
         return [saved for saved in self.saved.values() if saved.user_id == user_id]
 
+    def delete(self, user_id: str, saved_id: str) -> bool:
+        saved = self.get(user_id, saved_id)
+        if saved is None:
+            return False
+        del self.saved[saved_id]
+        return True
+
     def update_availability(self, saved_id, availability, checked_at) -> None:
         saved = self.saved[saved_id]
         self.saved[saved_id] = saved.model_copy(
@@ -142,6 +149,21 @@ def test_repeated_save_preserves_original_snapshot_and_saved_at():
     second = save_service.save("u1", "job-1", saved_at=LATER)
 
     assert second == first
+
+
+def test_remove_saved_job_is_user_scoped_and_returns_removed_snapshot():
+    _, saved_repository, save_service, _ = _saved_services()
+    saved = save_service.save("u1", "job-1", saved_at=WHEN)
+
+    with pytest.raises(SavedJobNotFoundError):
+        save_service.remove("u2", saved.id)
+
+    removed = save_service.remove("u1", saved.id)
+
+    assert removed == saved
+    assert saved_repository.list("u1") == []
+    with pytest.raises(SavedJobNotFoundError):
+        save_service.remove("u1", saved.id)
 
 
 def test_availability_check_updates_only_status_metadata_and_uses_external_id():

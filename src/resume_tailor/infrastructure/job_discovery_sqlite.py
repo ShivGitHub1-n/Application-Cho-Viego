@@ -652,6 +652,22 @@ class SQLiteSavedJobRepository(_SQLiteJobDiscoveryRepository, SavedJobRepository
             ).fetchall()
         return [_load_saved(row, f"saved job for user {user_id!r}") for row in rows]
 
+    def delete(self, user_id: str, saved_id: str) -> bool:
+        """Remove only the caller-owned snapshot and report whether it existed."""
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    "DELETE FROM saved_jobs WHERE user_id = ? AND saved_id = ?",
+                    (user_id, saved_id),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return cursor.rowcount == 1
+
     def update_availability(
         self,
         saved_id: str,

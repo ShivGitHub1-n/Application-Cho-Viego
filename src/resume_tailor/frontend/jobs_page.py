@@ -68,6 +68,7 @@ class JobsPageExperience(Protocol):
         sector: str | None = None,
     ) -> Any: ...
     def save_job(self, job_id: str, profile_id: str) -> Any: ...
+    def remove_saved_job(self, saved_id: str, profile_id: str) -> Any: ...
     def list_saved_jobs(self, profile_id: str) -> Any: ...
     def check_saved_job_availability(self, saved_id: str, profile_id: str) -> Any: ...
     def prepare_tailoring(self, job_id: str, profile_id: str) -> Any: ...
@@ -313,10 +314,14 @@ def _render_explore(experience: JobsPageExperience, profile_id: str, streamlit_m
         _render_empty_state(
             streamlit_module,
             "Explore feed could not be read",
-            f"The persisted feed for {sector} could not be read: {error}",
+            f"Saved recommendations for {sector} are temporarily unavailable. "
+            "Try this sector again in a moment.",
             action_label=None,
             action_key="jobs-refresh-explore-empty",
         )
+        with streamlit_module.expander("Advanced details", expanded=False):
+            streamlit_module.code(str(error))
+        return
 
     if not feed.visible and feed.status == "no_sources_configured":
         _render_empty_state(
@@ -440,6 +445,22 @@ def _render_feed(
             return experience.load_excluded(profile_id, feed_kind, sector=sector)
         return []
 
+    def select_job(job_id: str) -> None:
+        streamlit_module.session_state[selected_key] = job_id
+        streamlit_module.session_state["jobs_selection_notice"] = (
+            selection_scope,
+            job_id,
+        )
+
+    notice = streamlit_module.session_state.get("jobs_selection_notice")
+    if notice == (selection_scope, selected):
+        streamlit_module.session_state.pop("jobs_selection_notice", None)
+        selected_item = next((item for item in full_visible if item.job_id == selected), None)
+        if selected_item is not None:
+            streamlit_module.toast(
+                f"Opened {selected_item.title}", icon=":material/article:"
+            )
+
     with streamlit_module.container(key="jobs-feed-layout"):
         render_feed(
             display_feed,
@@ -447,9 +468,7 @@ def _render_feed(
             selected_key=selected_key,
             selection_scope=selection_scope,
             streamlit_module=streamlit_module,
-            on_select=lambda job_id: streamlit_module.session_state.__setitem__(
-                selected_key, job_id
-            ),
+            on_select=select_job,
             on_save=lambda job_id: experience.save_job(job_id, profile_id),
             on_tailor=lambda job_id: _tailor(experience, profile_id, job_id, streamlit_module),
             on_cover_letter=lambda job_id: _create_cover_letter(

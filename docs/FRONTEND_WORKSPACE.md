@@ -29,7 +29,9 @@ a document hierarchy. Structured forms are entered deliberately through **Edit p
 raw JSON and provenance stay under **Advanced**. The current repository does not persist
 the uploaded source document, so **Source résumé** never fabricates an original preview.
 It shows extracted source text only during an active import review and labels that boundary
-explicitly.
+explicitly. When no source artifact is available, the normal action becomes **Import or
+replace résumé** and opens the existing review-first import flow; the persistence limitation
+is documented under **Advanced** rather than presented as an error-like destination.
 
 ## Jobs refresh behavior
 
@@ -38,6 +40,13 @@ coordinator, keyed by profile/feed/sector. The coordinator starts at most one op
 the same key, never mutates Streamlit session state from its worker thread, and publishes a
 typed terminal snapshot for a small polling fragment. Existing recommendations remain
 rendered and navigation remains available while refresh is running.
+
+Already-built feed, excluded-result, and Saved view projections are cached by the
+session-owned Jobs façade and returned as defensive copies. Search, filtering, selection,
+and detail opening therefore do not repeat repository projection work. Explicit refresh,
+save, remove, or availability mutation invalidates only the affected profile's delivery
+cache. Saved snapshots can be explicitly removed through a user-scoped repository operation;
+removal never mutates the discovered posting or recommendation.
 
 Independent approved sources are retrieved concurrently with a bounded worker pool. Each
 connector retains its configured network timeout and pagination boundary. Source failures
@@ -78,8 +87,10 @@ Resume review uses a stable two-area shell:
 - a control rail for structure, suggestions, and future formatting/edit controls;
 - a document area for the preview and, later, the actual rendered live document.
 
-The current preview is explicitly non-authoritative. DOCX rendering and exact one-page
-verification remain final authority.
+The editor preview consists of page images rendered from the exact current PDF produced from
+the current DOCX revision. It shows real page geometry while DOCX rendering and exact
+pagination remain final export authority. An unchanged revision fingerprint reuses its
+preview rather than converting the document again.
 
 Generated suggestions name their canonical experience/project owner and show reviewed
 source evidence beside suggested wording. When an approved suggestion belongs to an
@@ -97,4 +108,4 @@ and runs exact pagination once. This is also the state boundary for the future l
 The normal failure state is concise and recoverable. Full candidate validation,
 provider, grounding, research, and page-fit details remain available under **Advanced
 diagnostics** for the known production investigation. Diagnostic-only candidates retain
-their existing approval/download restrictions.
+their existing approval/download restrictions and their draft is collapsed by default.

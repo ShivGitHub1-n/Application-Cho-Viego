@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from threading import RLock
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -175,6 +176,12 @@ class JobsExperienceService:
         self._handoff = handoff
         self._now = now or (lambda: datetime.now(UTC))
         self._refresh_coordinator = refresh_coordinator or BackgroundJobsRefreshCoordinator()
+        self._view_cache_lock = RLock()
+        self._feed_cache: dict[tuple[str, FeedKind, str | None], FeedView] = {}
+        self._excluded_cache: dict[
+            tuple[str, FeedKind, str | None], list[RecommendationView]
+        ] = {}
+        self._saved_cache: dict[str, list[SavedJobView]] = {}
 
     def list_reviewed_profiles(self) -> ReviewedProfileQueryResult:
         return self._profiles.list_reviewed_profiles()
@@ -206,6 +213,11 @@ class JobsExperienceService:
     def load_feed(
         self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
     ) -> FeedView:
+        cache_key = (profile_id, feed_kind, sector)
+        with self._view_cache_lock:
+            cached = self._feed_cache.get(cache_key)
+            if cached is not None:
+                return cached.model_copy(deep=True)
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
         user_id = self._profile_user_id(profile_id)
@@ -225,11 +237,19 @@ class JobsExperienceService:
                 excluded_only=False,
             )
         )
-        return self._feed_view(details, user_id=user_id)
+        view = self._feed_view(details, user_id=user_id)
+        with self._view_cache_lock:
+            self._feed_cache[cache_key] = view.model_copy(deep=True)
+        return view
 
     def load_excluded(
         self, profile_id: str, feed_kind: FeedKind, *, sector: str | None = None
     ) -> list[RecommendationView]:
+        cache_key = (profile_id, feed_kind, sector)
+        with self._view_cache_lock:
+            cached = self._excluded_cache.get(cache_key)
+            if cached is not None:
+                return [item.model_copy(deep=True) for item in cached]
         if self._services.feed_queries is None:
             raise RuntimeError("Feed retrieval is unavailable.")
         user_id = self._profile_user_id(profile_id)
@@ -249,7 +269,10 @@ class JobsExperienceService:
                 excluded_only=True,
             )
         )
-        return [self._recommendation_view(item) for item in details.items]
+        view = [self._recommendation_view(item) for item in details.items]
+        with self._view_cache_lock:
+            self._excluded_cache[cache_key] = [item.model_copy(deep=True) for item in view]
+        return view
 
     def refresh_tailored(self, profile_id: str) -> FeedRefreshView:
         preferences = self.get_preferences(profile_id)
@@ -260,6 +283,7 @@ class JobsExperienceService:
         run = self._services.refresh.refresh(
             self._profile_user_id(profile_id), profile_id, preferences, started_at=self._now()
         )
+        self._invalidate_profile_views(profile_id)
         return FeedRefreshView(feed=self.load_feed(profile_id, FeedKind.TAILORED), run=run)
 
     def refresh_explore(self, profile_id: str, sector: str) -> FeedRefreshView:
@@ -269,6 +293,7 @@ class JobsExperienceService:
             profile_id=profile_id,
             started_at=self._now(),
         )
+        self._invalidate_profile_views(profile_id)
         return FeedRefreshView(
             feed=self.load_feed(profile_id, FeedKind.EXPLORE, sector=sector), run=run
         )
@@ -314,17 +339,33 @@ class JobsExperienceService:
     def save_job(self, job_id: str, profile_id: str) -> SavedJob:
         if self._services.save is None:
             raise RuntimeError("Saved-job persistence is unavailable.")
-        return self._services.save.save(
+        saved = self._services.save.save(
             self._profile_user_id(profile_id), job_id, saved_at=self._now()
         )
+        self._invalidate_profile_views(profile_id)
+        return saved
+
+    def remove_saved_job(self, saved_id: str, profile_id: str) -> SavedJob:
+        if self._services.save is None:
+            raise RuntimeError("Saved-job persistence is unavailable.")
+        removed = self._services.save.remove(self._profile_user_id(profile_id), saved_id)
+        self._invalidate_profile_views(profile_id)
+        return removed
 
     def list_saved_jobs(self, profile_id: str) -> list[SavedJobView]:
         if self._services.save is None:
             return []
-        return [
+        with self._view_cache_lock:
+            cached = self._saved_cache.get(profile_id)
+            if cached is not None:
+                return [item.model_copy(deep=True) for item in cached]
+        view = [
             _saved_view(saved)
             for saved in self._services.save.list(self._profile_user_id(profile_id))
         ]
+        with self._view_cache_lock:
+            self._saved_cache[profile_id] = [item.model_copy(deep=True) for item in view]
+        return view
 
     def check_saved_job_availability(self, saved_id: str, profile_id: str) -> SavedJobView:
         if self._services.check_saved_availability is None:
@@ -332,7 +373,21 @@ class JobsExperienceService:
         saved = self._services.check_saved_availability.check(
             self._profile_user_id(profile_id), saved_id, checked_at=self._now()
         )
+        with self._view_cache_lock:
+            self._saved_cache.pop(profile_id, None)
         return _saved_view(saved)
+
+    def _invalidate_profile_views(self, profile_id: str) -> None:
+        """Invalidate only delivery projections; ranking and stored results are untouched."""
+
+        with self._view_cache_lock:
+            self._feed_cache = {
+                key: value for key, value in self._feed_cache.items() if key[0] != profile_id
+            }
+            self._excluded_cache = {
+                key: value for key, value in self._excluded_cache.items() if key[0] != profile_id
+            }
+            self._saved_cache.pop(profile_id, None)
 
     def prepare_tailoring(self, job_id: str, profile_id: str) -> TailoringHandoff:
         return self._handoff.from_discovered(job_id, profile_id=profile_id)

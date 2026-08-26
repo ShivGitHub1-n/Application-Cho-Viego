@@ -44,10 +44,28 @@ def test_source_resume_surface_is_truthful_when_original_bytes_are_not_retained(
     app.pills(key="profile-active-section").set_value("Source résumé").run()
 
     assert app.exception == []
-    assert any("original uploaded résumé file was not retained" in item.value for item in app.info)
-    assert any("stores the validated profile record" in item.value for item in app.caption)
+    assert any(item.value == "Import or replace résumé" for item in app.subheader)
+    assert any("current Career Profile stays unchanged" in item.value for item in app.caption)
+    assert not any(
+        "original uploaded résumé file was not retained" in item.value for item in app.info
+    )
+    assert any(
+        item.label == "Upload résumé for extracted-profile review (.docx or text-based .pdf)"
+        for item in app.file_uploader
+    )
     assert not any("original résumé preview" in item.value.lower() for item in app.markdown)
     assert app.session_state["profile-test-save-count"] == saved_before
+
+
+def test_reviewed_profile_uses_import_action_when_no_source_preview_exists() -> None:
+    app = AppTest.from_file(str(HARNESS)).run()
+
+    action = app.button(key="profile-source-action")
+    assert action.label == "Import or replace résumé"
+    action.click().run()
+
+    assert app.pills(key="profile-active-section").value == "Source résumé"
+    assert any(item.value == "Import or replace résumé" for item in app.subheader)
 
 
 def test_switching_profile_surfaces_does_not_mutate_the_reviewed_profile() -> None:

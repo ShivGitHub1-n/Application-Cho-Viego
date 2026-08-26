@@ -127,6 +127,7 @@ class Jobs:
 class FeedQueries:
     def __init__(self, recommendations: list[JobRecommendation]) -> None:
         self.recommendations = recommendations
+        self.calls = 0
 
     def get(
         self,
@@ -136,6 +137,7 @@ class FeedQueries:
         profile_id: str | None = None,
         excluded_only: bool = False,
     ):
+        self.calls += 1
         self.profile_id = profile_id
         items = [item for item in self.recommendations if item.feed_kind is feed_kind]
         if excluded_only:
@@ -221,3 +223,15 @@ def test_feed_query_is_scoped_to_selected_profile() -> None:
     service.load_feed("profile-1", FeedKind.TAILORED)
 
     assert service._services.feed_queries.profile_id == "profile-1"
+
+
+def test_repeated_delivery_reruns_reuse_the_unchanged_feed_projection() -> None:
+    recommendations = [_recommendation("job-1", FitGrade.GOOD, EligibilityStatus.ELIGIBLE)]
+    service = _service(recommendations)
+
+    first = service.load_feed("profile-1", FeedKind.TAILORED)
+    first.visible[0].reasons.append("Caller-only mutation")
+    second = service.load_feed("profile-1", FeedKind.TAILORED)
+
+    assert service._services.feed_queries.calls == 1
+    assert "Caller-only mutation" not in second.visible[0].reasons

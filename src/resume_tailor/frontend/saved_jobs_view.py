@@ -55,10 +55,16 @@ def render_saved_jobs(experience: Any, profile_id: str, *, streamlit_module: Any
         streamlit_module.subheader(
             f"Saved snapshots · {len(visible_saved_jobs)} of {len(saved_jobs)}"
         )
-        for saved in saved_by_id.values():
-            _render_saved_card(
-                saved, selected=saved.saved_id == selected_id, streamlit_module=streamlit_module
-            )
+        streamlit_module.caption("Choose a snapshot; its details stay visible beside the list.")
+        with streamlit_module.container(
+            height=680, border=False, key="jobs-saved-results-scroll"
+        ):
+            for saved in saved_by_id.values():
+                _render_saved_card(
+                    saved,
+                    selected=saved.saved_id == selected_id,
+                    streamlit_module=streamlit_module,
+                )
     with right:
         _render_saved_detail(saved_by_id[selected_id], profile_id, experience, streamlit_module)
 
@@ -163,9 +169,33 @@ def _render_saved_detail(
                         destination="Cover Letters",
                     )
                     streamlit_module.rerun()
+        with streamlit_module.popover(
+            "Remove saved job", icon=":material/bookmark_remove:"
+        ):
+            streamlit_module.caption(
+                "This removes the saved snapshot. The original recommendation is unchanged."
+            )
+            if streamlit_module.button(
+                "Confirm removal",
+                key=f"jobs-remove-saved-{saved.saved_id}",
+                type="primary",
+            ):
+                try:
+                    experience.remove_saved_job(saved.saved_id, profile_id)
+                except Exception:
+                    streamlit_module.warning(
+                        "This saved job could not be removed. Your other snapshots are safe."
+                    )
+                else:
+                    streamlit_module.session_state.pop("jobs_saved_selected_id", None)
+                    streamlit_module.session_state.setdefault(
+                        "jobs_checked_saved_jobs", {}
+                    ).pop(saved.saved_id, None)
+                    streamlit_module.toast("Removed from saved jobs.", icon=":material/check:")
+                    streamlit_module.rerun()
         streamlit_module.divider()
-        streamlit_module.markdown("#### Snapshot description")
-        streamlit_module.write(normalize_job_description_for_display(saved.description))
+        with streamlit_module.expander("Full saved posting", expanded=False):
+            streamlit_module.write(normalize_job_description_for_display(saved.description))
 
 
 def _safe_key(value: str) -> str:

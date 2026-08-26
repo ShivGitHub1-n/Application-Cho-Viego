@@ -2507,6 +2507,7 @@ if active_route is AppRoute.CAREER_PROFILE:
             profile_repository=profile_repository,
             tailor_service=service,
             invalidate_tailoring=_clear_tailoring_state,
+            reviewed_profile_options=tuple(profile_options),
         ),
     )
 elif active_route is AppRoute.JOBS:
@@ -2535,13 +2536,19 @@ elif active_route is AppRoute.JOBS:
     except sqlite3.OperationalError:
         render_jobs_unavailable(st)
 elif active_route is AppRoute.RESUME_STUDIO:
+    if "_managed_resume_renderer" not in st.session_state:
+        st.session_state["_managed_resume_renderer"] = ManagedResumeRenderer()
+    if "_resume_editor_service" not in st.session_state:
+        st.session_state["_resume_editor_service"] = ResumeEditorService(
+            TemplateV1ResumeEditorRenderer()
+        )
     render_resume_studio_page(
         st,
         ResumeStudioDependencies(
             tailor_service=service,
-            resume_renderer=ManagedResumeRenderer(),
+            resume_renderer=st.session_state["_managed_resume_renderer"],
             invalidate_tailoring=_clear_tailoring_state,
-            editor_service=ResumeEditorService(TemplateV1ResumeEditorRenderer()),
+            editor_service=st.session_state["_resume_editor_service"],
         ),
     )
 else:

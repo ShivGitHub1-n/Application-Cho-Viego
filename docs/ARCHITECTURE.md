@@ -424,7 +424,9 @@ preferences, explicit refresh status, recommendations, and saved-job actions;
 it does not contain eligibility, scoring, persistence, or connector logic.
 Saved jobs contain an immutable normalized posting snapshot. Availability checks
 update only availability metadata and their check timestamp, retaining the
-snapshot and unavailable saved rows. The UI reports the empty registry exactly
+snapshot and unavailable saved rows. An explicit user-scoped delete operation
+removes a Saved snapshot without changing its discovered posting or recommendation.
+The UI reports the empty registry exactly
 as `No approved job sources are configured` and does not present it as a
 successful empty search.
 
@@ -436,7 +438,11 @@ navigation. Structured profile controls are primary; raw JSON and long
 diagnostics are collapsed delivery affordances. Job Discovery dependencies are
 constructed only when Jobs is selected and are reused for the Streamlit session;
 ordinary navigation, filtering, and card selection do not rebuild HTTP clients or
-repositories. The normal/advanced surface rules and future-editor-ready Resume Studio
+repositories. Its session-scoped view cache also prevents repeated feed/Saved repository
+projections on UI-only reruns and is invalidated by explicit refresh or Saved mutations.
+Résumé render/editor dependencies are likewise session-reused; document fingerprinting
+still decides whether bytes may be reused. The normal/advanced surface rules and
+future-editor-ready Resume Studio
 shell are documented in [FRONTEND_WORKSPACE.md](FRONTEND_WORKSPACE.md).
 
 Each generated artifact owns a fresh telemetry window even when Streamlit reuses
