@@ -93,6 +93,7 @@ class CoverLetterSentenceAuthority(BaseModel):
 
 class CoverLetterProviderStatus(StrEnum):
     SUCCEEDED = "succeeded"
+    DETERMINISTIC = "deterministic"
     CACHE_HIT = "cache_hit"
     DISABLED = "disabled"
     CONFIGURATION_UNAVAILABLE = "configuration_unavailable"

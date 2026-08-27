@@ -162,6 +162,10 @@ def _artifact_is_current(
     return artifact.artifact_fingerprint == expected
 
 
+def _is_demo_resume_artifact(artifact: GeneratedResumeArtifact) -> bool:
+    return artifact.provider_diagnostic.status == "deterministic_demo"
+
+
 def _store_generated_artifact(
     streamlit_module: Any,
     dependencies: ResumeStudioDependencies,
@@ -910,6 +914,14 @@ def _render_editor_review(
             "The generated baseline changed. Rebuild it before continuing your edits."
         )
         return
+    if _is_demo_resume_artifact(artifact):
+        render_status_strip(
+            streamlit_module,
+            {
+                "Résumé": "Ready for review",
+                "Pagination": "Fits one page",
+            },
+        )
     view = render_resume_editor(
         streamlit_module,
         service=dependencies.editor_service,
@@ -1004,21 +1016,33 @@ def _render_export(
             "1 page verified" if artifact.pagination_diagnostic.status == "exact" else "Unverified"
         )
         composition = artifact.composition_diagnostic
-        page_use = f"{composition.final_utilization_ratio:.0%}"
-        density_status = composition.preferred_density_status.value.replace("_", " ")
-        render_status_strip(
-            streamlit_module,
-            {
-                "Writing": writing_status,
-                "Validation": "Passed",
-                "Pagination": pagination_status,
-                "Page use": f"{page_use} · {density_status}",
-            },
-        )
-        if getattr(artifact.final_resume, "application_strategy", None) is not None and (
-            page_use_warning := _strategy_page_use_warning(composition)
-        ):
-            streamlit_module.warning(page_use_warning)
+        deterministic_demo = _is_demo_resume_artifact(artifact)
+        if deterministic_demo:
+            render_status_strip(
+                streamlit_module,
+                {
+                    "Résumé": "Ready for review",
+                    "Pagination": "Fits one page",
+                },
+            )
+        else:
+            if composition is None:
+                raise ValueError("Resume composition diagnostics are unavailable")
+            page_use = f"{composition.final_utilization_ratio:.0%}"
+            density_status = composition.preferred_density_status.value.replace("_", " ")
+            render_status_strip(
+                streamlit_module,
+                {
+                    "Writing": writing_status,
+                    "Validation": "Passed",
+                    "Pagination": pagination_status,
+                    "Page use": f"{page_use} · {density_status}",
+                },
+            )
+            if getattr(artifact.final_resume, "application_strategy", None) is not None and (
+                page_use_warning := _strategy_page_use_warning(composition)
+            ):
+                streamlit_module.warning(page_use_warning)
         if streamlit_module.button(
             "Verify and prepare export", key="resume-verify-export", type="primary"
         ):
@@ -1046,6 +1070,7 @@ def _render_export(
                         else "deterministic_fallback"
                     ),
                     "pagination_provider": artifact.pagination_diagnostic.provider,
+                    "temporary_demo_override": deterministic_demo,
                     "generation_timings": streamlit_module.session_state.get(
                         _GENERATION_TIMINGS_KEY, {}
                     ),

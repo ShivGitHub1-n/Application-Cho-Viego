@@ -8,6 +8,7 @@ from resume_tailor.application.decision_trace import (
 )
 from resume_tailor.application.demo_mode import (
     build_demo_resume_plan,
+    build_demo_structured_resume,
     is_demo_application,
     validate_demo_plan,
 )
@@ -419,6 +420,9 @@ class TailorResumeService:
         approved_claim_ids: set[str],
     ) -> ArtifactFingerprintInputs:
         configuration = self._require_generation_configuration()
+        feature_flags = dict(configuration.feature_flags)
+        if is_demo_application(plan.posting):
+            feature_flags["temporary_demo_override"] = True
         return build_fingerprint_inputs(
             profile=profile,
             posting=plan.posting,
@@ -428,7 +432,7 @@ class TailorResumeService:
             composition_contract_version=configuration.composition_contract_version,
             writing_policy_version=configuration.writing_policy_version,
             writing_contract_version=configuration.writing_contract_version,
-            feature_flags=configuration.feature_flags,
+            feature_flags=feature_flags,
             provider=configuration.provider,
             model=configuration.model,
         )
@@ -484,6 +488,14 @@ class TailorResumeService:
         fingerprint = artifact_fingerprint(fingerprint_inputs)
         if existing_artifact is not None and existing_artifact.artifact_fingerprint == fingerprint:
             return existing_artifact
+        if is_demo_application(plan.posting):
+            return self._build_demo_generated_artifact(
+                plan,
+                profile,
+                fingerprint_inputs,
+                fingerprint,
+                now=now,
+            )
         build_started = self._telemetry.clock()
         build_telemetry = self._telemetry.snapshot()
         final_resume = self.build_document(plan, profile, approved_claim_ids)
@@ -565,6 +577,86 @@ class TailorResumeService:
             call_counts=counts,
             provider_diagnostic=provider_diagnostic,
             pagination_diagnostic=pagination_diagnostic,
+            total_build_seconds=self._telemetry.clock() - build_started,
+            docx_bytes=docx_bytes,
+        )
+
+    def _build_demo_generated_artifact(
+        self,
+        plan: TailoringPlan,
+        profile: MasterProfile,
+        fingerprint_inputs: ArtifactFingerprintInputs,
+        fingerprint: str,
+        *,
+        now: Callable[[], datetime] | None,
+    ) -> GeneratedResumeArtifact:
+        """TEMPORARY DEMO OVERRIDE — remove after demo recording."""
+
+        configuration = self._require_generation_configuration()
+        renderer = self._artifact_renderer
+        if renderer is None:
+            raise ValueError("Generated-resume artifact rendering is not configured")
+        render_demo = getattr(renderer, "render_demo_artifact", None)
+        if not callable(render_demo):
+            raise ValueError("The temporary demo renderer is not configured")
+        build_started = self._telemetry.clock()
+        build_telemetry = self._telemetry.snapshot()
+        validate_demo_plan(plan, profile)
+        baseline = self._resume_writer.write(plan, profile, set())
+        final_resume = build_demo_structured_resume(
+            profile,
+            plan.posting,
+            plan,
+            baseline,
+        )
+        rendered = render_demo(final_resume)
+        docx_bytes = rendered.docx_bytes
+        if not docx_bytes:
+            raise ValueError("Generated demo resume artifact contains no DOCX bytes")
+        if not rendered.exact or rendered.page_count != 1:
+            raise ValueError(
+                "The fixed demo resume did not receive exact one-page verification"
+            )
+        counts = self._telemetry.call_counts_since(build_telemetry).model_copy(
+            update={"provider_calls": 0, "provider_retries": 0, "pagination_attempts": 1}
+        )
+        return GeneratedResumeArtifact(
+            artifact_fingerprint=fingerprint,
+            fingerprint_inputs=fingerprint_inputs,
+            generation_timestamp=generation_timestamp(now),
+            template_identity=configuration.template_identity,
+            composition_contract_version=configuration.composition_contract_version,
+            writing_policy_version=configuration.writing_policy_version,
+            writing_contract_version=configuration.writing_contract_version,
+            final_validated_plan=plan,
+            final_resume=final_resume,
+            selected_bullet_variants=[],
+            composition_diagnostic=None,
+            writing_diagnostic=None,
+            stage_timings=self._telemetry.timings_since(build_telemetry),
+            call_counts=counts,
+            provider_diagnostic=ProviderExecutionDiagnostic(
+                writing_enabled=False,
+                provider="deterministic-demo",
+                model="fixed-reviewed-fixture",
+                status="deterministic_demo",
+                call_count=0,
+                retry_count=0,
+                cache_hit_count=0,
+                request_timeout_seconds=configuration.provider_timeout_seconds,
+                configured_retry_count=0,
+                deterministic_fallback_used=False,
+                reason=(
+                    "Temporary demo artifact built from fixed reviewed evidence; "
+                    f"measured page use {rendered.utilization_ratio:.1%}."
+                ),
+            ),
+            pagination_diagnostic=PaginationExecutionDiagnostic(
+                status="exact",
+                attempt_count=1,
+                provider=rendered.pagination_provider,
+                elapsed_seconds=0,
+            ),
             total_build_seconds=self._telemetry.clock() - build_started,
             docx_bytes=docx_bytes,
         )

@@ -209,7 +209,12 @@ def create_tailor_service(
             ),
             telemetry=telemetry,
         ),
-        artifact_renderer=TemplateV1ArtifactRenderer(telemetry),
+        artifact_renderer=TemplateV1ArtifactRenderer(
+            telemetry,
+            page_count_provider=ExactDocxPageCountProvider(
+                word_timeout_seconds=resolved_settings.word_pagination_timeout_seconds
+            ),
+        ),
         generation_configuration=ResumeGenerationConfiguration(
             template_identity=f"{TEMPLATE_V1_ID}:{TEMPLATE_V1_DOCX_SHA256}",
             composition_contract_version=RESUME_COMPOSITION_CONTRACT_VERSION,

@@ -28,6 +28,7 @@ from resume_tailor.application.cover_letter_validation import (
     DeterministicCoverLetterComposer,
 )
 from resume_tailor.application.demo_mode import (
+    build_demo_cover_letter,
     build_demo_cover_letter_evidence,
     build_demo_cover_letter_output,
     is_demo_application,
@@ -187,6 +188,18 @@ class CoverLetterService:
         recipient = recipient or CoverLetterRecipient(company=posting.company_name)
         research_request = self._bind_research_request(posting, research_request)
         resolved_date_text = date_text or date.today().strftime("%B %d, %Y").replace(" 0", " ")
+        if is_demo_application(posting):
+            return self._generate_demo_artifact(
+                profile,
+                posting,
+                plan,
+                recipient=recipient,
+                final_resume=final_resume,
+                research_request=research_request,
+                explicit_motivation=explicit_motivation,
+                date_text=resolved_date_text,
+                build_started=build_started,
+            )
 
         started = self._clock()
         research = self._research.research(research_request)
@@ -488,6 +501,178 @@ class CoverLetterService:
                 "stage_timings": timings,
                 "total_build_seconds": max(0.0, self._clock() - build_started),
             }
+        )
+        self._artifact_cache[artifact_key] = artifact
+        return artifact
+
+    def _generate_demo_artifact(
+        self,
+        profile: MasterProfile,
+        posting: JobPosting,
+        plan: TailoringPlan | None,
+        *,
+        recipient: CoverLetterRecipient,
+        final_resume: StructuredResume | None,
+        research_request: CompanyResearchRequest,
+        explicit_motivation: str | None,
+        date_text: str,
+        build_started: float,
+    ) -> GeneratedCoverLetterArtifact:
+        """TEMPORARY DEMO OVERRIDE — remove after demo recording."""
+
+        research_started = self._clock()
+        research = self._research.research(research_request)
+        timings = [self._timing(GenerationStage.COMPANY_RESEARCH, research_started)]
+        evidence_started = self._clock()
+        resume_evidence_ids = self._resume_evidence_ids(final_resume)
+        evidence, evidence_diagnostic = build_demo_cover_letter_evidence(
+            profile,
+            posting,
+            final_resume_evidence_ids=resume_evidence_ids,
+        )
+        timings.append(
+            self._timing(GenerationStage.COVER_LETTER_EVIDENCE_SELECTION, evidence_started)
+        )
+        cache_identity = self._build_fingerprint_inputs(
+            profile,
+            posting,
+            plan,
+            final_resume,
+            research_request,
+            research,
+            evidence,
+            recipient,
+            explicit_motivation,
+            date_text,
+        )
+        cache_identity = cache_identity.model_copy(
+            update={
+                "writing_policy_version": (
+                    f"{cache_identity.writing_policy_version}:temporary-demo-exact-v1"
+                ),
+                "provider": "deterministic-demo",
+                "model": "fixed-reviewed-letter",
+            }
+        )
+        artifact_key = self._artifact_fingerprint(cache_identity)
+        cached_artifact = self._artifact_cache.get(artifact_key)
+        if cached_artifact is not None:
+            return cached_artifact
+        posting_fact_ids = [
+            fact.id
+            for fact in research.facts
+            if fact.confidence is CompanyFactConfidence.POSTING_AUTHORITY
+        ]
+        demo_layout = self._layout_profile.model_copy(
+            update={
+                "profile_id": "cover-letter-demo-exact-v1",
+                "top_margin_inches": 0.8,
+                "bottom_margin_inches": 0.8,
+                "left_margin_inches": 0.85,
+                "right_margin_inches": 0.85,
+                "body_size_pt": 10.5,
+                "line_spacing": 1.05,
+                "paragraph_spacing_pt": 6.0,
+            }
+        )
+        letter = build_demo_cover_letter(
+            profile,
+            posting,
+            plan,
+            date_text=date_text,
+            posting_fact_ids=posting_fact_ids,
+            layout_profile=demo_layout,
+        )
+        fit_started = self._clock()
+        with TemporaryDirectory(prefix="cover-letter-demo-fit-") as directory:
+            fitted = CoverLetterPageFitter(self._renderer).fit(
+                [letter],
+                Path(directory),
+                narrative_quality_ranks=[0],
+            )
+        timings.extend(
+            [
+                StageTiming(
+                    stage=GenerationStage.DOCX_RENDERING,
+                    elapsed_seconds=fitted.render_elapsed_seconds,
+                    invocation_count=1,
+                    detail="Exact deterministic demo-letter rendering.",
+                ),
+                self._timing(GenerationStage.COVER_LETTER_PAGE_FIT, fit_started),
+            ]
+        )
+        page_gate = self._page_fit_gate(fitted.diagnostic)
+        gates = [
+            CoverLetterQualityGateResult(
+                gate="candidate_grounding",
+                status=CoverLetterQualityGateStatus.PASSED,
+                code="fixed_reviewed_demo_evidence",
+                detail="Every demo claim is bound to the reviewed profile fixture.",
+            ),
+            CoverLetterQualityGateResult(
+                gate="company_grounding",
+                status=CoverLetterQualityGateStatus.PASSED,
+                code="supplied_posting_identity",
+                detail="Company and role identity match the selected supplied posting.",
+            ),
+            CoverLetterQualityGateResult(
+                gate="resume_consistency",
+                status=CoverLetterQualityGateStatus.PASSED,
+                code="canonical_titles_and_evidence",
+                detail="Canonical titles and reviewed evidence remain authoritative.",
+            ),
+            page_gate,
+            self._research_gate(research),
+        ]
+        ready = page_gate.status is CoverLetterQualityGateStatus.PASSED
+        self._artifact_version += 1
+        artifact = GeneratedCoverLetterArtifact(
+            artifact_fingerprint=artifact_key,
+            artifact_version=self._artifact_version,
+            fingerprint_inputs=cache_identity,
+            generation_timestamp=self._aware_now(),
+            review_state=(
+                CoverLetterReviewState.GENERATED_AWAITING_REVIEW
+                if ready
+                else CoverLetterReviewState.GENERATION_FAILED
+            ),
+            ready_for_review=ready,
+            letter=fitted.letter,
+            evidence_records=evidence,
+            company_research=research,
+            evidence_selection=evidence_diagnostic,
+            quality_gates=gates,
+            candidate_validations=[],
+            rejected_claims=[],
+            review_required_claims=[],
+            resume_consistency=[],
+            provider_diagnostic=CoverLetterProviderDiagnostic(
+                provider="deterministic-demo",
+                model="fixed-reviewed-letter",
+                status=CoverLetterProviderStatus.DETERMINISTIC,
+                request_count=0,
+                repair_count=0,
+                cache_hit_count=0,
+                elapsed_seconds=0,
+                structured_parsing_succeeded=False,
+                semantic_validation_succeeded=True,
+                provider_candidate_selected=False,
+                safe_detail="Temporary demo artifact built from fixed reviewed evidence.",
+            ),
+            page_fit=fitted.diagnostic,
+            call_counts=CoverLetterCallCounts(
+                research_calls=1,
+                research_network_requests=research.network_request_count,
+                provider_calls=0,
+                provider_repairs=0,
+                claim_validations=1,
+                composition_searches=0,
+                docx_renders=1,
+                pagination_attempts=min(1, self._renderer.pagination_attempt_count),
+            ),
+            stage_timings=timings,
+            total_build_seconds=max(0.0, self._clock() - build_started),
+            docx_bytes=fitted.render.docx_bytes,
         )
         self._artifact_cache[artifact_key] = artifact
         return artifact

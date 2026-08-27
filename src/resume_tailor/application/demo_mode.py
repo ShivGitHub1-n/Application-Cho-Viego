@@ -14,6 +14,7 @@ import math
 import os
 import re
 
+from resume_tailor.application.generated_artifact import content_fingerprint
 from resume_tailor.domain.application_strategy import (
     ApplicationStrategyPlan,
     EvidencePriorityTier,
@@ -22,13 +23,18 @@ from resume_tailor.domain.application_strategy import (
 )
 from resume_tailor.domain.company_research import CompanyFactConfidence, CompanyResearchBundle
 from resume_tailor.domain.cover_letter import (
+    CoverLetter,
     CoverLetterCanonicalMetadata,
     CoverLetterEvidenceKind,
     CoverLetterEvidenceRecord,
     CoverLetterEvidenceSelectionDiagnostic,
+    CoverLetterLayoutProfile,
     CoverLetterLengthClass,
+    CoverLetterParagraph,
     CoverLetterParagraphPurpose,
+    CoverLetterRecipient,
     CoverLetterSentenceAuthority,
+    CoverLetterValidationStatus,
 )
 from resume_tailor.domain.llm_models import CoverLetterDraftOutput, CoverLetterDraftParagraph
 from resume_tailor.domain.models import (
@@ -38,62 +44,234 @@ from resume_tailor.domain.models import (
     EvidenceItem,
     JobPosting,
     MasterProfile,
+    ResumeItem,
+    StructuredBullet,
+    StructuredResume,
     TailoringPlan,
     TechnicalSkillCategory,
     TemplateConstraints,
 )
+from resume_tailor.domain.resume_metadata import validate_structured_resume_metadata
 
 DEMO_COMPANY = "Anduril Industries"
 DEMO_ROLE = "2027 Electrical Engineer Intern"
 
-_TELEBOTICS_SNIPPETS = (
-    "Led the architecture of a retrofittable Club Car drive-by-wire system",
-    "Authored ICDs and pin-level interface documentation defining 30+ control",
-    "Designed an independent STM32 safety-supervision architecture with command validation",
-)
-_R_AND_D_SNIPPETS = (
-    "Integrated GPIO, CAN, UART, and USB communication between NVIDIA Jetson Orin",
-    "Supported STM32F4 peripherals in STM32CubeIDE, contributed C++ integration code",
-    "Designed and integrated sensor architecture + wiring harnesses including RTK GPS",
-    "Designed and installed a 48 V electrical architecture with ignition-controlled power",
-)
-_VISION_HAND_SNIPPETS = (
-    "Designed and built a 3-DoF tendon-driven robotic hand with custom CAD",
-    "Developed Arduino firmware to control 3 independent servos at 50 Hz",
-    "Integrated mechanical, electrical, and software subsystems through a 115200-baud",
-    "Built a Python/OpenCV pipeline using MediaPipe's 21-point hand tracking",
+_DEMO_RESUME_SPECS: tuple[tuple[str, str, str], ...] = (
+    (
+        "telebotics-mechatronics-engineer",
+        "Led the architecture of a retrofittable Club Car drive-by-wire system",
+        "Led the architecture of a retrofittable Club Car drive-by-wire system, defining "
+        "MCOR throttle interception, EPS steering control, linear-actuator primary braking, "
+        "hydraulic emergency braking, and Jetson–STM32 control interfaces.",
+    ),
+    (
+        "telebotics-mechatronics-engineer",
+        "MCOR's 0–4.65 V command and battery-voltage foot signal",
+        "Designed a throttle-control interface around the Club Car MCOR’s 0–4.65 V command "
+        "and battery-voltage foot signal using relay-based manual fallback, STM32 DAC output, "
+        "op-amp scaling, MOSFET control, and watchdog supervision.",
+    ),
+    (
+        "telebotics-mechatronics-engineer",
+        "dual-path braking architecture using a linear actuator and pulley linkage",
+        "Designed a dual-path braking architecture using a linear actuator and pulley linkage "
+        "for primary braking plus an independent electric-over-hydraulic disc-brake concept "
+        "with pressure feedback for emergency stopping.",
+    ),
+    (
+        "telebotics-mechatronics-engineer",
+        "ICDs and pin-level interface documentation defining 30+ control",
+        "Authored ICDs and pin-level interface documentation for 30+ control, feedback, and "
+        "safety signals across ADC, DAC, PWM, GPIO, I2C, UART, watchdog, relay, encoder, and "
+        "motor-driver interfaces.",
+    ),
+    (
+        "telebotics-mechatronics-engineer",
+        "independent STM32 safety-supervision architecture",
+        "Designed an independent STM32 safety-supervision architecture with command validation, "
+        "heartbeat and watchdog monitoring, manual override, E-stop handling, fault detection, "
+        "and controlled safe-stop behavior.",
+    ),
+    (
+        "lassonde-rd-hardware-engineer",
+        "GPIO, CAN, UART, and USB communication between NVIDIA Jetson Orin",
+        "Integrated GPIO, CAN, UART, and USB communication between NVIDIA Jetson Orin, STM32F4, "
+        "and peripheral electronics, enabling edge AI inference, motor control, and <150 ms "
+        "emergency-stop response.",
+    ),
+    (
+        "lassonde-rd-hardware-engineer",
+        "STM32F4 peripherals in STM32CubeIDE",
+        "Supported STM32F4 peripherals in STM32CubeIDE and contributed C++ integration code for "
+        "sensor I/O, serial communication, GPIO, and prototype control outputs.",
+    ),
+    (
+        "lassonde-rd-hardware-engineer",
+        "sensor architecture + wiring harnesses including RTK GPS",
+        "Designed and integrated sensor architecture and wiring harnesses for RTK GPS, IMU, "
+        "ultrasonic, LiDAR, and camera arrays, enabling 360° environmental perception with "
+        "<2 cm localization error.",
+    ),
+    (
+        "lassonde-rd-hardware-engineer",
+        "48 V electrical architecture with ignition-controlled power",
+        "Designed and installed a 48 V electrical architecture with ignition-controlled power, "
+        "staged DC-DC conversion, fused distribution, grounding, and protected branches to "
+        "improve voltage stability, EMF noise, and camera streaming by 50%.",
+    ),
+    (
+        "robotic-hand",
+        "3-DoF tendon-driven robotic hand with custom CAD",
+        "Designed and built a 3-DoF tendon-driven robotic hand with custom CAD, 3D-printed "
+        "components, and MG90S servos supporting pinch, tripod, and cylindrical grasp "
+        "configurations.",
+    ),
+    (
+        "robotic-hand",
+        "Arduino firmware to control 3 independent servos at 50 Hz",
+        "Developed Arduino firmware to control three independent servos at 50 Hz, implementing "
+        "calibration, motion smoothing, and configurable travel limits for repeatable finger "
+        "actuation.",
+    ),
+    (
+        "robotic-hand",
+        "Python/OpenCV pipeline using MediaPipe's 21-point hand tracking",
+        "Built a Python/OpenCV pipeline using MediaPipe’s 21-point hand tracking, translating "
+        "real-time gestures into robotic motion at ~30 FPS with <200 ms response time.",
+    ),
+    (
+        "robotic-hand",
+        "115200-baud serial protocol",
+        "Integrated mechanical, electrical, and software subsystems through a 115200-baud "
+        "serial protocol, achieving >99.5% command reliability during continuous operation.",
+    ),
+    (
+        "sodium-silicate",
+        "conceptual design specifications for Rayonier Advanced Materials",
+        "Developed three conceptual design specifications for Rayonier Advanced Materials to "
+        "address excessive sodium silicate buildup in bleaching-process holding tanks.",
+    ),
+    (
+        "sodium-silicate",
+        "ultrasonic, guided-wave radar, pH, IR thermopile",
+        "Evaluated and modeled ultrasonic, guided-wave radar, pH, IR thermopile, and pressure "
+        "sensing concepts in SolidWorks across three proposed system designs.",
+    ),
+    (
+        "sodium-silicate",
+        "Python Measure of Success simulator",
+        "Developed a Python Measure of Success simulator using temperature–solubility equations "
+        "and humidity factors to generate multi-scenario precipitation curves with NumPy and "
+        "Matplotlib and support design selection.",
+    ),
+    (
+        "robotic-arm",
+        "complete multi-DOF kinematic structure in SolidWorks",
+        "Designed the complete multi-DOF kinematic structure in SolidWorks, including linkage "
+        "configurations, housings, and mounting geometry.",
+    ),
+    (
+        "robotic-arm",
+        "custom actuator assemblies with integrated harmonic drives",
+        "Modeled custom actuator assemblies with integrated harmonic drives, specifying "
+        "torque-speed requirements, encoder resolution, and gear ratios for <0.1° positioning "
+        "accuracy and minimal backlash.",
+    ),
 )
 
-_SKILL_PRIORITIES: dict[str, tuple[str, ...]] = {
-    "Programming & Scripting": ("Python", "C", "C++", "Bash", "GitHub"),
+_DEMO_ENTRY_TITLES = {
+    "telebotics-mechatronics-engineer": "Mechatronics Engineer",
+    "lassonde-rd-hardware-engineer": "R&D Hardware Engineer",
+    "robotic-hand": "Vision Controlled Robotic Hand",
+    "sodium-silicate": "Preventing Sodium Silicate Crystal Build-up in Holding Tanks",
+    "robotic-arm": "Long Reach Robotic Arm Manipulator",
+}
+
+_DEMO_COVER_LETTER_PARAGRAPHS: tuple[str, ...] = (
+    (
+        "I am applying for the 2027 Electrical Engineer Intern position because the role "
+        "lines up closely with the kind of engineering work I enjoy most: building physical "
+        "systems where electronics, embedded software, controls, and mechanical design all "
+        "have to work together. I am currently studying Mechanical Engineering at the "
+        "University of Toronto with a minor in Robotics & Mechatronics, and much of my "
+        "experience has involved taking ideas from early design decisions through hands-on "
+        "integration and testing."
+    ),
+    (
+        "At the Lassonde School of Engineering at York University, I worked on the hardware "
+        "integration of an autonomous teleoperation platform. I connected an NVIDIA Jetson "
+        "Orin, STM32F4, and peripheral electronics over GPIO, CAN, UART, and USB, while also "
+        "helping integrate sensors including LiDAR, cameras, RTK GPS, IMUs, and ultrasonic "
+        "sensors. I designed and installed parts of the vehicle’s 48 V electrical architecture, "
+        "including DC-DC conversion, fused distribution, grounding, and protected power "
+        "branches. That experience taught me how quickly an electrical problem can become a "
+        "software, mechanical, or systems problem, and how important it is to understand the "
+        "whole system rather than only one component."
+    ),
+    (
+        "I worked on similar problems at Telebotics while developing a retrofittable "
+        "drive-by-wire system for a Club Car. My work covered throttle, steering, braking, "
+        "Jetson-to-STM32 interfaces, and the safety logic around those systems. I created "
+        "interface documentation for more than 30 control, feedback, and safety signals and "
+        "designed STM32-based supervision using command validation, heartbeat monitoring, "
+        "watchdogs, manual override, E-stop handling, and controlled safe-stop behavior. I "
+        "especially enjoyed the process of turning system requirements into concrete electrical "
+        "and control interfaces that could be built and tested."
+    ),
+    (
+        "Outside of work, I have continued building systems that cross engineering disciplines. "
+        "I designed a tendon-driven robotic hand, wrote Arduino firmware for its servo control, "
+        "and built a Python/OpenCV hand-tracking pipeline that translated real-time gestures "
+        "into motion. I also designed a long-reach robotic arm in SolidWorks and worked on an "
+        "industrial design project that used sensor concepts, mechanical design, and Python "
+        "simulation to evaluate ways of reducing sodium silicate buildup in processing "
+        "equipment. These projects have given me experience moving between software, "
+        "electronics, controls, and mechanical design depending on what the problem requires."
+    ),
+    (
+        "What draws me to Anduril is the chance to work in exactly that kind of environment. "
+        "The role involves building electronics into functional prototypes, working across "
+        "electrical and software boundaries, developing embedded systems, and collaborating "
+        "closely with mechanical, firmware, software, and test engineers. I would be excited "
+        "to bring my hands-on experience with embedded systems, electrical integration, "
+        "robotics, and mechanical design to that team while continuing to learn from engineers "
+        "working on complex real-world systems."
+    ),
+    (
+        "Thank you for your time and consideration. I would welcome the opportunity to discuss "
+        "how my background could contribute to Anduril’s engineering team."
+    ),
+)
+
+_DEMO_SKILL_GROUPS: dict[str, tuple[str, ...]] = {
+    "Programming": ("Python", "C", "C++", "MATLAB"),
     "Embedded Systems": (
         "STM32",
         "Arduino",
         "NVIDIA Jetson Orin",
-        "Linux",
-        "Ubuntu",
         "GPIO",
         "PWM",
         "ADC/DAC",
-        "UART",
-        "I2C",
-        "SPI",
-        "USB",
+        "Serial Communication",
         "CAN",
-        "timers",
-        "interrupts",
     ),
-    "Robotics": (
+    "Robotics & Controls": (
         "ROS 2",
+        "OpenCV",
         "sensor integration",
         "Actuator-command design",
         "Command validation",
-        "Heartbeat monitoring",
         "Watchdog supervision",
         "Safe-stop and fault handling",
-        "Closed-loop actuator verification",
     ),
-    "Wiring & Electrical Systems": (
+    "Mechanical Design": (
+        "SolidWorks",
+        "Fusion360",
+        "GD&T",
+        "DFM/DFA",
+        "Onyx 3D printing",
+    ),
+    "Electrical": (
         "Wiring Harness Design",
         "Crimping & Soldering",
         "Power Distribution",
@@ -102,16 +280,7 @@ _SKILL_PRIORITIES: dict[str, tuple[str, ...]] = {
         "MOSFET switching",
         "H-bridges",
     ),
-    "Mechanical Design & CAD": (
-        "SolidWorks",
-        "Fusion360",
-        "GD&T",
-        "DFM/DFA",
-        "3D Print drawings",
-        "Onyx 3D printing",
-        "laser cutting",
-    ),
-    "Tools": ("Git", "GitHub"),
+    "Tools": ("Git", "GitHub", "Linux"),
 }
 
 
@@ -139,8 +308,9 @@ def is_demo_application(posting: JobPosting) -> bool:
 def is_demo_details(company: str | None, role: str) -> bool:
     """Return whether the temporary deterministic cover-letter path is active.
 
-    Company and role remain dynamic presentation context in the generated
-    letter; they are not activation gates while the explicit demo flag is on.
+    Company and role are not activation gates while the explicit flag is on;
+    final fixture validation still fails closed unless the recorded Anduril
+    application is the active application.
     """
     del company, role
     return demo_mode_enabled()
@@ -250,6 +420,233 @@ def validate_demo_plan(plan: TailoringPlan, profile: MasterProfile) -> None:
             raise ValueError("The temporary demo plan changed canonical evidence")
 
 
+def build_demo_structured_resume(
+    profile: MasterProfile,
+    posting: JobPosting,
+    plan: TailoringPlan,
+    baseline: StructuredResume,
+) -> StructuredResume:
+    """Freeze the requested demo portfolio at the final structured-document boundary."""
+
+    if not is_demo_application(posting):
+        return baseline
+    resolved = _resolve_demo_evidence_with_text(profile)
+    entries = {item.id: item for item in [*profile.experiences, *profile.projects]}
+    ordered_entry_ids = list(dict.fromkeys(entry_id for entry_id, _, _ in resolved))
+    selected_entries = [_canonical_demo_entry(entries, entry_id) for entry_id in ordered_entry_ids]
+    bullets_by_entry: dict[str, list[StructuredBullet]] = {}
+    for entry_id, evidence, text in resolved:
+        bullets_by_entry.setdefault(entry_id, []).append(
+            StructuredBullet(
+                id=f"demo-final:{evidence.id}",
+                text=text,
+                evidence_ids=[evidence.id],
+                support=ClaimSupport.DIRECT,
+            )
+        )
+    experiences = [
+        item.model_copy(deep=True)
+        for item in selected_entries
+        if item.kind is EntityKind.EXPERIENCE
+    ]
+    projects = [
+        item.model_copy(deep=True)
+        for item in selected_entries
+        if item.kind is EntityKind.PROJECT
+    ]
+    experience_ids = {item.id for item in experiences}
+    project_ids = {item.id for item in projects}
+    skills = _demo_skills(profile)
+    result = baseline.model_copy(
+        deep=True,
+        update={
+            "posting_id": posting.id,
+            "application_strategy": plan.application_strategy,
+            "entity_titles": {item.id: item.title for item in selected_entries},
+            "education": [item.model_copy(deep=True) for item in profile.education],
+            "technical_skills": skills,
+            "experiences": experiences,
+            "projects": projects,
+            "experience_bullets": {
+                entry_id: bullets_by_entry[entry_id] for entry_id in ordered_entry_ids
+                if entry_id in experience_ids
+            },
+            "project_bullets": {
+                entry_id: bullets_by_entry[entry_id] for entry_id in ordered_entry_ids
+                if entry_id in project_ids
+            },
+            "selected_skills": [
+                skill.value
+                for category in skills
+                for skill in category.skills
+            ],
+            "review_required_claim_ids": [],
+            "review_pending_bullets": [],
+            "review_pending_skills": [],
+            "demonstrated_skills": [],
+            "composition_diagnostic": None,
+            "hybrid_diagnostic": None,
+        },
+    )
+    validate_demo_structured_resume(profile, result)
+    return result
+
+
+def validate_demo_structured_resume(profile: MasterProfile, resume: StructuredResume) -> None:
+    """Fail closed if the final demo document drifts from canonical reviewed authority."""
+
+    validate_structured_resume_metadata(resume)
+    expected = _resolve_demo_evidence_with_text(profile)
+    expected_ids = [entry_id for entry_id, _, _ in expected]
+    expected_counts = {
+        entry_id: expected_ids.count(entry_id) for entry_id in dict.fromkeys(expected_ids)
+    }
+    actual_entries = [*resume.experiences, *resume.projects]
+    if [item.id for item in actual_entries] != list(dict.fromkeys(expected_ids)):
+        raise ValueError("The final demo résumé portfolio does not match the fixed fixture")
+    for item in actual_entries:
+        expected_title = _DEMO_ENTRY_TITLES[item.id]
+        if item.title != expected_title:
+            raise ValueError("The final demo résumé changed canonical entry metadata")
+        bullets = (
+            resume.experience_bullets.get(item.id, [])
+            if item.kind is EntityKind.EXPERIENCE
+            else resume.project_bullets.get(item.id, [])
+        )
+        if len(bullets) != expected_counts[item.id]:
+            raise ValueError("The final demo résumé bullet count drifted from the fixture")
+    actual = [
+        (item.id, bullet.evidence_ids, bullet.text)
+        for item in actual_entries
+        for bullet in (
+            resume.experience_bullets.get(item.id, [])
+            if item.kind is EntityKind.EXPERIENCE
+            else resume.project_bullets.get(item.id, [])
+        )
+    ]
+    expected_rows = [
+        (entry_id, [evidence.id], text) for entry_id, evidence, text in expected
+    ]
+    if actual != expected_rows:
+        raise ValueError("The final demo résumé wording or provenance changed")
+
+
+def build_demo_cover_letter(
+    profile: MasterProfile,
+    posting: JobPosting,
+    plan: TailoringPlan | None,
+    *,
+    date_text: str,
+    posting_fact_ids: list[str],
+    layout_profile: CoverLetterLayoutProfile,
+) -> CoverLetter:
+    """Build the exact user-approved deterministic letter for the recording."""
+
+    if not is_demo_application(posting):
+        raise ValueError("Demo cover letter requested outside temporary demo mode")
+    evidence_by_entry: dict[str, list[str]] = {}
+    for entry_id, evidence, _ in _resolve_demo_evidence_with_text(profile):
+        evidence_by_entry.setdefault(entry_id, []).append(evidence.id)
+    paragraph_evidence = (
+        [],
+        evidence_by_entry["lassonde-rd-hardware-engineer"],
+        evidence_by_entry["telebotics-mechatronics-engineer"],
+        [
+            *evidence_by_entry["robotic-hand"],
+            *evidence_by_entry["robotic-arm"],
+            *evidence_by_entry["sodium-silicate"],
+        ],
+        [],
+        [],
+    )
+    purposes = (
+        CoverLetterParagraphPurpose.OPENING,
+        CoverLetterParagraphPurpose.EXPERIENCE_CONNECTION,
+        CoverLetterParagraphPurpose.CONTRIBUTION,
+        CoverLetterParagraphPurpose.ROLE_FIT,
+        CoverLetterParagraphPurpose.ROLE_FIT,
+        CoverLetterParagraphPurpose.CLOSING,
+    )
+    paragraphs = [
+        CoverLetterParagraph(
+            id=f"demo-exact-paragraph-{index + 1}",
+            purpose=purpose,
+            text=text,
+            candidate_evidence_ids=list(paragraph_evidence[index]),
+            company_research_ids=(
+                posting_fact_ids if index in {0, 4, 5} else []
+            ),
+            narrative_thread_id=f"demo-exact-thread-{index + 1}",
+            length_class=CoverLetterLengthClass.DEVELOPED,
+            claims=[],
+            validation_status=CoverLetterValidationStatus.SUPPORTED,
+            deterministic_fallback=False,
+        )
+        for index, (purpose, text) in enumerate(
+            zip(purposes, _DEMO_COVER_LETTER_PARAGRAPHS, strict=True)
+        )
+    ]
+    letter = CoverLetter(
+        profile_id=profile.id,
+        profile_version=profile.version,
+        posting_id=posting.id,
+        plan_fingerprint=(content_fingerprint(plan) if plan is not None else None),
+        candidate_name=profile.display_name,
+        contact=profile.contact,
+        date_text=date_text,
+        job_title=DEMO_ROLE,
+        company_name=DEMO_COMPANY,
+        recipient=CoverLetterRecipient(company=DEMO_COMPANY),
+        salutation="Dear Anduril Hiring Team,",
+        paragraphs=paragraphs,
+        signoff="Sincerely,",
+        signoff_name=profile.display_name,
+        layout_profile=layout_profile,
+    )
+    validate_demo_cover_letter(profile, posting, letter)
+    return letter
+
+
+def validate_demo_cover_letter(
+    profile: MasterProfile,
+    posting: JobPosting,
+    letter: CoverLetter,
+) -> None:
+    """Validate the exact approved text against canonical profile and posting authority."""
+
+    _resolve_demo_evidence_with_text(profile)
+    education_supported = any(
+        item.school == "University of Toronto"
+        and "Mechanical Engineering" in item.program
+        and item.minor_or_specialization == "Robotics & Mechatronics"
+        for item in profile.education
+    )
+    if not education_supported:
+        raise ValueError("The demo cover letter education claim is not canonical")
+    if profile.display_name != "Shiv Arora":
+        raise ValueError("The demo cover letter signatory does not match the reviewed profile")
+    if posting.company_name != DEMO_COMPANY or posting.title != DEMO_ROLE:
+        raise ValueError("The demo cover letter requires the recorded Anduril application")
+    if letter.salutation != "Dear Anduril Hiring Team," or (
+        letter.job_title != DEMO_ROLE or letter.company_name != DEMO_COMPANY
+    ):
+        raise ValueError("The demo cover letter company or role identity changed")
+    if tuple(item.text for item in letter.paragraphs) != _DEMO_COVER_LETTER_PARAGRAPHS:
+        raise ValueError("The demo cover letter wording changed")
+    forbidden = (
+        "u.s. person",
+        "work authorization",
+        "altium",
+        "oscilloscope",
+        "device tree",
+        "bootloader",
+        "pcie",
+    )
+    complete_text = " ".join(item.text for item in letter.paragraphs).casefold()
+    if any(term in complete_text for term in forbidden):
+        raise ValueError("The demo cover letter contains a prohibited unsupported claim")
+
+
 def build_demo_cover_letter_evidence(
     profile: MasterProfile,
     posting: JobPosting,
@@ -284,7 +681,8 @@ def build_demo_cover_letter_evidence(
     return records, CoverLetterEvidenceSelectionDiagnostic(
         selected_evidence_ids=[record.id for record in records],
         considered_evidence_count=len(profile.evidence),
-        narrative_thread_count=len({record.entity_id for record in records}),
+        # The exact letter uses York, Telebotics, and one combined project thread.
+        narrative_thread_count=min(3, len({record.entity_id for record in records})),
         reasons=[record.selection_reason for record in records],
     )
 
@@ -458,43 +856,87 @@ def _demo_paragraph(
 
 
 def _resolve_demo_evidence(profile: MasterProfile) -> list[EvidenceItem]:
-    snippets = (*_TELEBOTICS_SNIPPETS, *_R_AND_D_SNIPPETS, *_VISION_HAND_SNIPPETS[:3])
-    optional = _VISION_HAND_SNIPPETS[3]
-    selected = [_find_evidence(profile, snippet) for snippet in snippets]
-    try:
-        selected.append(_find_evidence(profile, optional))
-    except ValueError:
-        pass
-    return selected
+    return [evidence for _, evidence, _ in _resolve_demo_evidence_with_text(profile)]
 
 
-def _find_evidence(profile: MasterProfile, snippet: str) -> EvidenceItem:
+def _resolve_demo_evidence_with_text(
+    profile: MasterProfile,
+) -> list[tuple[str, EvidenceItem, str]]:
+    resolved: list[tuple[str, EvidenceItem, str]] = []
+    seen: set[str] = set()
+    for entry_id, snippet, text in _DEMO_RESUME_SPECS:
+        evidence = _find_evidence(profile, snippet, entry_id=entry_id)
+        if evidence.id in seen:
+            raise ValueError("Temporary demo evidence cannot be reused across bullets")
+        seen.add(evidence.id)
+        resolved.append((entry_id, evidence, text))
+    return resolved
+
+
+def _find_evidence(
+    profile: MasterProfile,
+    snippet: str,
+    *,
+    entry_id: str | None = None,
+) -> EvidenceItem:
     expected = set(_tokens(snippet))
     matches = [
         item
         for item in profile.evidence
-        if item.confirmed and expected <= set(_tokens(item.source_text))
+        if item.confirmed
+        and (entry_id is None or item.entity_id == entry_id)
+        and expected <= set(_tokens(item.source_text))
     ]
     if len(matches) != 1:
         raise ValueError(f"Temporary demo evidence is missing or ambiguous: {snippet}")
     return matches[0]
 
 
+def _canonical_demo_entry(entries: dict[str, ResumeItem], entry_id: str) -> ResumeItem:
+    entry = entries.get(entry_id)
+    if entry is None or entry.title != _DEMO_ENTRY_TITLES[entry_id]:
+        raise ValueError("Temporary demo entry metadata is unavailable or changed")
+    if entry_id == "telebotics-mechatronics-engineer" and entry.organization != "Telebotics":
+        raise ValueError("Temporary demo employer metadata is unavailable or changed")
+    if entry_id == "lassonde-rd-hardware-engineer" and (
+        entry.organization is None
+        or "lassonde school of engineering" not in entry.organization.casefold()
+    ):
+        raise ValueError("Temporary demo organization metadata is unavailable or changed")
+    return entry
+
+
 def _demo_skills(profile: MasterProfile) -> list[TechnicalSkillCategory]:
+    reviewed = [
+        (category, skill)
+        for category in profile.technical_skills
+        for skill in category.skills
+    ]
     categories: list[TechnicalSkillCategory] = []
-    for category in profile.technical_skills:
-        desired = _SKILL_PRIORITIES.get(category.category)
-        if not desired:
-            continue
-        skills = [
-            skill
-            for skill in category.skills
-            if any(_skill_matches(skill.value, target) for target in desired)
-        ]
+    used: set[str] = set()
+    for label, desired in _DEMO_SKILL_GROUPS.items():
+        skills = []
+        for target in desired:
+            match = next(
+                (
+                    skill
+                    for _, skill in reviewed
+                    if skill.value.casefold() not in used
+                    and _skill_matches(skill.value, target)
+                ),
+                None,
+            )
+            if match is not None:
+                used.add(match.value.casefold())
+                skills.append(match.model_copy(deep=True))
         if skills:
             categories.append(
-                category.model_copy(
-                    update={"skills": skills, "values": [skill.value for skill in skills]}
+                TechnicalSkillCategory(
+                    id=f"demo-{re.sub(r'[^a-z0-9]+', '-', label.casefold()).strip('-')}",
+                    category=label,
+                    skills=skills,
+                    values=[skill.value for skill in skills],
+                    source_reference="reviewed-career-profile",
                 )
             )
     return categories
@@ -513,11 +955,15 @@ def _tokens(value: str) -> list[str]:
 __all__ = [
     "DEMO_COMPANY",
     "DEMO_ROLE",
+    "build_demo_cover_letter",
     "build_demo_cover_letter_evidence",
     "build_demo_cover_letter_output",
     "build_demo_resume_plan",
+    "build_demo_structured_resume",
     "demo_mode_enabled",
     "is_demo_application",
     "is_demo_details",
     "validate_demo_plan",
+    "validate_demo_cover_letter",
+    "validate_demo_structured_resume",
 ]

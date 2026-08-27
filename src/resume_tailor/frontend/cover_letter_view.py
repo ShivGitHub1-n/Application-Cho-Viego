@@ -20,6 +20,7 @@ from resume_tailor.domain.company_research import (
     CompanySourceType,
 )
 from resume_tailor.domain.cover_letter import (
+    CoverLetterProviderStatus,
     CoverLetterQualityGateStatus,
     CoverLetterRecipient,
     CoverLetterReviewState,
@@ -263,6 +264,16 @@ def _render_status(
     artifact: GeneratedCoverLetterArtifact,
     artifact_current: bool,
 ) -> None:
+    if artifact.provider_diagnostic.status is CoverLetterProviderStatus.DETERMINISTIC:
+        render_status_strip(
+            st,
+            {
+                "Cover Letter": "Ready for review",
+                "Pagination": "Fits one page",
+            },
+        )
+        st.caption("Current job" if artifact_current else "Out of date")
+        return
     passed_claims = not any(
         gate.status is CoverLetterQualityGateStatus.FAILED
         for gate in artifact.quality_gates
@@ -287,6 +298,8 @@ def _render_status(
 
 def _writer_status(artifact: GeneratedCoverLetterArtifact) -> str:
     diagnostic = artifact.provider_diagnostic
+    if diagnostic.status is CoverLetterProviderStatus.DETERMINISTIC:
+        return "Prepared"
     if diagnostic.provider_candidate_selected and not diagnostic.fallback_reason:
         return "Gemini"
     reason = diagnostic.fallback_reason

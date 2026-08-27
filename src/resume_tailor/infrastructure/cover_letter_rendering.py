@@ -92,10 +92,18 @@ class CoverLetterRenderer:
                 )
         except PageCountVerificationError as error:
             failure = str(error)
-            measurements = [self._estimated_measurement(path) for path in paths]
+            measurements = [
+                self._estimated_measurement(path, letter.layout_profile)
+                for path, letter in zip(paths, letters, strict=True)
+            ]
         return [
-            self._result(path, measurement, pagination_failure=failure)
-            for path, measurement in zip(paths, measurements, strict=True)
+            self._result(
+                path,
+                measurement,
+                layout_profile=letter.layout_profile,
+                pagination_failure=failure,
+            )
+            for path, measurement, letter in zip(paths, measurements, letters, strict=True)
         ]
 
     def render_candidate(
@@ -120,15 +128,19 @@ class CoverLetterRenderer:
         path: Path,
         measurement: PageCountMeasurement,
         *,
+        layout_profile: CoverLetterLayoutProfile,
         pagination_failure: str | None,
     ) -> CoverLetterRenderResult:
         diagnostic = diagnose_docx_page_utilization(
             path,
-            self._diagnostic_layout(),
+            self._diagnostic_layout(layout_profile),
             measurement,
-            severe_underfill_threshold=self._profile.acceptable_utilization_floor,
+            severe_underfill_threshold=layout_profile.acceptable_utilization_floor,
         )
-        remaining = self._remaining_lines(diagnostic.estimated_utilization_ratio)
+        remaining = self._remaining_lines(
+            diagnostic.estimated_utilization_ratio,
+            layout_profile,
+        )
         structural = tuple(audit_cover_letter_docx_structure(path))
         blank_trailing = bool(
             measurement.page_count > 1
@@ -150,7 +162,11 @@ class CoverLetterRenderer:
             structural_issues=structural,
         )
 
-    def _estimated_measurement(self, path: Path) -> PageCountMeasurement:
+    def _estimated_measurement(
+        self,
+        path: Path,
+        layout_profile: CoverLetterLayoutProfile,
+    ) -> PageCountMeasurement:
         provisional = PageCountMeasurement(
             page_count=1,
             provider="deterministic cover-letter occupancy estimate",
@@ -159,9 +175,9 @@ class CoverLetterRenderer:
         )
         diagnostic = diagnose_docx_page_utilization(
             path,
-            self._diagnostic_layout(),
+            self._diagnostic_layout(layout_profile),
             provisional,
-            severe_underfill_threshold=self._profile.acceptable_utilization_floor,
+            severe_underfill_threshold=layout_profile.acceptable_utilization_floor,
         )
         return PageCountMeasurement(
             page_count=max(1, math.ceil(diagnostic.estimated_utilization_ratio)),
@@ -170,8 +186,8 @@ class CoverLetterRenderer:
             exact=False,
         )
 
-    def _diagnostic_layout(self) -> LayoutProfile:
-        p = self._profile
+    @staticmethod
+    def _diagnostic_layout(p: CoverLetterLayoutProfile) -> LayoutProfile:
         return LayoutProfile(
             page=PageLayout(
                 width_twips=round(p.page_width_inches * 1440),
@@ -187,14 +203,14 @@ class CoverLetterRenderer:
             semantic_roles={},
         )
 
-    def _remaining_lines(self, utilization: float) -> int:
-        p = self._profile
+    @staticmethod
+    def _remaining_lines(utilization: float, p: CoverLetterLayoutProfile) -> int:
         line_height_twips = p.body_size_pt * 20 * p.line_spacing
         remaining_twips = max(0.0, (1.0 - utilization) * p.usable_height_inches * 1440)
         return max(0, round(remaining_twips / line_height_twips))
 
     def _render_docx(self, letter: CoverLetter, output_path: Path) -> None:
-        p = self._profile
+        p = letter.layout_profile
         document = Document()
         section = document.sections[0]
         section.page_width = Inches(p.page_width_inches)

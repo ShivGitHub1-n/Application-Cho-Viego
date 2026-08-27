@@ -3,6 +3,7 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
+from resume_tailor.domain.generated_artifact import ExactResumeArtifactRender
 from resume_tailor.domain.hybrid_resume import EvidenceRetrievalResult
 from resume_tailor.domain.llm_models import (
     ApplicationStrategyRequest,
@@ -130,6 +131,8 @@ class ResumeRenderer(Protocol):
 
 class ResumeArtifactRenderer(Protocol):
     def render_docx_bytes(self, resume: StructuredResume) -> bytes: ...
+
+    def render_demo_artifact(self, resume: StructuredResume) -> ExactResumeArtifactRender: ...
 
 
 class ResumePageFitEvaluator(Protocol):

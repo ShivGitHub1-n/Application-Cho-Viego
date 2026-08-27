@@ -99,6 +99,16 @@ class PaginationExecutionDiagnostic(BaseModel):
     failure_reason: str | None = None
 
 
+class ExactResumeArtifactRender(BaseModel):
+    """Rendered bytes plus exact geometry established by infrastructure."""
+
+    docx_bytes: bytes
+    page_count: int = Field(ge=1)
+    exact: bool
+    pagination_provider: str
+    utilization_ratio: float = Field(ge=0)
+
+
 class ArtifactFingerprintInputs(BaseModel):
     reviewed_profile_fingerprint: str
     normalized_posting_fingerprint: str
@@ -148,6 +158,7 @@ class ArtifactDownload(BaseModel):
 __all__ = [
     "ArtifactDownload",
     "ArtifactFingerprintInputs",
+    "ExactResumeArtifactRender",
     "GeneratedResumeArtifact",
     "GenerationCallCounts",
     "GenerationStage",
