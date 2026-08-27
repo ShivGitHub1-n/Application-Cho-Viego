@@ -3,9 +3,9 @@
 TEMPORARY DEMO OVERRIDE — remove after demo recording.
 
 This module is intentionally narrow: it activates only when ``VIEGO_DEMO_MODE``
-is truthy and the active posting is the exact Anduril demo application.  The
-canonical profile remains the only factual source; this module only selects
-known reviewed atoms for the recording path.
+is truthy.  While enabled, the active posting is used only for its visible
+role/company context; the canonical profile remains the only factual source
+and this module selects known reviewed atoms for the recording path.
 """
 
 from __future__ import annotations
@@ -125,19 +125,25 @@ def demo_mode_enabled() -> bool:
 
 
 def is_demo_application(posting: JobPosting) -> bool:
-    return (
-        demo_mode_enabled()
-        and _normalize(posting.company_name) == _normalize(DEMO_COMPANY)
-        and _normalize(posting.title) == _normalize(DEMO_ROLE)
-    )
+    """Return whether the temporary fixture is active for the current posting.
+
+    ``posting`` is intentionally accepted as part of the application boundary,
+    but demo mode is an explicit operator opt-in rather than an identity match.
+    This keeps the fixture usable when a live Streamlit posting has normalized
+    or incomplete company/title fields while leaving the normal path untouched.
+    """
+    del posting
+    return demo_mode_enabled()
 
 
 def is_demo_details(company: str | None, role: str) -> bool:
-    return (
-        demo_mode_enabled()
-        and _normalize(company) == _normalize(DEMO_COMPANY)
-        and _normalize(role) == _normalize(DEMO_ROLE)
-    )
+    """Return whether the temporary deterministic cover-letter path is active.
+
+    Company and role remain dynamic presentation context in the generated
+    letter; they are not activation gates while the explicit demo flag is on.
+    """
+    del company, role
+    return demo_mode_enabled()
 
 
 def build_demo_resume_plan(
@@ -498,10 +504,6 @@ def _skill_matches(value: str, target: str) -> bool:
     value_tokens = set(_tokens(value))
     target_tokens = set(_tokens(target))
     return value_tokens == target_tokens or target_tokens <= value_tokens
-
-
-def _normalize(value: str | None) -> str:
-    return " ".join((value or "").casefold().split())
 
 
 def _tokens(value: str) -> list[str]:

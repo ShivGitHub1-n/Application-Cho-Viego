@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from resume_tailor.application import demo_mode
+from resume_tailor.application.cover_letter import CoverLetterService
 from resume_tailor.domain.models import (
     EntityKind,
     EvidenceItem,
@@ -12,6 +13,7 @@ from resume_tailor.domain.models import (
     TemplateConstraints,
 )
 from resume_tailor.infrastructure.optimization import DeterministicResumeOptimizer
+from tests.cover_letter_helpers import cover_letter_case
 
 
 def _posting(
@@ -65,15 +67,22 @@ def _evidence(profile: MasterProfile) -> list[EvidenceItem]:
     ]
 
 
-def test_demo_activation_requires_flag_and_exact_application(
+def test_demo_activation_requires_explicit_flag_not_company_or_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("VIEGO_DEMO_MODE", raising=False)
     assert not demo_mode.is_demo_application(_posting())
+    assert not demo_mode.is_demo_details("Cohere", "Software Engineering Intern")
     monkeypatch.setenv("VIEGO_DEMO_MODE", "1")
-    assert demo_mode.is_demo_application(_posting())
-    assert not demo_mode.is_demo_application(_posting(title="Electrical Engineer Intern"))
-    assert not demo_mode.is_demo_application(_posting(company="Other Industries"))
+    arbitrary = _posting(
+        company="Cohere",
+        title="Software Engineering Intern",
+    )
+    assert demo_mode.is_demo_application(arbitrary)
+    assert demo_mode.is_demo_details("Cohere", "Software Engineering Intern")
+    monkeypatch.setenv("VIEGO_DEMO_MODE", "0")
+    assert not demo_mode.is_demo_application(arbitrary)
+    assert not demo_mode.is_demo_details("Cohere", "Software Engineering Intern")
 
 
 def test_demo_plan_and_cover_letter_boundary_use_only_resolved_reviewed_atoms(
@@ -84,18 +93,50 @@ def test_demo_plan_and_cover_letter_boundary_use_only_resolved_reviewed_atoms(
     evidence = _evidence(profile)
     profile = profile.model_copy(update={"evidence": evidence})
     monkeypatch.setattr(demo_mode, "_resolve_demo_evidence", lambda _profile: evidence)
+    arbitrary_posting = _posting(
+        company="Cohere",
+        title="Software Engineering Intern",
+    )
     base = DeterministicResumeOptimizer().create_plan(
         profile,
-        _posting(),
+        arbitrary_posting,
         TemplateConstraints(),
     )
-    plan = demo_mode.build_demo_resume_plan(profile, _posting(), TemplateConstraints(), base)
+    plan = demo_mode.build_demo_resume_plan(
+        profile,
+        arbitrary_posting,
+        TemplateConstraints(),
+        base,
+    )
     assert plan.selected_claim_ids == [item.id for item in evidence]
     assert plan.selected_entity_ids == [item.entity_id for item in evidence]
     demo_mode.validate_demo_plan(plan, profile)
-    records, diagnostic = demo_mode.build_demo_cover_letter_evidence(profile, _posting())
+    records, diagnostic = demo_mode.build_demo_cover_letter_evidence(profile, arbitrary_posting)
     assert diagnostic.selected_evidence_ids == [item.id for item in evidence]
     assert {record.entity_id for record in records} == set(plan.selected_entity_ids)
+
+
+def test_demo_cover_letter_service_disables_provider_for_arbitrary_posting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VIEGO_DEMO_MODE", "1")
+    profile, _, _ = cover_letter_case(
+        company="Cohere",
+        title="Software Engineering Intern",
+    )
+    evidence = list(profile.evidence)
+    monkeypatch.setattr(demo_mode, "_resolve_demo_evidence", lambda _profile: evidence)
+    posting = JobPosting(
+        id="demo-posting",
+        title="Software Engineering Intern",
+        company_name="Cohere",
+        description="Build and test electrical hardware and embedded systems.",
+    )
+    plan = DeterministicResumeOptimizer().create_plan(profile, posting, TemplateConstraints())
+    request = CoverLetterService().create_request(profile, posting, plan)
+    _, diagnostic = CoverLetterService()._provider_output(request)
+    assert diagnostic.request_count == 0
+    assert diagnostic.failure_code == "temporary_demo_override"
 
 
 def test_demo_plan_rejects_changed_canonical_text(monkeypatch: pytest.MonkeyPatch) -> None:
